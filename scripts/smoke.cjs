@@ -11,7 +11,7 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const child = spawn(
     process.env.DYNAMICLIGHT_EXECUTABLE ||
       path.resolve("src-tauri/target/release/dynamiclight.exe"),
-    [],
+    process.env.DYNAMICLIGHT_BACKGROUND_TEST ? ["--autostart"] : [],
     {
       env: {
         ...process.env,
@@ -55,6 +55,14 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         action,
       );
     original = (await control({ type: "snapshot" })).settings;
+    assert.equal((await control({ type: "snapshot" })).requested, false);
+    assert.equal((await control({ type: "snapshot" })).powered, false);
+    assert.equal(typeof await page.evaluate(() => window.__TAURI__.core.invoke("launch_at_login", { enabled: null })), "boolean");
+    // Read the real Windows registration result without changing the user's login settings.
+    await delay(300);
+    assert.equal((await control({ type: "snapshot" })).lifecycleWarning, "");
+    for (let i = 0; i < 30 && !(await control({ type: "snapshot" })).lifecycleReady; i++) await delay(100);
+    assert.equal((await control({ type: "snapshot" })).lifecycleReady, true, "Native initial display/session state arrived");
     assert.equal((await control({ type: "snapshot" })).capturing, false);
     assert.equal((await control({ type: "snapshot" })).status.connected, false);
     await assert.rejects(

@@ -20,7 +20,7 @@
           <button id="power" class="power"><span>Start color</span></button>
         </div>
       </header>
-      <div id="notice" class="notice" role="status" hidden></div>
+      <div id="notice" class="notice" role="status" hidden><span id="notice-text"></span><button id="retry" class="secondary" hidden>Retry</button></div>
       <div class="modes" role="group" aria-label="Lighting mode">
         <button data-mode="solid" aria-pressed="true" class="selected">
           <span class="mode-icon"
@@ -355,12 +355,6 @@
           >
           <label class="checkbox"
             ><input id="reverse" type="checkbox" /> Reverse LED direction</label
-          ><label class="checkbox"
-            ><input id="off-on-sleep" type="checkbox" checked /> Lights off on
-            sleep</label
-          ><label class="checkbox"
-            ><input id="off-on-quit" type="checkbox" checked /> Lights off on
-            quit</label
           >
         </div>
         <p class="help">
@@ -370,6 +364,25 @@
             >Closing the window keeps lighting running in the tray.</span
           >
         </p>
+        <div class="behavior-grid">
+          <fieldset><legend>Startup</legend>
+            <label class="checkbox"><input id="launch-at-login" type="checkbox" /> Launch at login</label>
+            <label class="checkbox"><input id="restore-on-start" type="checkbox" /> Restore lighting when the app opens</label>
+            <p class="help">Restores your last mode only if lighting was running. Stop keeps it off next time.</p>
+          </fieldset>
+          <fieldset><legend>Pause lighting</legend>
+            <label class="checkbox"><input id="off-on-display-sleep" type="checkbox" checked /> When displays turn off</label>
+            <label class="checkbox"><input id="off-on-lock" type="checkbox" checked /> When the computer locks</label>
+            <label class="checkbox"><input id="off-on-sleep" type="checkbox" checked /> Turn lights off during system sleep</label>
+            <label class="checkbox"><input id="off-on-quit" type="checkbox" checked /> Turn lights off when quitting</label>
+          </fieldset>
+          <fieldset><legend>Capture recovery</legend>
+            <label class="checkbox"><input id="resume-capture" type="checkbox" /> Automatically resume screen and audio capture</label>
+            <p class="help">Resume after wake, USB reconnect, or source changes. Also allows capture on app startup when restore is enabled. Requires OS permission.</p>
+            <p class="help">Color and effects resume automatically. Stop cancels pending recovery.</p>
+          </fieldset>
+        </div>
+        <p id="lifecycle-warning" class="help" role="status" hidden></p>
       </details>
       <footer>
         <span id="connection-message">Choose a mode to start.</span

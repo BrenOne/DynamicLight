@@ -80,6 +80,7 @@ impl Drop for FrameClock {
 
 #[cfg(target_os = "windows")]
 pub fn watch_power(handle: Handle) -> Result<(), String> {
+    crate::lifecycle_windows::watch(handle.clone())?;
     use std::ffi::c_void;
     #[repr(C)]
     struct Subscription {
@@ -130,7 +131,8 @@ mod mac {
     use crate::audio::Feed;
     use std::ffi::{c_char, c_void, CStr};
     extern "C" {
-        fn dl_watch_power(callback: extern "C" fn(*mut c_void, bool), context: *mut c_void);
+        fn dl_watch_power(callback: extern "C" fn(*mut c_void, u32, bool), context: *mut c_void);
+        fn dl_capture_allowed(microphone: bool) -> bool;
         fn dl_microphone_permission() -> bool;
         fn dl_audio_start(
             callback: extern "C" fn(*mut c_void, *const f32, usize),
@@ -142,15 +144,31 @@ mod mac {
         fn dl_audio_stop(stream: *mut c_void) -> bool;
     }
     pub fn watch_power(handle: Handle) -> Result<(), String> {
-        extern "C" fn callback(ctx: *mut c_void, sleep: bool) {
+        extern "C" fn callback(ctx: *mut c_void, kind: u32, active: bool) {
             unsafe {
-                (*(ctx as *const Handle)).power_event(sleep);
+                use crate::lifecycle::SystemEvent;
+                let event = match kind {
+                    0 => SystemEvent::Sleep(active),
+                    1 => SystemEvent::DisplayOff(active),
+                    2 => SystemEvent::Locked(active),
+                    3 => SystemEvent::SourcesChanged,
+                    _ => SystemEvent::Ready,
+                };
+                (*(ctx as *const Handle)).system_event(event, kind == 0 && active);
             }
         }
         unsafe {
             dl_watch_power(callback, Box::into_raw(Box::new(handle)).cast());
         }
         Ok(())
+    }
+    pub fn check_capture_permission(settings: &crate::settings::Settings) -> Result<(), String> {
+        let mic = settings.mode == "music" && settings.audio_source == "microphone";
+        if unsafe { dl_capture_allowed(mic) } {
+            Ok(())
+        } else {
+            Err("Capture permission is missing. Allow access in System Settings → Privacy & Security, then click Retry.".into())
+        }
     }
     pub fn microphone_permission() -> Result<(), String> {
         if unsafe { dl_microphone_permission() } {
@@ -222,6 +240,10 @@ mod mac {
 pub use crate::linux::watch_power;
 #[cfg(target_os = "macos")]
 pub use mac::*;
+#[cfg(not(target_os = "macos"))]
+pub fn check_capture_permission(_: &crate::settings::Settings) -> Result<(), String> {
+    Ok(())
+}
 #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
 pub fn watch_power(_: Handle) -> Result<(), String> {
     Err("This operating system is not supported".into())

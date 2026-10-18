@@ -9,9 +9,17 @@ pub struct Status {
     pub message: String,
 }
 pub struct Controller {
+    #[cfg(test)]
+    pub test_bus: Option<TestBus>,
     device: Option<HidDevice>,
     sequence: u8,
     pub status: Status,
+}
+#[cfg(test)]
+pub struct TestBus {
+    pub online: bool,
+    pub connects: usize,
+    pub writes: usize,
 }
 pub fn lighting_interface(interface: i32, usage_page: u16, path: &str) -> bool {
     // Reject the known keyboard interface even if its path/usage is unusual.
@@ -34,6 +42,8 @@ fn write_reports(
 impl Controller {
     pub fn new() -> Self {
         Self {
+            #[cfg(test)]
+            test_bus: None,
             device: None,
             sequence: 0,
             status: Status {
@@ -55,6 +65,18 @@ impl Controller {
     }
     pub fn connect(&mut self) -> Result<(), String> {
         let result: Result<(), String> = (|| {
+            #[cfg(test)]
+            if let Some(bus) = &mut self.test_bus {
+                bus.connects += 1;
+                if !bus.online {
+                    return Err("Test USB unavailable".into());
+                }
+                self.status = Status {
+                    connected: true,
+                    message: "Test USB".into(),
+                };
+                return Ok(());
+            }
             let api = HidApi::new().map_err(|e| e.to_string())?;
             let target = api
                 .device_list()
@@ -95,6 +117,17 @@ impl Controller {
     }
     fn write(&mut self, packet: &[u8]) -> Result<(), String> {
         let result: Result<(), String> = (|| {
+            #[cfg(test)]
+            if let Some(bus) = &mut self.test_bus {
+                bus.writes += 1;
+                return write_reports(packet, |r| {
+                    if bus.online {
+                        Ok(r.len())
+                    } else {
+                        Err("Test USB unplugged".into())
+                    }
+                });
+            }
             let d = self.device.as_ref().ok_or("Strip is not connected")?;
             write_reports(packet, |r| d.write(r).map_err(|e| e.to_string()))?;
             // Drain replies without blocking or allowing an endless read loop.

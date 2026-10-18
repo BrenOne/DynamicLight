@@ -2,6 +2,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <ScreenCaptureKit/ScreenCaptureKit.h>
 #import <CoreMedia/CoreMedia.h>
+#import <ApplicationServices/ApplicationServices.h>
 #include <stdbool.h>
 
 typedef void (*SamplesCallback)(void *, const float *, size_t);
@@ -101,9 +102,29 @@ bool dl_microphone_permission(void) {
     [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio completionHandler:^(BOOL result) {allowed=result; dispatch_semaphore_signal(ready);}];
     dispatch_semaphore_wait(ready,DISPATCH_TIME_FOREVER);return allowed;
 }
-void dl_watch_power(void (*callback)(void *,bool), void *context) {
+bool dl_capture_allowed(bool microphone) {
+    // Preflight only: automatic recovery must never produce a permission prompt.
+    return microphone ? [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio] == AVAuthorizationStatusAuthorized : CGPreflightScreenCaptureAccess();
+}
+static bool dl_session_locked(void) {
+    NSDictionary *session = CFBridgingRelease(CGSessionCopyCurrentDictionary());
+    return [session[@"CGSSessionScreenIsLocked"] boolValue] ||
+        (session[@"kCGSSessionOnConsoleKey"] && ![session[@"kCGSSessionOnConsoleKey"] boolValue]);
+}
+void dl_watch_power(void (*callback)(void *,uint32_t,bool), void *context) {
     NSNotificationCenter *center=NSWorkspace.sharedWorkspace.notificationCenter;
     // Process-lifetime observers; their Rust context has the same lifetime.
-    [center addObserverForName:NSWorkspaceWillSleepNotification object:nil queue:nil usingBlock:^(NSNotification *note) {callback(context,true);}];
-    [center addObserverForName:NSWorkspaceDidWakeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {callback(context,false);}];
+    [center addObserverForName:NSWorkspaceWillSleepNotification object:nil queue:nil usingBlock:^(NSNotification *note) {callback(context,0,true);}];
+    [center addObserverForName:NSWorkspaceDidWakeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {callback(context,0,false);}];
+    [center addObserverForName:NSWorkspaceScreensDidSleepNotification object:nil queue:nil usingBlock:^(NSNotification *note) {callback(context,1,true);}];
+    [center addObserverForName:NSWorkspaceScreensDidWakeNotification object:nil queue:nil usingBlock:^(NSNotification *note) {callback(context,1,false);}];
+    [center addObserverForName:NSWorkspaceSessionDidResignActiveNotification object:nil queue:nil usingBlock:^(NSNotification *note) {callback(context,2,true);}];
+    [center addObserverForName:NSWorkspaceSessionDidBecomeActiveNotification object:nil queue:nil usingBlock:^(NSNotification *note) {callback(context,2,dl_session_locked());}];
+    NSDistributedNotificationCenter *distributed = NSDistributedNotificationCenter.defaultCenter;
+    [distributed addObserverForName:@"com.apple.screenIsLocked" object:nil queue:nil usingBlock:^(NSNotification *note) {callback(context,2,true);}];
+    [distributed addObserverForName:@"com.apple.screenIsUnlocked" object:nil queue:nil usingBlock:^(NSNotification *note) {callback(context,2,false);}];
+    [NSNotificationCenter.defaultCenter addObserverForName:NSApplicationDidChangeScreenParametersNotification object:nil queue:nil usingBlock:^(NSNotification *note) {callback(context,3,true);}];
+    callback(context,1,CGDisplayIsAsleep(CGMainDisplayID()));
+    callback(context,2,dl_session_locked());
+    callback(context,4,true);
 }

@@ -6,7 +6,9 @@ let settings,
   saveTimer,
   busy = false,
   queue = Promise.resolve(),
-  platform = "";
+  platform = "",
+  loginEnabled = false,
+  loginAvailable = true;
 let previewPending,
   previewDirty = false,
   revision = 0,
@@ -32,8 +34,14 @@ const ranges = {
   "noise-floor": "noiseFloor",
   release: "release",
 };
+const behaviorSettings = [
+  ["restore-on-start", "restoreOnStart"],
+  ["resume-capture", "resumeCapture"],
+  ["off-on-display-sleep", "offOnDisplaySleep"],
+  ["off-on-lock", "offOnLock"],
+];
 function notice(message, error = false) {
-  $("notice").textContent = message;
+  $("notice-text").textContent = message;
   $("notice").hidden = !message;
   $("notice").classList.toggle("error", error);
 }
@@ -61,7 +69,7 @@ function renderRuntime(value) {
   $("status-label").textContent = connected ? "Connected" : "Not connected";
   $("connect").textContent = connected ? "Disconnect" : "Reconnect";
   $("connection-message").textContent = value.status.message;
-  const running = isRunning(value);
+  const running = value.requested;
   $("power").classList.toggle("running", running);
   $("power").setAttribute("aria-pressed", running);
   $("power").querySelector("span").textContent = busy
@@ -116,10 +124,19 @@ function renderRuntime(value) {
       : value.audioLevel <= current.noiseFloor / 100
         ? "Quiet / below gate"
         : "Audio arriving";
-  if (value.error && value.error !== lastError) notice(value.error, true);
-  else if (!value.error && lastError && $("notice").classList.contains("error"))
-    notice("");
-  lastError = value.error;
+  const message = value.pauseReason
+    ? `${value.pauseReason}${value.requested ? " · lighting paused" : ""}`
+    : value.captureRequiresStart
+      ? (value.error ? `${value.error} ` : "") + "Capture needs a restart. Click Retry to continue."
+      : value.error || (value.recovering ? "Reconnecting… Stop cancels recovery." : "");
+  if (message !== lastError || (message && $("notice").hidden)) notice(message, !!value.error && !value.pauseReason);
+  lastError = message;
+  $("retry").hidden = !value.requested || !!value.pauseReason || !(value.error || value.captureRequiresStart || value.recovering);
+  $("retry").disabled = busy;
+  $("lifecycle-warning").textContent = value.lifecycleWarning || "";
+  $("lifecycle-warning").hidden = !value.lifecycleWarning;
+  if (value.pauseReason) $("frame-rate").textContent = value.pauseReason;
+  else if (value.recovering) $("frame-rate").textContent = "Waiting to reconnect";
   draw(value.colors);
   drawSpectrum(value.audioBands);
 }
@@ -151,6 +168,9 @@ function updateUI() {
   $("reverse").checked = settings.reverse;
   $("off-on-sleep").checked = settings.offOnSleep;
   $("off-on-quit").checked = settings.offOnQuit;
+  for (const [id, key] of behaviorSettings) $(id).checked = !!settings[key];
+  $("launch-at-login").checked = loginEnabled;
+  $("launch-at-login").disabled = busy || !loginAvailable;
   $("device-detail").textContent = `${settings.count} LEDs · USB HID`;
   $("led-total").textContent = `→ ${settings.count}`;
   $("capture-controls").hidden = !["screen", "music"].includes(settings.mode);
@@ -247,7 +267,7 @@ async function run(action) {
   document.querySelectorAll("input, select").forEach((input) => {
     input.disabled = true;
   });
-  const controls = ["connect", "power", "refresh-screens"];
+  const controls = ["connect", "power", "refresh-screens", "retry"];
   controls.forEach((id) => {
     $(id).disabled = true;
   });
@@ -348,7 +368,7 @@ function draw(colors) {
       ? s.brightness === 0
         ? "Brightness is 0%"
         : "Running"
-      : "Stopped · select a mode to start",
+      : runtime.pauseReason || (runtime.recovering ? "Reconnecting…" : runtime.captureRequiresStart ? "Capture paused · click Retry" : "Stopped · select a mode to start"),
     500,
     216,
   );
@@ -407,13 +427,10 @@ function isRunning(value) {
 }
 async function startLighting() {
   await save();
-  if (!runtime.status.connected) await request({ type: "connect" });
-  if (!runtime.powered) await request({ type: "power", on: true });
-  if (["screen", "music"].includes(settings.mode) && !runtime.capturing)
-    await request({ type: "startCapture" });
+  await request({ type: "start" });
 }
 function changeSource(key, value) {
-  const resume = isRunning(runtime);
+  const resume = runtime.requested;
   return run(async () => {
     settings[key] = value;
     if (resume) await startLighting();
@@ -525,6 +542,8 @@ async function init() {
   );
   const initial = await request({ type: "snapshot" });
   settings = initial.settings;
+  try { loginEnabled = await invoke("launch_at_login", { enabled: null }); }
+  catch (error) { loginAvailable = false; notice(`Launch at login is unavailable: ${error}`, true); }
   updateUI();
   $("connect").onclick = () =>
     run(async () => {
@@ -535,11 +554,19 @@ async function init() {
     });
   $("power").onclick = () =>
     run(async () => {
-      if (isRunning(runtime)) {
-        await save();
+      if (runtime.requested) {
         await request({ type: "power", on: false });
+        await save();
       } else await startLighting();
     });
+  $("retry").onclick = () => run(startLighting);
+  $("launch-at-login").onchange = (event) => {
+    const enabled = event.target.checked;
+    run(async () => {
+      loginEnabled = await invoke("launch_at_login", { enabled });
+      if (loginEnabled !== enabled) throw new Error("Login startup was not changed. Check your operating system's login-item settings.");
+    });
+  };
   document.querySelectorAll("[data-mode]").forEach((button) => {
     button.setAttribute(
       "aria-label",
@@ -595,6 +622,7 @@ async function init() {
     ["reverse", "reverse"],
     ["off-on-sleep", "offOnSleep"],
     ["off-on-quit", "offOnQuit"],
+    ...behaviorSettings,
   ])
     $(id).onchange = (event) => {
       settings[key] = event.target.checked;

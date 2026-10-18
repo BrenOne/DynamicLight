@@ -24,6 +24,28 @@ pub fn screens() -> Result<Vec<Screen>, String> {
         })
         .collect()
 }
+/// Re-enumerate instead of trusting cached monitor handles after docking/resolution changes.
+pub fn source_signature(id: &str) -> Result<String, String> {
+    check_session()?;
+    let all = Monitor::all().map_err(|e| e.to_string())?;
+    let monitor = if id.is_empty() {
+        all.iter()
+            .find(|m| m.is_primary().unwrap_or(false))
+            .or(all.first())
+    } else {
+        all.iter()
+            .find(|m| m.id().is_ok_and(|n| n.to_string() == id))
+    }
+    .ok_or("Selected display is unavailable")?;
+    Ok(format!(
+        "{}:{:?}:{:?}:{:?}:{:?}",
+        monitor.id().map_err(|e| e.to_string())?,
+        monitor.width(),
+        monitor.height(),
+        monitor.x(),
+        monitor.y()
+    ))
+}
 pub struct ScreenCapture {
     monitor: Monitor,
     pub dimensions: (u32, u32),

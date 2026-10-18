@@ -17,6 +17,10 @@ pub struct Settings {
     pub fps: u8,
     pub screen_id: String,
     pub off_on_sleep: bool,
+    pub off_on_display_sleep: bool,
+    pub off_on_lock: bool,
+    pub restore_on_start: bool,
+    pub resume_capture: bool,
     pub off_on_quit: bool,
     pub effect: String,
     pub palette: String,
@@ -41,6 +45,10 @@ impl Default for Settings {
             fps: 30,
             screen_id: String::new(),
             off_on_sleep: true,
+            off_on_display_sleep: true,
+            off_on_lock: true,
+            restore_on_start: false,
+            resume_capture: false,
             off_on_quit: true,
             effect: "rainbow".into(),
             palette: "aurora".into(),
@@ -88,14 +96,7 @@ impl Settings {
     }
     pub fn save(&self, path: &Path) -> Result<(), String> {
         self.validate()?;
-        let parent = path.parent().ok_or("Invalid settings path")?;
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-        let mut tmp = tempfile::NamedTempFile::new_in(parent).map_err(|e| e.to_string())?;
-        tmp.write_all(&serde_json::to_vec_pretty(self).map_err(|e| e.to_string())?)
-            .map_err(|e| e.to_string())?;
-        tmp.as_file().sync_all().map_err(|e| e.to_string())?;
-        tmp.persist(path).map_err(|e| e.to_string())?;
-        Ok(())
+        save_json(self, path)
     }
     pub fn load(path: &Path) -> Result<Self, String> {
         let s: Self = serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
@@ -103,6 +104,17 @@ impl Settings {
         s.validate()?;
         Ok(s)
     }
+}
+
+pub fn save_json(value: &impl Serialize, path: &Path) -> Result<(), String> {
+    let parent = path.parent().ok_or("Invalid settings path")?;
+    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    let mut tmp = tempfile::NamedTempFile::new_in(parent).map_err(|e| e.to_string())?;
+    tmp.write_all(&serde_json::to_vec_pretty(value).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    tmp.as_file().sync_all().map_err(|e| e.to_string())?;
+    tmp.persist(path).map_err(|e| e.to_string())?;
+    Ok(())
 }
 #[cfg(test)]
 mod tests {

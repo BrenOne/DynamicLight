@@ -51,6 +51,33 @@ enum Source {
     #[cfg(target_os = "linux")]
     Linux(#[allow(dead_code)] super::linux::SystemAudio),
 }
+pub fn source_signature(system: bool) -> Result<String, String> {
+    #[cfg(target_os = "macos")]
+    if system {
+        return Ok("ScreenCaptureKit system audio".into());
+    }
+    #[cfg(target_os = "linux")]
+    if system {
+        return Ok("PulseAudio default monitor".into());
+    }
+    let host = cpal::default_host();
+    let device = if system {
+        host.default_output_device()
+    } else {
+        host.default_input_device()
+    }
+    .ok_or("No audio device available")?;
+    let config = if system {
+        device.default_output_config()
+    } else {
+        device.default_input_config()
+    }
+    .map_err(|e| e.to_string())?;
+    Ok(format!(
+        "{}:{config:?}",
+        device.name().map_err(|e| e.to_string())?
+    ))
+}
 impl Audio {
     pub fn start(system: bool) -> Result<Self, String> {
         let feed = Arc::new(Mutex::new(Samples::new()));

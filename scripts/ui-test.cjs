@@ -61,6 +61,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
         fps: 30,
         screenId: "",
         offOnSleep: true,
+        offOnDisplaySleep: true,
+        offOnLock: true,
+        restoreOnStart: false,
+        resumeCapture: false,
         offOnQuit: true,
         effect: "aurora",
         palette: "aurora",
@@ -75,7 +79,12 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
           connected: false,
           message: "Connect your USB strip to get started.",
         },
-        powered: true,
+        powered: false,
+        requested: false,
+        pauseReason: "",
+        recovering: false,
+        captureRequiresStart: false,
+        lifecycleWarning: "",
         capturing: false,
         colors: [],
         fps: 0,
@@ -130,6 +139,11 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
               );
             }
             if (cmd === "platform_name") return "windows";
+            if (cmd === "launch_at_login") {
+              if (fixture.failLogin) { fixture.failLogin = false; throw new Error("Test login registration failed"); }
+              if (args.enabled !== null) fixture.login = args.enabled;
+              return !!fixture.login;
+            }
             if (cmd === "displays")
               return [{ id: "test", name: "Test display" }];
             if (cmd !== "control") return;
@@ -145,6 +159,27 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
                 state.capturing = false;
               state.settings = structuredClone(a.settings);
             }
+            if (a.type === "start") {
+              state.requested = true;
+              state.powered = true;
+              state.error = "";
+              state.recovering = false;
+              state.captureRequiresStart = false;
+              if (fixture.failConnect) {
+                fixture.failConnect = false;
+                state.error = "Test USB unavailable";
+                state.recovering = true;
+                return structuredClone(state);
+              }
+              state.status = { connected: true, message: "Test fixture controller" };
+              if (fixture.failCapture) {
+                fixture.failCapture = false;
+                state.error = "Test capture denied";
+                state.captureRequiresStart = true;
+                return structuredClone(state);
+              }
+              state.capturing = ["screen", "music"].includes(state.settings.mode);
+            }
             if (a.type === "connect" && fixture.failConnect) {
               fixture.failConnect = false;
               throw new Error("Test USB unavailable");
@@ -159,11 +194,16 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
                 message: "Test fixture controller",
               };
             if (a.type === "disconnect") {
+              state.requested = false;
               state.status.connected = false;
               state.capturing = false;
             }
             if (a.type === "power") {
               state.powered = a.on;
+              state.requested = a.on;
+              state.error = "";
+              state.recovering = false;
+              state.captureRequiresStart = false;
               if (!a.on) state.capturing = false;
             }
             if (a.type === "startCapture") state.capturing = true;
@@ -181,7 +221,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
     assert.match(await page.locator("#frame-rate").innerText(), /Preview only/);
     assert.equal(
       await page.evaluate(() =>
-        fixture.calls.some((a) => ["connect", "startCapture"].includes(a.type)),
+        fixture.calls.some((a) => ["connect", "startCapture", "start"].includes(a.type)),
       ),
       false,
       "Startup never captures implicitly",
@@ -354,6 +394,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
       fixture.state.status.connected = false;
       fixture.state.capturing = false;
       fixture.state.powered = false;
+      fixture.state.requested = false;
       fixture.failConnect = true;
       fixture.emit();
     });
@@ -363,8 +404,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
       await page.locator("#notice").innerText(),
       /Test USB unavailable/,
     );
-    assert.match(await page.locator("#power").innerText(), /Start/);
-    await page.locator("#power").click();
+    assert.match(await page.locator("#power").innerText(), /Stop/);
+    await page.locator("#retry").click();
     await page.waitForFunction(() => !busy);
     assert(
       await page.evaluate(() => fixture.state.capturing),
@@ -381,7 +422,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
       await page.locator("#notice").innerText(),
       /Test capture denied/,
     );
-    assert.match(await page.locator("#power").innerText(), /Start/);
+    assert.match(await page.locator("#power").innerText(), /Stop/);
     // Error text is escaped; recovery removes only the previous engine error.
     await page.evaluate(() => {
       fixture.state.error = "<img src=x onerror=alert(1)>";
@@ -390,9 +431,53 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
     assert.equal(await page.locator("#notice img").count(), 0);
     await page.evaluate(() => {
       fixture.state.error = "";
+      fixture.state.captureRequiresStart = false;
       fixture.emit();
     });
     assert.equal(await page.locator("#notice").isVisible(), false);
+    // Stop must remain available during automatic recovery and paused states.
+    await page.evaluate(() => {
+      fixture.state.recovering = true;
+      fixture.state.status.connected = false;
+      fixture.state.capturing = false;
+      fixture.emit();
+    });
+    assert.match(await page.locator("#power").innerText(), /Stop/);
+    await page.locator("#power").click();
+    await page.waitForFunction(() => !busy);
+    assert.equal(await page.evaluate(() => fixture.state.requested), false);
+    assert.equal(await page.locator("#retry").isVisible(), false);
+    await page.evaluate(() => {
+      fixture.state.requested = true;
+      fixture.state.pauseReason = "Computer locked";
+      fixture.emit();
+    });
+    assert.match(await page.locator("#notice").innerText(), /Computer locked/);
+    assert.equal(await page.locator("#retry").isVisible(), false);
+    await page.locator("#power").click();
+    await page.waitForFunction(() => !busy);
+    await page.evaluate(() => { fixture.state.pauseReason = ""; fixture.emit(); });
+    assert.equal(await page.evaluate(() => fixture.state.requested), false);
+    // Preference edits never start lighting, and login registration failures roll back.
+    await page.locator("#restore-on-start").check();
+    await page.locator("#resume-capture").check();
+    await page.waitForFunction(() => document.getElementById("save-state").textContent === "Saved");
+    assert.equal(await page.evaluate(() => fixture.state.requested), false);
+    assert.equal(await page.evaluate(() => fixture.state.settings.resumeCapture), true);
+    await page.locator("#launch-at-login").check();
+    await page.waitForFunction(() => !busy);
+    assert.equal(await page.evaluate(() => fixture.login), true);
+    await page.evaluate(() => { fixture.failLogin = true; });
+    await page.locator("#launch-at-login").click();
+    await page.waitForFunction(() => !busy);
+    assert.equal(await page.locator("#launch-at-login").isChecked(), true);
+    assert.match(await page.locator("#notice").innerText(), /Test login registration failed/);
+    for (const width of [1180, 650, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Behavior settings fit at ${width}px`);
+    }
+    await page.setViewportSize({ width: 1180, height: 1000 });
+    await page.screenshot({ path: ".local/ui-lifecycle.png", fullPage: true });
     assert.deepEqual(errors, []);
     console.log(
       "UI passed: drag coalescing, persistence, 5 effects, 4 music styles, telemetry, capture recovery, 6 responsive widths, CSP and errors.",

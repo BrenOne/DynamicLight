@@ -11,6 +11,7 @@ fn main() {
             "ScreenCaptureKit",
             "CoreMedia",
             "Foundation",
+            "ApplicationServices",
         ] {
             println!("cargo:rustc-link-lib=framework={framework}");
         }

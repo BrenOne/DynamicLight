@@ -39,7 +39,11 @@ Tune music with sensitivity, a noise gate, and fade-out controls. Choose an Auro
 
 The live canvas previews outgoing LED colors. **Diagnostics** shows USB frame rate, successful writes, and audio input. The controller cannot report whether the physical LEDs are lit.
 
-Closing the window keeps lighting running. Choose **Quit** to exit. After sleep, click **Start** to resume lighting.
+Closing the window keeps lighting running. Choose **Quit** to exit.
+
+Under **Strip setup & behavior**, you can enable **Launch at login** and **Restore lighting when the app opens**. Both are off initially. Color and effects resume after wake or USB reconnect; screen and music capture need **Retry** unless you enable **Automatically resume screen and audio capture**. **Stop** cancels recovery and keeps lighting off on the next launch.
+
+Display sleep, computer lock, and system sleep have separate controls. Linux display-only sleep detection needs X11; lock/suspend handling needs logind and desktop support. Mac lock detection and the new lifecycle flows still need physical validation on each platform.
 
 ## Does it work with my strip?
 

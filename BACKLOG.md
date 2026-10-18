@@ -1,10 +1,30 @@
 # DynamicLight backlog
 
-All feature and UI ideas discussed during initial planning are captured here, plus platform release-validation work. These are planned improvements, not claims about current functionality or committed release dates. Linux preview support now includes packages, X11 screen sync, audio, and systemd sleep handling; Wayland screen streaming and physical Linux validation remain follow-up work.
+Reviewed 2026-10-19 against merged PRs #39 and #40. Partial means some acceptance criteria are implemented; it does not mean the issue is complete. Platform builds do not replace physical validation.
 
-Priority: **P1** = foundations and core usability; **P2** = the next layer of product capability; **P3** = exploratory or integration work. All issues start in **Backlog**. Dependencies are recorded in the issue bodies.
+Priority: **P1** = foundations and core usability; **P2** = the next layer of product capability; **P3** = exploratory or integration work. Dependencies are recorded in the issue bodies.
 
 [GitHub project](https://github.com/users/mskutin/projects/4) · [All issues](https://github.com/mskutin/DynamicLight/issues)
+
+## Agreed order
+
+1. Startup, sleep, lock and reconnect (#1, #2), with actionable recovery states.
+2. Saved profiles and tray controls (#5, #33).
+3. Guided strip calibration and screen sampling (#4, #3).
+4. Finish beat detection, then screen/music blending (#6, #20).
+
+Custom editors, plugins, phone control and game integrations remain deferred. Physical Mac/Linux validation remains a release requirement.
+
+## Implemented portions and remaining work
+
+- **[REL-01 · #1](https://github.com/mskutin/DynamicLight/issues/1) — In progress.** USB retry and single-instance protection are in main. Startup restore and login controls are being added in codex/startup-and-recovery. Remaining: Review the lifecycle PR and validate startup, replug, busy-device recovery and capture permissions on physical hardware. Saved profiles are a separate follow-up (#5).
+- **[REL-02 · #2](https://github.com/mskutin/DynamicLight/issues/2) — In progress.** System-sleep blackout is in main. Independent display/lock handling and intended-state restoration are being added in codex/startup-and-recovery. Remaining: Review and physically validate overlapping lock/display/suspend transitions. Wayland display-only detection remains unsupported; Mac lock events are best effort.
+- **[AUD-01 · #6](https://github.com/mskutin/DynamicLight/issues/6) — Partial.** Spectrum, bass pulse, level meter, color wave, sensitivity, noise gate, release, system/microphone selection and live meters shipped in #40. Remaining: True beat/onset detection, explicit gain control, and real-device permission/routing validation across platforms.
+- **[REL-03 · #7](https://github.com/mskutin/DynamicLight/issues/7) — Partial.** USB frame rate, write counts/failures/latency, capture resolution and audio telemetry shipped in #40. Remaining: Dropped-frame accounting, bounded local logs, redacted export and a copyable recovery summary.
+- **[UI-04 · #31](https://github.com/mskutin/DynamicLight/issues/31) — Partial.** Focused mode panels, live audio spectrum, effect speed and source selection shipped in #40. Remaining: Effect direction, screen calibration, and independent saved settings for each mode.
+- **[UI-08 · #35](https://github.com/mskutin/DynamicLight/issues/35) — Partial.** Separate connection/capture/output feedback and single-action startup shipped in #40. Explicit paused/retrying states are part of the lifecycle PR. Remaining: Review lifecycle states, then share the same model with future tray and compact controllers and validate assistive announcements.
+- **[UI-10 · #37](https://github.com/mskutin/DynamicLight/issues/37) — Partial.** Semantic controls, visible focus, responsive layouts and reduced-motion effect previews shipped in #40. Remaining: Complete keyboard, contrast, scaling and Windows/macOS screen-reader validation.
+- **[PLAT-01 · #38](https://github.com/mskutin/DynamicLight/issues/38) — Partial.** Intel and Apple Silicon DMG builds pass CI. README documents unsigned installation and platform limitations. Remaining: Physical Mac USB, capture, permission, tray and lifecycle validation.
 
 ## Foundation
 
@@ -59,4 +79,4 @@ Priority: **P1** = foundations and core usability; **P2** = the next layer of pr
 | REL-04 | Coordinate device handoff between Windows and Mac | reliability | P3 | [#26](https://github.com/mskutin/DynamicLight/issues/26) |
 | INT-04 | Define a plugin system for effects and integrations | integrations | P3 | [#27](https://github.com/mskutin/DynamicLight/issues/27) |
 
-The machine-readable source is [docs/backlog.json](docs/backlog.json). Each GitHub issue contains the user outcome and acceptance checklist. Update the issue as work progresses; the source manifest preserves the original planning baseline.
+The original planning baseline is [docs/backlog.json](docs/backlog.json); current implementation notes and sequencing are in [docs/backlog-progress.json](docs/backlog-progress.json). Each issue retains its acceptance checklist. Do not close partial issues until the remaining work and physical checks are complete.

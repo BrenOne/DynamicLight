@@ -2,7 +2,9 @@ use crate::{
     audio::Audio,
     capture::ScreenCapture,
     device::{Controller, Status},
-    effects, lighting,
+    effects,
+    lifecycle::{Lifecycle, SavedIntent, SystemEvent},
+    lighting,
     protocol::Rgb,
     settings::Settings,
 };
@@ -18,6 +20,7 @@ use std::{
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 pub enum Action {
     Snapshot,
+    Start,
     Connect,
     Disconnect,
     Settings {
@@ -32,10 +35,6 @@ pub enum Action {
     StartCapture,
     StopCapture,
     #[serde(skip)]
-    Suspend,
-    #[serde(skip)]
-    Resume,
-    #[serde(skip)]
     Shutdown,
 }
 #[derive(Clone, Serialize)]
@@ -44,6 +43,12 @@ pub struct Snapshot {
     pub settings: Settings,
     pub status: Status,
     pub powered: bool,
+    pub requested: bool,
+    pub pause_reason: String,
+    pub recovering: bool,
+    pub capture_requires_start: bool,
+    pub lifecycle_warning: String,
+    pub lifecycle_ready: bool,
     pub capturing: bool,
     pub colors: Vec<Rgb>,
     pub fps: u32,
@@ -64,6 +69,7 @@ pub struct Message {
 #[derive(Clone)]
 pub struct Handle {
     tx: SyncSender<Message>,
+    events: mpsc::Sender<(SystemEvent, SyncSender<()>)>,
 }
 impl Handle {
     pub fn request(&self, action: Action) -> Result<Snapshot, String> {
@@ -74,20 +80,14 @@ impl Handle {
         rx.recv()
             .map_err(|_| "Lighting engine closed".to_string())?
     }
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     pub fn power_event(&self, sleeping: bool) {
+        self.system_event(SystemEvent::Sleep(sleeping), sleeping);
+    }
+    pub fn system_event(&self, event: SystemEvent, wait: bool) {
         let (tx, rx) = mpsc::sync_channel(1);
-        if self
-            .tx
-            .try_send(Message {
-                action: if sleeping {
-                    Action::Suspend
-                } else {
-                    Action::Resume
-                },
-                reply: tx,
-            })
-            .is_ok()
-        {
+        // Lifecycle messages must not be dropped when UI edits fill the command queue.
+        if self.events.send((event, tx)).is_ok() && wait {
             let _ = rx.recv_timeout(Duration::from_secs(2));
         }
     }
@@ -97,7 +97,10 @@ pub struct Engine {
     controller: Controller,
     path: PathBuf,
     desired: bool,
-    suspended: bool,
+    life: Lifecycle,
+    capture_retry: Instant,
+    source_check: Instant,
+    source_signature: Option<String>,
     screen: Option<ScreenCapture>,
     audio: Option<Audio>,
     previous: Vec<[f32; 3]>,
@@ -117,7 +120,13 @@ impl Engine {
             state: Snapshot {
                 settings,
                 status: controller.status.clone(),
-                powered: true,
+                powered: false,
+                requested: false,
+                pause_reason: String::new(),
+                recovering: false,
+                capture_requires_start: false,
+                lifecycle_warning: String::new(),
+                lifecycle_ready: false,
                 capturing: false,
                 colors: vec![],
                 fps: 0,
@@ -134,7 +143,10 @@ impl Engine {
             controller,
             path,
             desired: false,
-            suspended: false,
+            life: Lifecycle::default(),
+            capture_retry: Instant::now(),
+            source_check: Instant::now(),
+            source_signature: None,
             screen: None,
             audio: None,
             previous: vec![],
@@ -166,10 +178,160 @@ impl Engine {
         self.state.audio_bands.fill(0.0);
         self.state.audio_level = 0.0;
     }
+    fn intent_path(&self) -> PathBuf {
+        self.path.with_file_name("run-state.json")
+    }
+    fn remember(&self) -> Result<(), String> {
+        SavedIntent {
+            running: self.life.requested,
+        }
+        .save(&self.intent_path())
+    }
+    fn restore(&mut self) {
+        match SavedIntent::load(&self.intent_path()) {
+            Ok(intent) if self.state.settings.restore_on_start && intent.running => {
+                self.life.requested = true;
+                self.life.initializing = true;
+                self.life.capture_allowed = self.state.settings.resume_capture;
+                self.desired = true;
+                // Let native observers deliver initial display/lock state before connecting.
+                self.retry = Instant::now();
+            }
+            Err(e) => self.state.error = e,
+            _ => {}
+        }
+        self.update_lifecycle();
+    }
+    fn update_lifecycle(&mut self) {
+        self.state.requested = self.life.requested;
+        self.state.pause_reason = self.life.pause_reason(&self.state.settings).into();
+        self.state.powered = self.life.active(&self.state.settings);
+        let capture_mode = matches!(self.state.settings.mode.as_str(), "screen" | "music");
+        self.state.capture_requires_start =
+            self.life.requested && capture_mode && !self.life.capture_allowed;
+        self.state.recovering = self.life.active(&self.state.settings)
+            && (!self.controller.status.connected
+                || (capture_mode && self.life.capture_allowed && !self.state.capturing));
+    }
+    fn interrupt_capture(&mut self) {
+        self.life.interrupted(&self.state.settings);
+        self.stop();
+        self.capture_retry = Instant::now();
+    }
+    pub fn system_event(&mut self, event: SystemEvent) {
+        let was_paused = !self.life.pause_reason(&self.state.settings).is_empty();
+        match event {
+            SystemEvent::Ready => {
+                self.life.initializing = false;
+                self.state.lifecycle_ready = true;
+            }
+            SystemEvent::Sleep(sleeping) => {
+                if sleeping == self.life.sleeping {
+                    return;
+                }
+                self.life.sleeping = sleeping;
+                if sleeping {
+                    if self.state.settings.off_on_sleep {
+                        self.black();
+                    }
+                    // Close USB before stream teardown, which may need the OS GUI thread.
+                    self.controller.close("Computer sleeping");
+                }
+            }
+            SystemEvent::DisplayOff(off) => self.life.display_off = off,
+            SystemEvent::Locked(locked) => self.life.locked = locked,
+            SystemEvent::SourcesChanged => {
+                if self.state.capturing && self.state.settings.mode == "screen" {
+                    self.interrupt_capture();
+                }
+            }
+            #[cfg(target_os = "linux")]
+            SystemEvent::AudioChanged => {
+                if self.state.capturing && self.state.settings.mode == "music" {
+                    self.interrupt_capture();
+                }
+            }
+            SystemEvent::Warning(message) => {
+                if !self.state.lifecycle_warning.contains(&message) {
+                    if !self.state.lifecycle_warning.is_empty() {
+                        self.state.lifecycle_warning.push(' ');
+                    }
+                    self.state.lifecycle_warning.push_str(&message);
+                }
+            }
+        }
+        let paused = !self.life.pause_reason(&self.state.settings).is_empty();
+        if paused && !was_paused {
+            self.interrupt_capture();
+        }
+        if was_paused && !paused {
+            self.retry = Instant::now() - Duration::from_secs(3);
+            self.capture_retry = Instant::now() - Duration::from_secs(3);
+            self.last_solid = None;
+        }
+        self.update_lifecycle();
+        self.state.status = self.controller.status.clone();
+    }
+    fn begin_capture(&mut self, explicit: bool) -> Result<(), String> {
+        self.stop();
+        if !explicit {
+            crate::platform::check_capture_permission(&self.state.settings)?;
+        }
+        match self.state.settings.mode.as_str() {
+            "screen" => self.screen = Some(ScreenCapture::start(&self.state.settings.screen_id)?),
+            "music" => {
+                self.audio = Some(Audio::start(self.state.settings.audio_source == "system")?)
+            }
+            _ => return Err("Select Screen or Music before starting capture".into()),
+        }
+        self.state.capturing = true;
+        self.state.error.clear();
+        self.source_signature = self.current_source_signature().ok();
+        self.source_check = Instant::now();
+        Ok(())
+    }
+    fn current_source_signature(&self) -> Result<String, String> {
+        match self.state.settings.mode.as_str() {
+            "screen" => crate::capture::source_signature(&self.state.settings.screen_id),
+            "music" => crate::audio::source_signature(self.state.settings.audio_source == "system"),
+            _ => Ok(String::new()),
+        }
+    }
+    fn start_requested(&mut self) -> Result<(), String> {
+        self.life.requested = true;
+        self.life.capture_allowed = true;
+        self.desired = true;
+        self.remember()?;
+        self.update_lifecycle();
+        if !self.life.active(&self.state.settings) {
+            return Ok(());
+        }
+        self.state.error.clear();
+        self.retry = Instant::now();
+        if !self.controller.status.connected {
+            self.controller.connect()?;
+        }
+        self.last_solid = None;
+        if matches!(self.state.settings.mode.as_str(), "screen" | "music") && !self.state.capturing
+        {
+            if let Err(e) = self.begin_capture(true) {
+                // An initial denial requires another deliberate Start, never a prompt loop.
+                self.life.capture_allowed = false;
+                self.update_lifecycle();
+                return Err(e);
+            }
+        }
+        Ok(())
+    }
     pub fn action(&mut self, action: Action) -> Result<Snapshot, String> {
         let persist = matches!(action, Action::Settings { .. });
         match action {
             Action::Snapshot => {}
+            Action::Start => {
+                if let Err(e) = self.start_requested() {
+                    self.state.error = e;
+                }
+            }
             Action::Connect => {
                 self.state.error.clear();
                 self.desired = true;
@@ -179,8 +341,10 @@ impl Engine {
             }
             Action::Disconnect => {
                 self.desired = false;
+                self.life.stop();
                 self.stop();
                 self.controller.close("Disconnected");
+                self.remember()?;
             }
             Action::Settings { settings } | Action::PreviewSettings { settings } => {
                 settings.validate()?;
@@ -192,65 +356,53 @@ impl Engine {
                     || settings.screen_id != self.state.settings.screen_id
                 {
                     self.stop();
+                    self.life.capture_allowed = false;
                 }
                 if settings.count != self.state.settings.count {
                     self.black();
                 }
+                let was_paused = !self.life.pause_reason(&self.state.settings).is_empty();
+                if self.state.settings.resume_capture
+                    && !settings.resume_capture
+                    && !self.state.capturing
+                {
+                    self.life.capture_allowed = false;
+                }
                 self.state.settings = settings;
+                if !was_paused && !self.life.pause_reason(&self.state.settings).is_empty() {
+                    self.interrupt_capture();
+                }
                 self.last_solid = None;
                 self.state.error.clear();
             }
             Action::Power { on } => {
-                if self.suspended && on {
+                if !self.life.pause_reason(&self.state.settings).is_empty() && on {
                     return Err("Computer is sleeping".into());
                 }
                 self.state.powered = on;
+                self.life.requested = on;
                 self.last_solid = None;
                 self.state.error.clear();
                 if !on {
+                    self.life.stop();
+                    self.desired = false;
                     self.stop();
                 }
+                self.remember()?;
             }
             Action::StartCapture => {
-                if !self.state.powered || self.suspended {
+                if !self.life.active(&self.state.settings) {
                     return Err("Turn lights on before starting capture".into());
                 }
+                self.life.capture_allowed = false;
+                self.begin_capture(true)?;
+                self.life.capture_allowed = true;
+            }
+            Action::StopCapture => {
+                self.life.stop();
+                self.desired = false;
                 self.stop();
-                self.state.error.clear();
-                match self.state.settings.mode.as_str() {
-                    "screen" => {
-                        self.screen = Some(ScreenCapture::start(&self.state.settings.screen_id)?);
-                    }
-                    "music" => {
-                        self.audio =
-                            Some(Audio::start(self.state.settings.audio_source == "system")?);
-                    }
-                    _ => return Err("Select Screen sync or Music before starting capture".into()),
-                }
-                self.state.capturing = true;
-            }
-            Action::StopCapture => self.stop(),
-            Action::Suspend => {
-                // Turn off before releasing capture: an OS capture teardown may
-                // wait for the GUI thread that delivered the sleep notification.
-                if self.state.settings.off_on_sleep {
-                    self.black();
-                }
-                self.suspended = true;
-                self.state.powered = false;
-                self.controller.close("Computer sleeping");
-                self.screen = None;
-                self.audio = None;
-                self.state.capturing = false;
-                self.state.capture_size = (0, 0);
-                self.state.audio_samples = 0;
-                self.state.audio_bands.fill(0.0);
-                self.state.audio_level = 0.0;
-            }
-            Action::Resume => {
-                self.suspended = false;
-                self.state.error = "Computer resumed. Click Start to resume lighting.".into();
-                self.last_solid = None;
+                self.remember()?;
             }
             Action::Shutdown => {
                 self.desired = false;
@@ -263,24 +415,53 @@ impl Engine {
                 self.state.capturing = false;
             }
         }
+        self.update_lifecycle();
         self.state.status = self.controller.status.clone();
         Ok(self.state.clone())
     }
     pub fn tick(&mut self) {
+        self.update_lifecycle();
         let dt = self.last_tick.elapsed().as_secs_f32().min(1.0);
         self.last_tick = Instant::now();
         if self.desired
-            && !self.suspended
+            && self.life.pause_reason(&self.state.settings).is_empty()
             && !self.controller.status.connected
             && self.retry.elapsed() >= Duration::from_secs(3)
         {
             self.retry = Instant::now();
-            let _ = self.controller.connect();
+            match self.controller.connect() {
+                Ok(()) => self.state.error.clear(),
+                Err(e) => self.state.error = format!("Waiting for strip: {e}"),
+            }
             self.last_solid = None;
+        }
+        if self.state.capturing && self.source_check.elapsed() >= Duration::from_secs(2) {
+            self.source_check = Instant::now();
+            let signature = self.current_source_signature();
+            if signature.as_ref().ok() != self.source_signature.as_ref() {
+                if self.state.settings.mode == "screen" {
+                    self.system_event(SystemEvent::SourcesChanged);
+                } else {
+                    self.interrupt_capture();
+                }
+                self.state.error = "Capture source changed. Waiting to reconnect.".into();
+            }
+        }
+        if self.life.active(&self.state.settings)
+            && self.controller.status.connected
+            && self.life.capture_allowed
+            && !self.state.capturing
+            && matches!(self.state.settings.mode.as_str(), "screen" | "music")
+            && self.capture_retry.elapsed() >= Duration::from_secs(3)
+        {
+            self.capture_retry = Instant::now();
+            if let Err(e) = self.begin_capture(false) {
+                self.state.error = format!("Waiting for capture: {e}");
+            }
         }
         let s = &self.state.settings;
         let generated: Result<Vec<Rgb>, String> = (|| {
-            if !self.state.powered || self.suspended {
+            if !self.life.active(s) {
                 return Ok(vec![[0; 3]; s.count]);
             }
             match s.mode.as_str() {
@@ -328,11 +509,11 @@ impl Engine {
                     .collect();
             }
             Err(e) => {
-                self.stop();
-                self.state.error = format!("Capture stopped: {e}");
+                self.interrupt_capture();
+                self.state.error = format!("Capture unavailable: {e}");
             }
         }
-        if self.controller.status.connected && !self.suspended {
+        if self.controller.status.connected && !self.life.sleeping {
             let write_started = Instant::now();
             let s = &self.state.settings;
             let active = self.state.powered && (s.mode == "rainbow" || self.state.capturing);
@@ -368,10 +549,12 @@ impl Engine {
                 self.last_write = Some(Instant::now());
                 self.state.write_duration_ms = write_started.elapsed().as_secs_f64() * 1000.0;
             } else if let Some(Err(e)) = result {
+                self.interrupt_capture();
                 self.state.write_errors += 1;
                 self.state.error = format!("USB write failed: {e}");
             }
         }
+        self.update_lifecycle();
         self.state.last_write_ms = self.last_write.map(|t| t.elapsed().as_millis() as u64);
         let elapsed = self.fps_start.elapsed();
         if elapsed >= Duration::from_secs(1) {
@@ -389,14 +572,20 @@ pub fn start(
     emit: impl Fn(&Snapshot) + Send + 'static,
 ) -> Handle {
     let (tx, rx): (SyncSender<Message>, Receiver<Message>) = mpsc::sync_channel(32);
+    let (events, event_rx) = mpsc::channel::<(SystemEvent, SyncSender<()>)>();
     thread::Builder::new()
         .name("lighting".into())
         .spawn(move || {
             let mut engine = Engine::new(settings, path, warning);
+            engine.restore();
             let mut clock = crate::platform::FrameClock::new();
             let mut next = Instant::now();
             let mut last_event = Instant::now();
             loop {
+                while let Ok((event, reply)) = event_rx.try_recv() {
+                    engine.system_event(event);
+                    let _ = reply.send(());
+                }
                 match rx.recv_timeout(next.saturating_duration_since(Instant::now())) {
                     Ok(msg) => {
                         let quitting = matches!(msg.action, Action::Shutdown);
@@ -419,7 +608,7 @@ pub fn start(
                 }
                 if Instant::now() >= next {
                     clock.set_active(
-                        !engine.suspended
+                        !engine.life.sleeping
                             && engine.state.powered
                             && (engine.state.capturing || engine.state.settings.mode == "rainbow"),
                     );
@@ -434,11 +623,112 @@ pub fn start(
             }
         })
         .expect("start lighting worker");
-    Handle { tx }
+    Handle { tx, events }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn simulated(settings: Settings, path: PathBuf) -> Engine {
+        let mut e = Engine::new(settings, path, String::new());
+        e.controller.test_bus = Some(crate::device::TestBus {
+            online: true,
+            connects: 0,
+            writes: 0,
+        });
+        e
+    }
+    #[test]
+    fn usb_failure_retries_only_after_delay_and_stop_cancels_recovery() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut e = simulated(
+            Settings {
+                mode: "rainbow".into(),
+                ..Default::default()
+            },
+            dir.path().join("settings.json"),
+        );
+        e.action(Action::Start).unwrap();
+        e.tick();
+        assert_eq!(e.controller.test_bus.as_ref().unwrap().connects, 1);
+        e.controller.test_bus.as_mut().unwrap().online = false;
+        e.tick();
+        assert!(e.state.requested && e.state.recovering);
+        assert_eq!(e.state.write_errors, 1);
+        let sent = e.state.frames_written;
+        e.controller.test_bus.as_mut().unwrap().online = true;
+        e.tick();
+        assert_eq!(
+            e.controller.test_bus.as_ref().unwrap().connects,
+            1,
+            "no busy retry loop"
+        );
+        e.retry = Instant::now() - Duration::from_secs(3);
+        e.tick();
+        assert!(e.state.status.connected);
+        assert!(e.state.frames_written > sent);
+        assert!(!e.state.recovering);
+        assert!(e.state.error.is_empty());
+        e.controller.test_bus.as_mut().unwrap().online = false;
+        e.tick();
+        e.action(Action::Power { on: false }).unwrap();
+        e.controller.test_bus.as_mut().unwrap().online = true;
+        e.retry = Instant::now() - Duration::from_secs(3);
+        e.tick();
+        assert_eq!(e.controller.test_bus.as_ref().unwrap().connects, 2);
+        assert!(!e.state.requested && !e.state.status.connected);
+    }
+    #[test]
+    fn startup_waits_for_initial_desktop_state_and_respects_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        SavedIntent { running: true }
+            .save(&path.with_file_name("run-state.json"))
+            .unwrap();
+        let mut e = simulated(
+            Settings {
+                restore_on_start: true,
+                ..Default::default()
+            },
+            path,
+        );
+        e.restore();
+        e.retry = Instant::now() - Duration::from_secs(10);
+        e.tick();
+        assert_eq!(e.controller.test_bus.as_ref().unwrap().connects, 0);
+        e.system_event(SystemEvent::Locked(true));
+        e.system_event(SystemEvent::Ready);
+        e.tick();
+        assert_eq!(e.controller.test_bus.as_ref().unwrap().connects, 0);
+        e.system_event(SystemEvent::Locked(false));
+        e.tick();
+        assert!(e.state.status.connected && e.state.powered);
+    }
+    #[test]
+    fn suspend_closes_usb_before_teardown_and_respects_blackout_preference() {
+        let dir = tempfile::tempdir().unwrap();
+        for blackout in [false, true] {
+            let mut e = simulated(
+                Settings {
+                    off_on_sleep: blackout,
+                    ..Default::default()
+                },
+                dir.path().join("settings.json"),
+            );
+            e.action(Action::Start).unwrap();
+            e.tick();
+            let writes = e.controller.test_bus.as_ref().unwrap().writes;
+            e.system_event(SystemEvent::Sleep(true));
+            e.tick();
+            assert!(!e.state.status.connected);
+            assert_eq!(
+                e.controller.test_bus.as_ref().unwrap().writes,
+                writes + usize::from(blackout)
+            );
+            e.system_event(SystemEvent::Sleep(false));
+            e.tick();
+            assert!(e.state.status.connected && e.state.powered);
+        }
+    }
     #[test]
     fn capture_is_never_implicit_and_sleep_requires_restart() {
         let dir = tempfile::tempdir().unwrap();
@@ -453,8 +743,8 @@ mod tests {
         e.tick();
         assert!(!e.state.capturing);
         assert!(e.state.colors.iter().all(|c| *c == [0; 3]));
-        e.action(Action::Suspend).unwrap();
-        e.action(Action::Resume).unwrap();
+        e.system_event(SystemEvent::Sleep(true));
+        e.system_event(SystemEvent::Sleep(false));
         assert!(!e.state.powered);
         assert!(!e.state.capturing);
         e.action(Action::Power { on: true }).unwrap();
@@ -493,6 +783,12 @@ mod tests {
         .unwrap();
         e.tick();
         assert!(!path.exists());
+        assert!(
+            e.state.colors.iter().all(|c| *c == [0; 3]),
+            "editing settings must not start lighting"
+        );
+        e.action(Action::Power { on: true }).unwrap();
+        e.tick();
         assert!(e.state.colors.iter().any(|c| *c != [0; 3]));
         assert!(!e.state.status.connected);
         assert_eq!(e.state.frames_written, 0);
@@ -505,5 +801,107 @@ mod tests {
         e.action(Action::Power { on: false }).unwrap();
         e.tick();
         assert!(e.state.colors.iter().all(|c| *c == [0; 3]));
+    }
+    #[test]
+    fn startup_requires_both_opt_in_and_saved_running_intent() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        SavedIntent { running: true }
+            .save(&path.with_file_name("run-state.json"))
+            .unwrap();
+        for (restore, capture) in [(false, false), (true, false), (true, true)] {
+            let mut engine = Engine::new(
+                Settings {
+                    mode: "screen".into(),
+                    restore_on_start: restore,
+                    resume_capture: capture,
+                    ..Default::default()
+                },
+                path.clone(),
+                String::new(),
+            );
+            engine.restore();
+            assert_eq!(engine.state.requested, restore);
+            assert_eq!(engine.state.capture_requires_start, restore && !capture);
+            assert!(
+                !engine.state.capturing,
+                "restore must wait for native session observers"
+            );
+        }
+        SavedIntent { running: false }
+            .save(&path.with_file_name("run-state.json"))
+            .unwrap();
+        let mut engine = Engine::new(
+            Settings {
+                restore_on_start: true,
+                resume_capture: true,
+                ..Default::default()
+            },
+            path,
+            String::new(),
+        );
+        engine.restore();
+        assert!(!engine.state.requested);
+    }
+    #[test]
+    fn nested_pause_resume_and_stop_preserve_user_intent() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut e = Engine::new(
+            Settings::default(),
+            dir.path().join("settings.json"),
+            String::new(),
+        );
+        e.action(Action::Power { on: true }).unwrap();
+        e.system_event(SystemEvent::Locked(true));
+        e.system_event(SystemEvent::DisplayOff(true));
+        e.system_event(SystemEvent::Sleep(true));
+        e.system_event(SystemEvent::Sleep(true)); // Duplicate suspend cannot overwrite intent.
+        e.system_event(SystemEvent::Sleep(false));
+        assert!(!e.state.powered);
+        assert!(e.state.requested);
+        e.system_event(SystemEvent::Locked(false));
+        assert!(!e.state.powered);
+        e.system_event(SystemEvent::DisplayOff(false));
+        assert!(e.state.powered);
+        e.system_event(SystemEvent::Sleep(true));
+        e.action(Action::Power { on: false }).unwrap();
+        e.system_event(SystemEvent::Sleep(false));
+        assert!(!e.state.requested);
+        assert!(!e.state.powered);
+        assert!(!SavedIntent::load(&e.intent_path()).unwrap().running);
+    }
+    #[test]
+    fn recovery_consent_cannot_override_stop_or_changed_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut e = Engine::new(
+            Settings {
+                mode: "music".into(),
+                resume_capture: true,
+                ..Default::default()
+            },
+            dir.path().join("settings.json"),
+            String::new(),
+        );
+        e.life.requested = true;
+        e.life.capture_allowed = true;
+        e.system_event(SystemEvent::Sleep(true));
+        e.system_event(SystemEvent::Sleep(false));
+        assert!(e.life.capture_allowed);
+        e.action(Action::Settings {
+            settings: Settings {
+                mode: "screen".into(),
+                resume_capture: true,
+                ..Default::default()
+            },
+        })
+        .unwrap();
+        assert!(
+            !e.life.capture_allowed,
+            "changing source needs an explicit start"
+        );
+        e.action(Action::Power { on: false }).unwrap();
+        e.system_event(SystemEvent::SourcesChanged);
+        assert!(!e.state.recovering);
+        assert!(!e.state.requested);
     }
 }

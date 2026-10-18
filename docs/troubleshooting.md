@@ -5,7 +5,7 @@
 1. Close SyncLight or any other lighting controller.
 2. Check that your strip is connected and brightness is above zero.
 3. Click **Color**. It connects and starts lighting automatically.
-4. Click **Screen** or **Music** to connect and start capture. Switching an active display or audio source restarts capture automatically. After Stop or sleep, click **Start**.
+4. Click **Screen** or **Music** to connect and start capture. Switching an active display or audio source restarts capture automatically. After Stop, click **Start**. If capture needs a restart after sleep or a device change, click **Retry**.
 
 Screen sync can be dark when the screen edges are black. Music mode is dark during silence. Protected video may not be capturable. HDR color correction is not yet implemented.
 
@@ -13,7 +13,19 @@ Screen sync can be dark when the screen edges are black. Music mode is dark duri
 
 Check **Audio input** under **Diagnostics**. If no input arrives, play audio on your default speakers or select Microphone and check its permissions. Lower **Noise gate** if quiet passages disappear; raise **Sensitivity** for a stronger response. Lower **Release** and **Color smoothing** for sharper changes. Bass Pulse only responds to low frequencies—try Spectrum for a wider range of sounds.
 
-The frequency bars show analyzed audio, even while the strip is disconnected. The LED preview shows outgoing colors; successful USB writes cannot confirm that the physical LEDs are lit.
+Capture pauses if USB fails. With automatic capture resume enabled, it retries when the strip returns. The LED preview shows outgoing colors; successful USB writes cannot confirm that the physical LEDs are lit.
+
+## Startup, wake, or reconnect
+
+Open **Strip setup & behavior**. **Launch at login** starts the app; **Restore lighting when the app opens** separately restores a running mode. Neither option is enabled by default. Pressing **Stop** is remembered, including while disconnected or paused. Quitting preserves your last intended state for the next launch.
+
+Color and effects resume when the computer wakes and any lock/display pause has cleared. Screen and audio capture require **Automatically resume screen and audio capture**, or a deliberate **Retry**. Automatic recovery checks existing Mac permissions without requesting them. If permission is missing, grant it in System Settings and click Retry.
+
+USB and eligible capture recovery retry every three seconds. Stop cancels them. A selected display is never silently replaced with a different display; reconnect it or choose another. Computer audio follows the default output, and microphone capture follows the default input.
+
+If monitoring is unavailable, a message appears under behavior settings. Linux uses logind for sleep/lock and X11 DPMS for display sleep (not Wayland). Some desktops do not publish lock state. Mac screen-lock notifications are best effort and still need hardware validation. Turning off the system-sleep blackout option leaves the last color on the controller if USB power remains available; capture always stops during suspend.
+
+Login startup runs in the tray/menu bar on Windows and Mac, and minimized on Linux. Install the app in its permanent location before enabling it. Moving the executable or AppImage may require toggling Launch at login off and on again.
 
 ## macOS permissions
 
