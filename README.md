@@ -57,7 +57,7 @@ On macOS, enable DynamicLight in **System Settings → Privacy & Security → Sc
 - Nine automated tests passed; desktop UI smoke and hardware integration runs had no JavaScript page errors.
 - The packaged Windows application passed the same USB, screen-capture, audio-capture, and power-toggle integration check.
 
-macOS packaging was attempted on Windows and refused by Electron Builder because it requires a Mac. No Mac installer has been produced yet. macOS runtime, unplug/replug on physical hardware, sleep/wake, and HDR/DRM content have not been hardware-tested. Recovery is covered with a simulated HID device. Screen sampling currently uses ordinary captured RGB; this is not an HDR-aware color pipeline. Protected video may capture as black. This first version supports one controller and 1–127 LEDs, with RGB wiring.
+GitHub Actions has built and uploaded unsigned macOS DMGs for Intel and Apple Silicon. Local Mac packaging requires a Mac; the Windows host cannot produce them directly. macOS runtime, unplug/replug on physical hardware, sleep/wake, and HDR/DRM content have not been hardware-tested. Recovery is covered with a simulated HID device. Screen sampling currently uses ordinary captured RGB; this is not an HDR-aware color pipeline. Protected video may capture as black. This first version supports one controller and 1–127 LEDs, with RGB wiring.
 
 ## Implementation
 
