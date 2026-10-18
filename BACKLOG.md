@@ -1,6 +1,6 @@
 # DynamicLight backlog
 
-All feature and UI ideas discussed during initial planning are captured here, plus the macOS release-validation work. These are planned improvements, not claims about current functionality or committed release dates.
+All feature and UI ideas discussed during initial planning are captured here, plus platform release-validation work. These are planned improvements, not claims about current functionality or committed release dates. Linux preview support now includes packages, X11 screen sync, audio, and systemd sleep handling; Wayland screen streaming and physical Linux validation remain follow-up work.
 
 Priority: **P1** = foundations and core usability; **P2** = the next layer of product capability; **P3** = exploratory or integration work. All issues start in **Backlog**. Dependencies are recorded in the issue bodies.
 

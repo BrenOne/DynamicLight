@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'none'">
   <title>DynamicLight</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -13,7 +12,7 @@
     <div class="nav-label">WORKSPACE</div>
     <div class="nav-active"><span>◈</span> Studio</div>
     <div class="device-card"><span class="eyebrow">USB CONTROLLER</span><div class="device-icon">▥</div><strong id="device-name">Monitor backlight</strong><p id="device-detail">65 LEDs · USB HID</p><div class="status"><i id="status-dot"></i><span id="status-label">Not connected</span></div><button id="connect" class="connect-button">Connect strip <span>↗</span></button></div>
-    <div class="sidebar-bottom"><span class="local-dot"></span> Runs locally on your computer<small>DynamicLight · v0.1.0</small></div>
+    <div class="sidebar-bottom"><span class="local-dot"></span> Runs locally on your computer<small>DynamicLight · v0.2.1</small></div>
   </aside>
   <main>
     <header><div><div class="eyebrow">LIGHTING STUDIO</div><h1>A little atmosphere.</h1><p>Make the space around your screen your own.</p></div><button id="power" class="power" aria-pressed="true">⏻ <span>Lights on</span></button></header>
@@ -45,10 +44,9 @@
       <label class="checkbox"><input id="reverse" type="checkbox"> Reverse LED direction</label>
       <label class="checkbox"><input id="off-on-sleep" type="checkbox" checked> Lights off when computer sleeps</label>
       <label class="checkbox"><input id="off-on-quit" type="checkbox" checked> Lights off when app quits</label>
-    </div><p>Layout starts at the bottom-left, travels up, then across the top. Use direction and offset to match your installation. Closing the window keeps lighting running in the tray.</p></details>
-    <footer><span id="connection-message">Waiting for your strip</span><span>Designed for Windows &amp; macOS</span></footer>
+    </div><p>Layout starts at the bottom-left, travels up, then across the top. Use direction and offset to match your installation. <span id="close-behavior">Closing the window keeps lighting running in the tray.</span></p></details>
+    <footer><span id="connection-message">Waiting for your strip</span><button id="quit" class="secondary">Quit DynamicLight</button></footer>
   </main>
-  <video id="capture-video" muted playsinline hidden></video>
-  <script src="../lighting.js"></script><script src="renderer.js"></script>
+  <script src="renderer.js"></script>
 </body>
 </html>

@@ -1,4 +1,0 @@
-allowBuilds:
-  electron: true
-  node-hid: true
-  electron-winstaller: false

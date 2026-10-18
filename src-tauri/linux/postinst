@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+if command -v udevadm >/dev/null 2>&1; then
+    udevadm control --reload-rules || true
+fi
+# Replugging applies the rule without retriggering unrelated USB devices.
+exit 0

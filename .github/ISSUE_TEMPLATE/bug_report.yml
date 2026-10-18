@@ -19,7 +19,8 @@ body:
     id: platform
     attributes:
       label: OS and app version
-      placeholder: Windows 11 / DynamicLight 0.1.0
+      placeholder: Windows 11, macOS 15, or Ubuntu 24.04 (X11) / DynamicLight 0.2.1
+      description: On Linux, include your distribution and X11/Wayland session.
     validations:
       required: true
   - type: input

@@ -1,0 +1,4 @@
+# Grant the active local user access only to the supported lighting interface.
+# Separate rules match USB device and interface attributes on different parents.
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="fe07", ENV{DYNAMICLIGHT_CONTROLLER}="1"
+SUBSYSTEM=="hidraw", ENV{DYNAMICLIGHT_CONTROLLER}=="1", ATTRS{bInterfaceNumber}=="00", TAG+="uaccess"
