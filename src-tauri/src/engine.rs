@@ -20,7 +20,26 @@ use std::{
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 pub enum Action {
     Snapshot,
+    #[serde(skip)]
+    ApplyProfile {
+        settings: Settings,
+    },
+    #[serde(skip)]
+    Adjust {
+        brightness: Option<u8>,
+        color: Option<String>,
+    },
+    #[serde(skip)]
+    Toggle,
     Start,
+    CalibrationStart,
+    CalibrationStep {
+        settings: Settings,
+        led: Option<usize>,
+    },
+    CalibrationEnd {
+        apply: bool,
+    },
     Connect,
     Disconnect,
     Settings {
@@ -61,6 +80,9 @@ pub struct Snapshot {
     pub last_write_ms: Option<u64>,
     pub write_duration_ms: f64,
     pub write_errors: u64,
+    pub beat_level: f32,
+    pub calibrating: bool,
+    pub calibration_led: Option<usize>,
 }
 pub struct Message {
     action: Action,
@@ -101,6 +123,7 @@ pub struct Engine {
     capture_retry: Instant,
     source_check: Instant,
     source_signature: Option<String>,
+    blend_sources: (Option<String>, Option<String>),
     screen: Option<ScreenCapture>,
     audio: Option<Audio>,
     previous: Vec<[f32; 3]>,
@@ -112,6 +135,8 @@ pub struct Engine {
     fps_frames: u32,
     last_write: Option<Instant>,
     last_tick: Instant,
+    beat: crate::beat::Detector,
+    calibration: Option<(Settings, bool, bool, Instant)>,
 }
 impl Engine {
     pub fn new(settings: Settings, path: PathBuf, warning: String) -> Self {
@@ -139,6 +164,9 @@ impl Engine {
                 last_write_ms: None,
                 write_duration_ms: 0.0,
                 write_errors: 0,
+                beat_level: 0.0,
+                calibrating: false,
+                calibration_led: None,
             },
             controller,
             path,
@@ -147,6 +175,7 @@ impl Engine {
             capture_retry: Instant::now(),
             source_check: Instant::now(),
             source_signature: None,
+            blend_sources: (None, None),
             screen: None,
             audio: None,
             previous: vec![],
@@ -158,6 +187,8 @@ impl Engine {
             fps_frames: 0,
             last_write: None,
             last_tick: Instant::now(),
+            beat: crate::beat::Detector::default(),
+            calibration: None,
         }
     }
     fn black(&mut self) {
@@ -177,6 +208,33 @@ impl Engine {
         self.state.audio_samples = 0;
         self.state.audio_bands.fill(0.0);
         self.state.audio_level = 0.0;
+        self.state.beat_level = 0.0;
+        self.beat = crate::beat::Detector::default();
+    }
+    fn end_calibration(&mut self, apply: bool, resume: bool) -> Result<(), String> {
+        if let Some((mut original, requested, consent, _)) = self.calibration.take() {
+            if apply {
+                let before = original.clone();
+                original.count = self.state.settings.count;
+                original.sides = self.state.settings.sides;
+                original.offset = self.state.settings.offset;
+                original.reverse = self.state.settings.reverse;
+                if let Err(e) = original.save(&self.path) {
+                    self.calibration = Some((before, requested, consent, Instant::now()));
+                    return Err(e);
+                }
+            }
+            self.stop();
+            self.state.settings = original;
+            self.state.calibrating = false;
+            self.state.calibration_led = None;
+            self.life.requested = requested && resume;
+            self.life.capture_allowed = consent && resume;
+            self.desired = requested && resume;
+            self.capture_retry = Instant::now() - Duration::from_secs(3);
+            self.remember()?;
+        }
+        Ok(())
     }
     fn intent_path(&self) -> PathBuf {
         self.path.with_file_name("run-state.json")
@@ -203,10 +261,26 @@ impl Engine {
         self.update_lifecycle();
     }
     fn update_lifecycle(&mut self) {
+        if self.state.settings.mode == "blend"
+            && self.state.capturing
+            && self.state.error.is_empty()
+        {
+            if self.audio.is_none() {
+                self.state.error =
+                    "Audio unavailable; using screen colors. Click Retry to restore both sources."
+                        .into();
+            } else if self.screen.is_none() {
+                self.state.error =
+                    "Screen unavailable; using music. Click Retry to restore both sources.".into();
+            }
+        }
         self.state.requested = self.life.requested;
         self.state.pause_reason = self.life.pause_reason(&self.state.settings).into();
         self.state.powered = self.life.active(&self.state.settings);
-        let capture_mode = matches!(self.state.settings.mode.as_str(), "screen" | "music");
+        let capture_mode = matches!(
+            self.state.settings.mode.as_str(),
+            "screen" | "music" | "blend"
+        );
         self.state.capture_requires_start =
             self.life.requested && capture_mode && !self.life.capture_allowed;
         self.state.recovering = self.life.active(&self.state.settings)
@@ -217,6 +291,31 @@ impl Engine {
         self.life.interrupted(&self.state.settings);
         self.stop();
         self.capture_retry = Instant::now();
+    }
+    fn lose_blend_source(&mut self, screen: bool) {
+        if screen {
+            self.screen = None;
+            self.state.capture_size = (0, 0);
+        } else {
+            self.audio = None;
+            self.state.audio_samples = 0;
+            self.state.audio_level = 0.0;
+            self.state.audio_bands.fill(0.0);
+            self.state.beat_level = 0.0;
+            self.beat = crate::beat::Detector::default();
+        }
+        if self.screen.is_none() && self.audio.is_none() {
+            self.interrupt_capture();
+            self.state.error = "Both capture sources are unavailable. Click Retry.".into();
+        } else {
+            self.state.error = if screen {
+                "Screen source changed; using music. Click Retry."
+            } else {
+                "Audio source changed; using screen colors. Click Retry."
+            }
+            .into();
+            self.capture_retry = Instant::now();
+        }
     }
     pub fn system_event(&mut self, event: SystemEvent) {
         let was_paused = !self.life.pause_reason(&self.state.settings).is_empty();
@@ -241,13 +340,17 @@ impl Engine {
             SystemEvent::DisplayOff(off) => self.life.display_off = off,
             SystemEvent::Locked(locked) => self.life.locked = locked,
             SystemEvent::SourcesChanged => {
-                if self.state.capturing && self.state.settings.mode == "screen" {
+                if self.state.capturing && self.state.settings.mode == "blend" {
+                    self.lose_blend_source(true);
+                } else if self.state.capturing && self.state.settings.mode == "screen" {
                     self.interrupt_capture();
                 }
             }
             #[cfg(target_os = "linux")]
             SystemEvent::AudioChanged => {
-                if self.state.capturing && self.state.settings.mode == "music" {
+                if self.state.capturing && self.state.settings.mode == "blend" {
+                    self.lose_blend_source(false);
+                } else if self.state.capturing && self.state.settings.mode == "music" {
                     self.interrupt_capture();
                 }
             }
@@ -262,6 +365,9 @@ impl Engine {
         }
         let paused = !self.life.pause_reason(&self.state.settings).is_empty();
         if paused && !was_paused {
+            if let Err(e) = self.end_calibration(false, true) {
+                self.state.error = e;
+            }
             self.interrupt_capture();
         }
         if was_paused && !paused {
@@ -277,7 +383,28 @@ impl Engine {
         if !explicit {
             crate::platform::check_capture_permission(&self.state.settings)?;
         }
+        self.state.error.clear();
         match self.state.settings.mode.as_str() {
+            "blend" => {
+                let screen = ScreenCapture::start(&self.state.settings.screen_id);
+                let audio = Audio::start(self.state.settings.audio_source == "system");
+                let errors: Vec<_> = [screen.as_ref().err(), audio.as_ref().err()]
+                    .into_iter()
+                    .flatten()
+                    .cloned()
+                    .collect();
+                self.screen = screen.ok();
+                self.audio = audio.ok();
+                if self.screen.is_none() && self.audio.is_none() {
+                    return Err(errors.join(" "));
+                }
+                if !errors.is_empty() {
+                    self.state.error = format!(
+                        "Blend using available source. {} Click Retry to restore both.",
+                        errors.join(" ")
+                    );
+                }
+            }
             "screen" => self.screen = Some(ScreenCapture::start(&self.state.settings.screen_id)?),
             "music" => {
                 self.audio = Some(Audio::start(self.state.settings.audio_source == "system")?)
@@ -285,13 +412,23 @@ impl Engine {
             _ => return Err("Select Screen or Music before starting capture".into()),
         }
         self.state.capturing = true;
-        self.state.error.clear();
+        if self.state.settings.mode == "blend" {
+            self.blend_sources = (
+                crate::capture::source_signature(&self.state.settings.screen_id).ok(),
+                crate::audio::source_signature(self.state.settings.audio_source == "system").ok(),
+            );
+        }
         self.source_signature = self.current_source_signature().ok();
         self.source_check = Instant::now();
         Ok(())
     }
     fn current_source_signature(&self) -> Result<String, String> {
         match self.state.settings.mode.as_str() {
+            "blend" => Ok(format!(
+                "{:?}|{:?}",
+                crate::capture::source_signature(&self.state.settings.screen_id),
+                crate::audio::source_signature(self.state.settings.audio_source == "system")
+            )),
             "screen" => crate::capture::source_signature(&self.state.settings.screen_id),
             "music" => crate::audio::source_signature(self.state.settings.audio_source == "system"),
             _ => Ok(String::new()),
@@ -312,8 +449,10 @@ impl Engine {
             self.controller.connect()?;
         }
         self.last_solid = None;
-        if matches!(self.state.settings.mode.as_str(), "screen" | "music") && !self.state.capturing
-        {
+        if matches!(
+            self.state.settings.mode.as_str(),
+            "screen" | "music" | "blend"
+        ) {
             if let Err(e) = self.begin_capture(true) {
                 // An initial denial requires another deliberate Start, never a prompt loop.
                 self.life.capture_allowed = false;
@@ -324,9 +463,82 @@ impl Engine {
         Ok(())
     }
     pub fn action(&mut self, action: Action) -> Result<Snapshot, String> {
+        if self.calibration.is_some()
+            && matches!(
+                action,
+                Action::Start | Action::Settings { .. } | Action::PreviewSettings { .. }
+            )
+        {
+            return Err("Finish or cancel strip calibration first".into());
+        }
         let persist = matches!(action, Action::Settings { .. });
         match action {
             Action::Snapshot => {}
+            Action::ApplyProfile { settings } => {
+                let settings = crate::profiles::scene(&settings, &self.state.settings);
+                self.action(Action::Settings { settings })?;
+                return self.action(Action::Start);
+            }
+            Action::Adjust { brightness, color } => {
+                let mut settings = self.state.settings.clone();
+                if let Some(brightness) = brightness {
+                    settings.brightness = brightness;
+                }
+                if let Some(color) = color {
+                    settings.mode = "solid".into();
+                    settings.color = color;
+                }
+                return self.action(Action::Settings { settings });
+            }
+            Action::Toggle => {
+                return self.action(if self.life.requested {
+                    Action::Power { on: false }
+                } else {
+                    Action::Start
+                })
+            }
+            Action::CalibrationStart => {
+                if self.calibration.is_none() {
+                    if !self.life.pause_reason(&self.state.settings).is_empty() {
+                        return Err("Wake and unlock the display before calibrating".into());
+                    }
+                    if !self.controller.status.connected {
+                        self.controller.connect()?;
+                    }
+                    self.calibration = Some((
+                        self.state.settings.clone(),
+                        self.life.requested,
+                        self.life.capture_allowed,
+                        Instant::now(),
+                    ));
+                    self.stop();
+                    self.state.calibrating = true;
+                    self.state.calibration_led = Some(0);
+                    self.state.settings.mode = "solid".into();
+                    self.state.settings.brightness = 20;
+                    self.life.requested = true;
+                    self.life.capture_allowed = false;
+                    self.desired = true;
+                }
+            }
+            Action::CalibrationStep { settings, led } => {
+                if self.calibration.is_none() {
+                    return Err("Start calibration first".into());
+                }
+                settings.validate()?;
+                if led.is_some_and(|i| i >= settings.count) {
+                    return Err("LED is outside the selected count".into());
+                }
+                if settings.count != self.state.settings.count {
+                    self.black();
+                }
+                self.state.settings.count = settings.count;
+                self.state.settings.sides = settings.sides;
+                self.state.settings.reverse = settings.reverse;
+                self.state.settings.offset = settings.offset;
+                self.state.calibration_led = led;
+            }
+            Action::CalibrationEnd { apply } => self.end_calibration(apply, true)?,
             Action::Start => {
                 if let Err(e) = self.start_requested() {
                     self.state.error = e;
@@ -340,6 +552,7 @@ impl Engine {
                 self.last_solid = None;
             }
             Action::Disconnect => {
+                self.end_calibration(false, false)?;
                 self.desired = false;
                 self.life.stop();
                 self.stop();
@@ -376,6 +589,9 @@ impl Engine {
                 self.state.error.clear();
             }
             Action::Power { on } => {
+                if !on {
+                    self.end_calibration(false, false)?;
+                }
                 if !self.life.pause_reason(&self.state.settings).is_empty() && on {
                     return Err("Computer is sleeping".into());
                 }
@@ -399,12 +615,14 @@ impl Engine {
                 self.life.capture_allowed = true;
             }
             Action::StopCapture => {
+                self.end_calibration(false, false)?;
                 self.life.stop();
                 self.desired = false;
                 self.stop();
                 self.remember()?;
             }
             Action::Shutdown => {
+                self.end_calibration(false, true)?;
                 self.desired = false;
                 if self.state.settings.off_on_quit {
                     self.black();
@@ -420,6 +638,14 @@ impl Engine {
         Ok(self.state.clone())
     }
     pub fn tick(&mut self) {
+        if self
+            .calibration
+            .as_ref()
+            .is_some_and(|(_, _, _, since)| since.elapsed() > Duration::from_secs(300))
+        {
+            let _ = self.end_calibration(false, false);
+            self.state.error = "Calibration timed out. Lighting stopped.".into();
+        }
         self.update_lifecycle();
         let dt = self.last_tick.elapsed().as_secs_f32().min(1.0);
         self.last_tick = Instant::now();
@@ -437,21 +663,65 @@ impl Engine {
         }
         if self.state.capturing && self.source_check.elapsed() >= Duration::from_secs(2) {
             self.source_check = Instant::now();
-            let signature = self.current_source_signature();
-            if signature.as_ref().ok() != self.source_signature.as_ref() {
-                if self.state.settings.mode == "screen" {
-                    self.system_event(SystemEvent::SourcesChanged);
-                } else {
-                    self.interrupt_capture();
+            if self.state.settings.mode == "blend" {
+                let sources = (
+                    crate::capture::source_signature(&self.state.settings.screen_id).ok(),
+                    crate::audio::source_signature(self.state.settings.audio_source == "system")
+                        .ok(),
+                );
+                if self.screen.is_some() && sources.0 != self.blend_sources.0 {
+                    self.lose_blend_source(true);
                 }
-                self.state.error = "Capture source changed. Waiting to reconnect.".into();
+                if self.audio.is_some() && sources.1 != self.blend_sources.1 {
+                    self.lose_blend_source(false);
+                }
+                self.blend_sources = sources;
+            } else {
+                let signature = self.current_source_signature();
+                if signature.as_ref().ok() != self.source_signature.as_ref() {
+                    if matches!(self.state.settings.mode.as_str(), "screen" | "blend") {
+                        self.system_event(SystemEvent::SourcesChanged);
+                    } else {
+                        self.interrupt_capture();
+                    }
+                    self.state.error = "Capture source changed. Waiting to reconnect.".into();
+                }
+            }
+        }
+        if self.state.settings.mode == "blend"
+            && self.state.capturing
+            && self.life.active(&self.state.settings)
+            && self.state.settings.resume_capture
+            && self.life.capture_allowed
+            && (self.screen.is_none() || self.audio.is_none())
+            && self.capture_retry.elapsed() >= Duration::from_secs(3)
+        {
+            self.capture_retry = Instant::now();
+            if crate::platform::check_capture_permission(&self.state.settings).is_ok() {
+                if self.screen.is_none() {
+                    self.screen = ScreenCapture::start(&self.state.settings.screen_id).ok();
+                }
+                if self.audio.is_none() {
+                    self.audio = Audio::start(self.state.settings.audio_source == "system").ok();
+                }
+                self.blend_sources = (
+                    crate::capture::source_signature(&self.state.settings.screen_id).ok(),
+                    crate::audio::source_signature(self.state.settings.audio_source == "system")
+                        .ok(),
+                );
+                if self.screen.is_some() && self.audio.is_some() {
+                    self.state.error.clear();
+                }
             }
         }
         if self.life.active(&self.state.settings)
             && self.controller.status.connected
             && self.life.capture_allowed
             && !self.state.capturing
-            && matches!(self.state.settings.mode.as_str(), "screen" | "music")
+            && matches!(
+                self.state.settings.mode.as_str(),
+                "screen" | "music" | "blend"
+            )
             && self.capture_retry.elapsed() >= Duration::from_secs(3)
         {
             self.capture_retry = Instant::now();
@@ -463,6 +733,26 @@ impl Engine {
         let generated: Result<Vec<Rgb>, String> = (|| {
             if !self.life.active(s) {
                 return Ok(vec![[0; 3]; s.count]);
+            }
+            if self.state.calibrating {
+                return Ok((0..s.count)
+                    .map(|i| match self.state.calibration_led {
+                        Some(led) if led == i => [255; 3],
+                        Some(_) => [0; 3],
+                        None => {
+                            let (x, y) = lighting::positions(s.count, s.sides, 16.0 / 9.0)[i];
+                            if y == 0.0 {
+                                [0, 255, 0]
+                            } else if x == 0.0 {
+                                [255, 0, 0]
+                            } else if x == 1.0 {
+                                [0, 80, 255]
+                            } else {
+                                [255, 150, 0]
+                            }
+                        }
+                    })
+                    .collect());
             }
             match s.mode.as_str() {
                 "solid" => Ok(vec![lighting::hex(&s.color); s.count]),
@@ -476,9 +766,26 @@ impl Engine {
                         Ok(vec![[0; 3]; s.count])
                     }
                 }
-                "music" => {
+                "music" | "blend" => {
                     if let Some(audio) = self.audio.as_ref() {
-                        let analysis = audio.analyze(s.sensitivity, s.noise_floor)?;
+                        let analysis =
+                            match audio.analyze(s.sensitivity, s.noise_floor, s.input_gain) {
+                                Ok(a) => a,
+                                Err(e) if s.mode == "blend" && self.screen.is_some() => {
+                                    self.audio = None;
+                                    self.state.audio_bands.fill(0.0);
+                                    self.state.audio_level = 0.0;
+                                    self.state.audio_samples = 0;
+                                    self.state.beat_level = 0.0;
+                                    self.state.error = format!(
+                                        "Audio unavailable; using screen colors. {e} Click Retry."
+                                    );
+                                    return self.screen.as_mut().unwrap().colors(s);
+                                }
+                                Err(e) => return Err(e),
+                            };
+                        self.state.beat_level =
+                            self.beat.update(&analysis.bands, dt, s.sensitivity);
                         self.state.audio_samples = analysis.received;
                         self.state.audio_level = analysis.rms;
                         effects::envelope(
@@ -487,11 +794,48 @@ impl Engine {
                             dt,
                             s.release,
                         );
-                        Ok(effects::music(
-                            s,
-                            &self.state.audio_bands,
-                            self.started.elapsed().as_secs_f32(),
-                        ))
+                        if s.mode == "blend" {
+                            if let Some(screen) = self.screen.as_mut() {
+                                match screen.colors(s) {
+                                    Ok(colors) => {
+                                        self.state.capture_size = screen.dimensions;
+                                        return Ok(effects::blend(
+                                            &colors,
+                                            &self.state.audio_bands,
+                                            s.blend,
+                                        ));
+                                    }
+                                    Err(e) => {
+                                        self.state.error = format!(
+                                            "Screen unavailable; using music. {e} Click Retry."
+                                        );
+                                        self.screen = None;
+                                        self.state.capture_size = (0, 0);
+                                    }
+                                }
+                            }
+                        }
+                        Ok(if s.music_style == "beat" {
+                            effects::music(
+                                s,
+                                &[self.state.beat_level; 32],
+                                self.started.elapsed().as_secs_f32(),
+                            )
+                        } else {
+                            effects::music(
+                                s,
+                                &self.state.audio_bands,
+                                self.started.elapsed().as_secs_f32(),
+                            )
+                        })
+                    } else if s.mode == "blend" {
+                        if let Some(screen) = self.screen.as_mut() {
+                            let colors = screen.colors(s)?;
+                            self.state.capture_size = screen.dimensions;
+                            Ok(colors)
+                        } else {
+                            Ok(vec![[0; 3]; s.count])
+                        }
                     } else {
                         Ok(vec![[0; 3]; s.count])
                     }
@@ -501,7 +845,33 @@ impl Engine {
         })();
         match generated {
             Ok(colors) => {
-                self.previous = lighting::transform(&colors, &self.previous, &self.state.settings);
+                if !self.state.powered
+                    || (matches!(
+                        self.state.settings.mode.as_str(),
+                        "screen" | "music" | "blend"
+                    ) && !self.state.capturing)
+                {
+                    self.previous = vec![[0.0; 3]; self.state.settings.count];
+                } else if self.state.calibrating {
+                    self.previous = colors
+                        .iter()
+                        .map(|rgb| {
+                            rgb.map(|c| {
+                                c as f32
+                                    * self
+                                        .state
+                                        .settings
+                                        .brightness
+                                        .min(self.state.settings.max_brightness)
+                                        as f32
+                                    / 100.0
+                            })
+                        })
+                        .collect();
+                } else {
+                    self.previous =
+                        lighting::transform(&colors, &self.previous, &self.state.settings, dt);
+                }
                 self.state.colors = self
                     .previous
                     .iter()
@@ -516,12 +886,17 @@ impl Engine {
         if self.controller.status.connected && !self.life.sleeping {
             let write_started = Instant::now();
             let s = &self.state.settings;
-            let active = self.state.powered && (s.mode == "rainbow" || self.state.capturing);
+            let active = self.state.powered
+                && (self.state.calibrating || s.mode == "rainbow" || self.state.capturing);
             let result = if active {
                 Some(self.controller.frame(&lighting::reorder(
                     &self.state.colors,
-                    s.reverse,
-                    s.offset,
+                    s.reverse && !(self.state.calibrating && self.state.calibration_led.is_some()),
+                    if self.state.calibrating && self.state.calibration_led.is_some() {
+                        0
+                    } else {
+                        s.offset
+                    },
                 )))
             } else {
                 let rgb = if self.state.powered && s.mode == "solid" {
@@ -636,6 +1011,137 @@ mod tests {
             writes: 0,
         });
         e
+    }
+    #[test]
+    fn blend_display_changes_keep_audio_and_stop_prevents_source_recovery() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut e = simulated(
+            Settings {
+                mode: "blend".into(),
+                ..Default::default()
+            },
+            dir.path().join("settings.json"),
+        );
+        e.life.requested = true;
+        e.life.capture_allowed = true;
+        e.state.capturing = true;
+        e.audio = Some(Audio::test_tone(0.02));
+        e.system_event(SystemEvent::SourcesChanged);
+        assert!(e.audio.is_some() && e.state.capturing && e.state.requested);
+        assert!(e.state.error.contains("using music"));
+        e.lose_blend_source(false);
+        e.update_lifecycle();
+        assert!(!e.state.capturing && e.state.capture_requires_start);
+        e.action(Action::Power { on: false }).unwrap();
+        e.capture_retry = Instant::now() - Duration::from_secs(10);
+        e.tick();
+        assert!(!e.state.requested && !e.state.capturing);
+        assert!(e.audio.is_none() && e.screen.is_none());
+    }
+    #[test]
+    fn tray_and_profile_actions_preserve_current_layout_and_stop_intent() {
+        let dir = tempfile::tempdir().unwrap();
+        let current = Settings {
+            count: 37,
+            max_brightness: 15,
+            ..Default::default()
+        };
+        let mut e = simulated(current.clone(), dir.path().join("settings.json"));
+        e.action(Action::ApplyProfile {
+            settings: Settings {
+                brightness: 90,
+                count: 100,
+                max_brightness: 100,
+                restore_on_start: true,
+                ..Default::default()
+            },
+        })
+        .unwrap();
+        assert!(e.state.requested);
+        assert_eq!(e.state.settings.count, 37);
+        assert_eq!(e.state.settings.max_brightness, 15);
+        assert!(!e.state.settings.restore_on_start);
+        e.action(Action::Adjust {
+            brightness: Some(25),
+            color: None,
+        })
+        .unwrap();
+        assert_eq!(e.state.settings.brightness, 25);
+        assert_eq!(e.state.settings.count, 37);
+        e.action(Action::Toggle).unwrap();
+        assert!(!e.state.requested);
+        e.action(Action::Adjust {
+            brightness: Some(50),
+            color: None,
+        })
+        .unwrap();
+        assert!(!e.state.requested);
+        e.action(Action::CalibrationStart).unwrap();
+        assert!(e
+            .action(Action::ApplyProfile { settings: current })
+            .is_err());
+        e.action(Action::Toggle).unwrap();
+        assert!(!e.state.calibrating && !e.state.requested);
+    }
+    #[test]
+    fn calibration_is_temporary_and_stop_cancels_restoration() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let original = Settings {
+            mode: "rainbow".into(),
+            minimum_glow: 10,
+            ..Default::default()
+        };
+        original.save(&path).unwrap();
+        let mut e = simulated(original.clone(), path.clone());
+        e.action(Action::Start).unwrap();
+        e.action(Action::CalibrationStart).unwrap();
+        let draft = Settings {
+            count: 10,
+            reverse: true,
+            offset: 3,
+            ..original.clone()
+        };
+        e.action(Action::CalibrationStep {
+            settings: draft.clone(),
+            led: Some(4),
+        })
+        .unwrap();
+        e.tick();
+        assert_eq!(e.state.colors.iter().filter(|c| **c != [0; 3]).count(), 1);
+        assert_ne!(e.state.colors[4], [0; 3]);
+        assert_eq!(Settings::load(&path).unwrap(), original);
+        e.action(Action::CalibrationEnd { apply: false }).unwrap();
+        assert_eq!(e.state.settings, original);
+        assert!(e.state.requested);
+        e.action(Action::CalibrationStart).unwrap();
+        e.action(Action::CalibrationStep {
+            settings: draft,
+            led: None,
+        })
+        .unwrap();
+        e.action(Action::CalibrationEnd { apply: true }).unwrap();
+        let saved = Settings::load(&path).unwrap();
+        assert_eq!(saved.count, 10);
+        assert_eq!(saved.mode, "rainbow");
+        assert_eq!(saved.brightness, original.brightness);
+        e.action(Action::CalibrationStart).unwrap();
+        e.action(Action::Power { on: false }).unwrap();
+        e.tick();
+        assert!(!e.state.calibrating && !e.state.requested);
+        assert!(e.state.colors.iter().all(|c| *c == [0; 3]));
+        e.action(Action::CalibrationEnd { apply: false }).unwrap();
+        assert!(!e.state.requested);
+    }
+    #[test]
+    fn calibration_pause_restores_scene_without_bypassing_pause() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut e = simulated(Settings::default(), dir.path().join("settings.json"));
+        e.action(Action::Start).unwrap();
+        e.action(Action::CalibrationStart).unwrap();
+        e.system_event(SystemEvent::Locked(true));
+        assert!(!e.state.calibrating && !e.state.powered && e.state.requested);
+        assert_eq!(e.state.settings.brightness, Settings::default().brightness);
     }
     #[test]
     fn usb_failure_retries_only_after_delay_and_stop_cancels_recovery() {

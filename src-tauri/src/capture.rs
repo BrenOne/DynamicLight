@@ -47,6 +47,7 @@ pub fn source_signature(id: &str) -> Result<String, String> {
     ))
 }
 pub struct ScreenCapture {
+    crop: lighting::Crop,
     monitor: Monitor,
     pub dimensions: (u32, u32),
     #[cfg(target_os = "windows")]
@@ -88,6 +89,7 @@ impl ScreenCapture {
             Ok(Self {
                 desktop: crate::capture_windows::Desktop::new(&monitor.name().unwrap_or_default())
                     .ok(),
+                crop: lighting::Crop::default(),
                 monitor,
                 dimensions,
                 thumbnail,
@@ -95,6 +97,7 @@ impl ScreenCapture {
         }
         #[cfg(not(target_os = "windows"))]
         Ok(Self {
+            crop: lighting::Crop::default(),
             monitor,
             dimensions: (image.width(), image.height()),
         })
@@ -121,17 +124,28 @@ impl ScreenCapture {
                 dimensions.0,
                 dimensions.1,
             )?;
-            Ok(lighting::sample(pixels, w, h, settings))
+            Ok(lighting::sample_tracked(
+                pixels,
+                w,
+                h,
+                w as usize * 4,
+                false,
+                settings,
+                &mut self.crop,
+            ))
         }
         #[cfg(not(target_os = "windows"))]
         {
             let image = self.monitor.capture_image().map_err(|e| e.to_string())?;
             self.dimensions = (image.width(), image.height());
-            Ok(lighting::sample(
+            Ok(lighting::sample_tracked(
                 image.as_raw(),
                 image.width(),
                 image.height(),
+                image.width() as usize * 4,
+                false,
                 settings,
+                &mut self.crop,
             ))
         }
     }

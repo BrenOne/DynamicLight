@@ -72,6 +72,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
         musicStyle: "spectrum",
         noiseFloor: 0,
         release: 40,
+        excludeBars: false, rgbBalance: [100,100,100], saturation: 100, gamma: 100, inputGain: 0, blend: 60, maxBrightness: 100, transitionLimit: 0, minimumGlow: 0,
       };
       const state = {
         settings: initial,
@@ -99,7 +100,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
         writeErrors: 0,
       };
       const calls = [];
-      let listener;
+      const listeners = {}; let listener; let calibrationOriginal; let profileLibrary = { profiles: [] };
       function colors() {
         state.colors = Array.from({ length: state.settings.count }, (_, i) =>
           state.powered
@@ -114,6 +115,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
       window.fixture = {
         state,
         calls,
+        emitEvent: (name, payload) => listeners[name]?.({ payload }),
         emit: () => {
           colors();
           listener?.({ payload: structuredClone(state) });
@@ -121,8 +123,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
       };
       window.__TAURI__ = {
         event: {
-          listen: async (_, callback) => {
-            listener = callback;
+          listen: async (name, callback) => {
+            listeners[name] = callback; if (name === "lighting") listener = callback;
           },
         },
         core: {
@@ -138,6 +140,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
                 ]),
               );
             }
+            if (cmd === "profile_library") { if (args.library) profileLibrary = structuredClone(args.library); return structuredClone(profileLibrary); }
+            if (cmd === "apply_profile") { state.settings = structuredClone(profileLibrary.profiles.find(p => p.id === args.id).settings); state.requested = true; state.powered = true; return structuredClone(state); }
             if (cmd === "platform_name") return "windows";
             if (cmd === "launch_at_login") {
               if (fixture.failLogin) { fixture.failLogin = false; throw new Error("Test login registration failed"); }
@@ -150,6 +154,9 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
             const a = args.action;
             calls.push(structuredClone(a));
             await new Promise((resolve) => setTimeout(resolve, 35));
+            if (a.type === "calibrationStep" && !state.calibrating) throw new Error("Start calibration first");
+            if (a.type === "calibrationStart") { calibrationOriginal = structuredClone(state); state.calibrating = true; }
+            if (a.type === "calibrationEnd") { const layout = state.settings; Object.assign(state, calibrationOriginal); if (a.apply) Object.assign(state.settings, { count: layout.count, sides: layout.sides, reverse: layout.reverse, offset: layout.offset }); state.calibrating = false; }
             if (a.settings) {
               if (
                 state.settings.mode !== a.settings.mode ||
@@ -178,7 +185,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
                 state.captureRequiresStart = true;
                 return structuredClone(state);
               }
-              state.capturing = ["screen", "music"].includes(state.settings.mode);
+              state.capturing = ["screen", "music", "blend"].includes(state.settings.mode);
             }
             if (a.type === "connect" && fixture.failConnect) {
               fixture.failConnect = false;
@@ -388,7 +395,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
       ),
       "Active display change resumes capture",
     );
-    await page.locator("#setup summary").click();
+    await page.locator("#setup > summary").click();
     assert.equal(await page.locator("#count").isVisible(), true);
     await page.evaluate(() => {
       fixture.state.status.connected = false;
@@ -476,11 +483,54 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
       await page.setViewportSize({ width, height: 900 });
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Behavior settings fit at ${width}px`);
     }
+    // New controls use the same Start action; no additional connect/capture clicks.
+    await page.locator('[data-mode="blend"]').click(); await page.waitForFunction(() => !busy);
+    assert.equal(await page.locator('#music-controls').isVisible(), true);
+    assert.equal(await page.locator('#display-controls').isVisible(), true);
+    await page.locator('#screen-tuning summary').click();
+    await page.locator('#exclude-bars').check();
+    await page.locator('#input-gain').fill('6'); await page.locator('#input-gain').dispatchEvent('input');
+    await page.locator('#blend').fill('75'); await page.locator('#blend').dispatchEvent('input');
+    await page.waitForTimeout(800);
+    assert.equal(await page.evaluate(() => fixture.state.settings.inputGain), 6);
+    assert.equal(await page.evaluate(() => fixture.state.settings.blend), 75);
+    assert.equal(await page.evaluate(() => fixture.state.settings.excludeBars), true);
+    await page.locator('[data-mode="music"]').click(); await page.waitForFunction(() => !busy);
+    await page.locator('[data-music="beat"]').click(); await page.waitForFunction(() => !busy);
+    assert.equal(await page.evaluate(() => fixture.state.settings.musicStyle), 'beat');
+    await page.locator('[data-mode="blend"]').click(); await page.waitForFunction(() => !busy);
+    await page.locator('.profiles > summary').click();
+    await page.locator('#profile-name').fill('Movies'); await page.locator('#profile-save').click(); await page.waitForFunction(() => !busy);
+    assert.equal(await page.locator('.profile-row').count(), 1);
+    await page.locator('.profile-row summary').click();
+    await page.locator('.profile-row').getByRole('button', { name: 'Duplicate', exact: true }).click(); await page.waitForFunction(() => !busy);
+    assert.equal(await page.locator('.profile-row').count(), 2);
+    await page.locator('.profile-apply').first().click(); await page.waitForFunction(() => !busy);
+    assert.equal(await page.evaluate(() => fixture.state.settings.mode), 'blend');
+    await page.locator('.profiles > summary').click();
+    await page.locator('#calibrate').click(); await page.waitForFunction(() => !busy);
+    assert.equal(await page.locator('#calibration-dialog').isVisible(), true);
+    await page.locator('#cal-count').fill('32'); await page.locator('#cal-count').dispatchEvent('change');
+    await page.waitForTimeout(100);
+    await page.locator('#cal-next').click(); await page.waitForTimeout(100);
+    assert.match(await page.locator('#cal-status').innerText(), /LED 2 of 32/);
+    await page.locator('#cal-preview').click(); await page.waitForTimeout(100);
+    await page.locator('#cal-apply').click(); await page.waitForFunction(() => !document.querySelector('#calibration-dialog').open);
+    assert.equal(await page.evaluate(() => fixture.state.settings.count), 32);
+    await page.locator('#calibrate').click(); await page.waitForFunction(() => !busy);
+    await page.locator('#cal-count').fill('12'); await page.locator('#cal-count').dispatchEvent('change'); await page.waitForTimeout(100);
+    await page.keyboard.press('Escape'); await page.waitForFunction(() => !document.querySelector('#calibration-dialog').open);
+    assert.equal(await page.evaluate(() => fixture.state.settings.count), 32);
+    await page.evaluate(() => queue);
+    await page.evaluate(() => { fixture.state.settings.brightness = 25; fixture.emitEvent('external-settings', structuredClone(fixture.state)); });
+    await page.waitForTimeout(200);
+    await page.waitForFunction(() => document.querySelector('#brightness').value === '25');
+    for (const width of [390, 600, 1180]) { await page.setViewportSize({ width, height: 1000 }); assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)); }
     await page.setViewportSize({ width: 1180, height: 1000 });
     await page.screenshot({ path: ".local/ui-lifecycle.png", fullPage: true });
     assert.deepEqual(errors, []);
     console.log(
-      "UI passed: drag coalescing, persistence, 5 effects, 4 music styles, telemetry, capture recovery, 6 responsive widths, CSP and errors.",
+      "UI passed: profiles, calibration apply/cancel, blend, beat controls, tray synchronization, drag coalescing, effects, recovery, responsive widths and CSP.",
     );
   } finally {
     await browser?.close();

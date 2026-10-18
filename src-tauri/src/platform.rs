@@ -163,8 +163,11 @@ mod mac {
         Ok(())
     }
     pub fn check_capture_permission(settings: &crate::settings::Settings) -> Result<(), String> {
-        let mic = settings.mode == "music" && settings.audio_source == "microphone";
-        if unsafe { dl_capture_allowed(mic) } {
+        let mic = matches!(settings.mode.as_str(), "music" | "blend")
+            && settings.audio_source == "microphone";
+        if unsafe {
+            dl_capture_allowed(mic) && (settings.mode != "blend" || dl_capture_allowed(false))
+        } {
             Ok(())
         } else {
             Err("Capture permission is missing. Allow access in System Settings → Privacy & Security, then click Retry.".into())

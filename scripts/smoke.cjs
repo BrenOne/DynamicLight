@@ -20,7 +20,7 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
       stdio: "ignore",
     },
   );
-  let browser, page, original;
+  let browser, page, original, originalProfiles;
   const errors = [];
   try {
     for (let i = 0; i < 60; i++) {
@@ -72,6 +72,14 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const frames = await page.evaluate(() =>
       window.__TAURI__.core.invoke("effect_previews", { settings, seconds: 2 }),
     );
+    originalProfiles = await page.evaluate(() => window.__TAURI__.core.invoke('profile_library', { library: null }));
+    const profile = { id: 'native-test', name: 'Native test', favorite: true, shortcut: 'Control+Alt+Shift+F12', settings: original };
+    const saved = await page.evaluate(p => window.__TAURI__.core.invoke('profile_library', { library: { profiles: [p] } }), profile);
+    assert.equal(saved.profiles[0].name, 'Native test');
+    await assert.rejects(page.evaluate(p => window.__TAURI__.core.invoke('profile_library', { library: { profiles: [p, { ...p, id: 'duplicate' }] } }), profile));
+    assert.equal((await page.evaluate(() => window.__TAURI__.core.invoke('profile_library', { library: null }))).profiles.length, 1);
+    await page.evaluate(library => window.__TAURI__.core.invoke('profile_library', { library }), originalProfiles);
+    assert.equal((await control({ type: 'snapshot' })).status.connected, false, 'Profile edits never connect USB');
     assert.equal(frames.length, 5);
     assert(frames.every((f) => f.length === 48));
     const later = await page.evaluate(() =>
@@ -162,6 +170,7 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   } finally {
     if (page && !page.isClosed()) {
       try {
+        if (originalProfiles) await page.evaluate(library => window.__TAURI__.core.invoke("profile_library", { library }), originalProfiles);
         if (original)
           await page.evaluate(async (s) => {
             settings = s;

@@ -16,6 +16,7 @@ let previewPending,
 const labels = {
   solid: "Solid color",
   screen: "Screen sync",
+  blend: "Screen + music",
   music: "Music",
   rainbow: "Effects",
 };
@@ -33,6 +34,8 @@ const ranges = {
   speed: "speed",
   "noise-floor": "noiseFloor",
   release: "release",
+  "input-gain": "inputGain", blend: "blend", saturation: "saturation", gamma: "gamma",
+  "max-brightness": "maxBrightness", "transition-limit": "transitionLimit", "minimum-glow": "minimumGlow",
 };
 const behaviorSettings = [
   ["restore-on-start", "restoreOnStart"],
@@ -56,12 +59,14 @@ function request(action) {
   });
 }
 function renderRuntime(value) {
+  const endedCalibration = runtime?.calibrating && !value.calibrating;
   runtime = value;
+  if (endedCalibration && $("calibration-dialog").open) { $("calibration-dialog").close(); settings = value.settings; queueMicrotask(updateUI); }
   if (!settings) return;
   const connected = value.status.connected;
   const current = value.settings;
   const waiting =
-    ["screen", "music"].includes(current.mode) && !value.capturing;
+    ["screen", "music", "blend"].includes(current.mode) && !value.capturing;
   const active =
     connected && value.powered && !waiting && current.brightness > 0;
   $("status-dot").classList.toggle("connected", connected);
@@ -114,7 +119,7 @@ function renderRuntime(value) {
     ? value.captureSize.join(" × ")
     : "—";
   $("audio-level").textContent =
-    current.mode === "music" && value.capturing
+    ["music", "blend"].includes(current.mode) && value.capturing
       ? `${Math.round(value.audioLevel * 100)}% RMS`
       : "—";
   $("audio-status").textContent = !value.capturing
@@ -164,6 +169,14 @@ function updateUI() {
   }
   for (const name of ["count", "sides", "offset", "fps", "palette"])
     $(name).value = settings[name];
+  $("input-gain-value").textContent = settings.inputGain + " dB";
+  $("gamma-value").textContent = (settings.gamma / 100).toFixed(2);
+  $("transition-limit-value").textContent = settings.transitionLimit ? settings.transitionLimit + "% / s" : "Off";
+  $("exclude-bars").checked = !!settings.excludeBars;
+  ["red", "green", "blue"].forEach((c, i) => { $(c + "-balance").value = settings.rgbBalance[i]; $(c + "-balance-value").textContent = settings.rgbBalance[i] + "%"; });
+  $("screen-tuning").hidden = !["screen", "blend"].includes(settings.mode);
+  $("blend-control").hidden = settings.mode !== "blend";
+  document.querySelector(".music-styles").hidden = settings.mode === "blend";
   $("audio-source").value = settings.audioSource;
   $("reverse").checked = settings.reverse;
   $("off-on-sleep").checked = settings.offOnSleep;
@@ -173,9 +186,9 @@ function updateUI() {
   $("launch-at-login").disabled = busy || !loginAvailable;
   $("device-detail").textContent = `${settings.count} LEDs · USB HID`;
   $("led-total").textContent = `→ ${settings.count}`;
-  $("capture-controls").hidden = !["screen", "music"].includes(settings.mode);
-  $("display-controls").hidden = settings.mode !== "screen";
-  $("music-controls").hidden = settings.mode !== "music";
+  $("capture-controls").hidden = !["screen", "music", "blend"].includes(settings.mode);
+  $("display-controls").hidden = !["screen", "blend"].includes(settings.mode);
+  $("music-controls").hidden = !["music", "blend"].includes(settings.mode);
   $("effect-controls").hidden = settings.mode !== "rainbow";
   $("palette-controls").hidden = !["music", "rainbow"].includes(settings.mode);
   const fixedPalette =
@@ -186,17 +199,17 @@ function updateUI() {
     ? "Fixed colors for this effect."
     : "";
   $("color-control").hidden =
-    settings.mode === "screen" ||
+    ["screen", "blend"].includes(settings.mode) ||
     (settings.mode !== "solid" &&
       (settings.palette !== "mono" || fixedPalette));
   $("speed-controls").hidden =
     settings.mode !== "rainbow" &&
     !(settings.mode === "music" && settings.musicStyle === "wave");
   $("smoothing").disabled = busy || settings.mode === "solid";
-  $("screen").disabled = busy || settings.mode !== "screen";
-  $("refresh-screens").disabled = busy || settings.mode !== "screen";
+  $("screen").disabled = busy || !["screen", "blend"].includes(settings.mode);
+  $("refresh-screens").disabled = busy || !["screen", "blend"].includes(settings.mode);
   $("capture-help").textContent =
-    settings.mode === "screen"
+    ["screen", "blend"].includes(settings.mode)
       ? "Capture stays on this computer. " +
         (platform === "linux"
           ? "Screen sync needs an X11 session; Wayland support is planned."
@@ -235,6 +248,7 @@ function previewSettings() {
 }
 async function save() {
   clearTimeout(saveTimer);
+  saveTimer = null;
   await previewPending;
   const savingRevision = revision;
   $("save-state").textContent = "Saving…";
@@ -392,8 +406,9 @@ function draw(colors) {
   const strip = $("strip-preview").getContext("2d");
   strip.clearRect(0, 0, 1000, 18);
   shown.forEach((_, i) => {
-    const j = (i + s.offset) % shown.length,
-      rgb = shown[s.reverse ? shown.length - 1 - j : j];
+    const physicalTest = runtime.calibrating && runtime.calibrationLed !== null;
+    const j = (i + (physicalTest ? 0 : s.offset)) % shown.length,
+      rgb = shown[s.reverse && !physicalTest ? shown.length - 1 - j : j];
     strip.fillStyle = `rgb(${rgb.join(",")})`;
     strip.fillRect(
       (i * 1000) / shown.length,
@@ -422,7 +437,7 @@ function isRunning(value) {
   return (
     value?.status.connected &&
     value.powered &&
-    (!["screen", "music"].includes(value.settings.mode) || value.capturing)
+    (!["screen", "music", "blend"].includes(value.settings.mode) || value.capturing)
   );
 }
 async function startLighting() {
@@ -544,6 +559,11 @@ async function init() {
   settings = initial.settings;
   try { loginEnabled = await invoke("launch_at_login", { enabled: null }); }
   catch (error) { loginAvailable = false; notice(`Launch at login is unavailable: ${error}`, true); }
+  await initProfiles();
+  initCalibration();
+  $("exclude-bars").onchange = e => { settings.excludeBars = e.target.checked; changed(); };
+  ["red", "green", "blue"].forEach((c, i) => { $(c + "-balance").oninput = e => { settings.rgbBalance[i] = Number(e.target.value); changed(); }; });
+  $("reset-screen").onclick = () => { Object.assign(settings, { excludeBars: false, rgbBalance: [100,100,100], saturation: 100, gamma: 100 }); changed(); };
   updateUI();
   $("connect").onclick = () =>
     run(async () => {
@@ -577,7 +597,7 @@ async function init() {
         settings.mode = button.dataset.mode;
         updateUI();
         await startLighting();
-        if (settings.mode === "screen") await refreshDisplays();
+        if (["screen", "blend"].includes(settings.mode)) await refreshDisplays();
       });
   });
   for (const [selector, dataset, key] of [
@@ -653,10 +673,108 @@ async function init() {
   });
   document.addEventListener("visibilitychange", refreshEffectPreviews);
   reducedMotion.addEventListener("change", refreshEffectPreviews);
-  if (settings.mode === "screen")
+  if (["screen", "blend"].includes(settings.mode))
     refreshDisplays().catch((error) => notice(String(error), true));
   window.addEventListener("focus", () =>
-    request({ type: "snapshot" }).catch((error) => notice(String(error), true)),
+    request({ type: "snapshot" }).then(value => { if (!busy && !saveTimer && !previewPending) { settings = value.settings; updateUI(); } }).catch((error) => notice(String(error), true)),
   );
+}
+function initCalibration() {
+  const dialog = $("calibration-dialog");
+  let draft, edgePreview = false;
+  async function step() {
+    if (!runtime?.calibrating) return false;
+    for (const id of ["cal-count", "cal-led", "cal-offset"]) if (!$(id).reportValidity()) return false;
+    draft.count = Number($("cal-count").value);
+    draft.sides = Number($("cal-sides").value);
+    draft.offset = Number($("cal-offset").value);
+    draft.reverse = $("cal-reverse").checked;
+    const led = Math.min(draft.count, Number($("cal-led").value));
+    $("cal-led").value = led;
+    await request({ type: "calibrationStep", settings: draft, led: edgePreview ? null : led - 1 });
+    $("cal-status").textContent = edgePreview ? "Mapped edges: red left · green top · blue right · amber bottom" : `Physical LED ${led} of ${draft.count}`;
+    return true;
+  }
+  const safe = action => async () => { try { await action(); } catch (e) { $("cal-status").textContent = String(e); } };
+  $("calibrate").onclick = () => run(async () => {
+    await save();
+    draft = structuredClone(settings); edgePreview = false;
+    await request({ type: "calibrationStart" });
+    $("cal-count").value = draft.count; $("cal-led").value = 1;
+    $("cal-sides").value = draft.sides; $("cal-offset").value = draft.offset; $("cal-reverse").checked = draft.reverse;
+    dialog.showModal(); await step();
+  });
+  for (const id of ["cal-count", "cal-sides", "cal-offset", "cal-reverse"]) $(id).onchange = safe(step);
+  $("cal-led").onchange = safe(async () => { edgePreview = false; await step(); });
+  $("cal-prev").onclick = safe(async () => { edgePreview = false; $("cal-led").value = Math.max(1, Number($("cal-led").value) - 1); await step(); });
+  $("cal-next").onclick = safe(async () => { edgePreview = false; $("cal-led").value = Math.min(draft.count, Number($("cal-led").value) + 1); await step(); });
+  $("cal-preview").onclick = safe(async () => { edgePreview = true; await step(); });
+  async function end(apply, stop = false) {
+    const state = await request(stop ? { type: "power", on: false } : { type: "calibrationEnd", apply });
+    settings = state.settings; dialog.close(); updateUI();
+  }
+  $("cal-apply").onclick = safe(async () => { if (await step()) await end(true); });
+  $("cal-cancel").onclick = safe(() => end(false));
+  $("cal-stop").onclick = safe(() => end(false, true));
+  dialog.addEventListener("cancel", e => { e.preventDefault(); safe(() => end(false))(); });
+}
+let library = { profiles: [] };
+async function initProfiles() {
+  library = await invoke("profile_library", { library: null });
+  renderProfiles();
+  await window.__TAURI__.event.listen("external-settings", async ({ payload }) => {
+    clearTimeout(saveTimer); saveTimer = null; previewDirty = false;
+    await previewPending;
+    const latest = await request({ type: "snapshot" });
+    settings = latest.settings; renderRuntime(latest); updateUI();
+    if (["screen", "blend"].includes(settings.mode)) await refreshDisplays();
+  });
+  await window.__TAURI__.event.listen("control-error", ({ payload }) => notice(payload, true));
+  $("profile-save").onclick = () => run(async () => {
+    await save();
+    const name = $("profile-name").value.trim();
+    if (!name) throw new Error("Enter a profile name.");
+    await editLibrary(next => next.profiles.push({ id: crypto.randomUUID(), name, favorite: true, shortcut: "", settings: { ...settings } }));
+    $("profile-name").value = "";
+  });
+}
+async function editLibrary(edit) {
+  const next = structuredClone(library); edit(next);
+  try {
+    library = await invoke("profile_library", { library: next });
+    $("profile-message").textContent = "Saved"; renderProfiles();
+  } catch (e) { $("profile-message").textContent = String(e); throw e; }
+}
+function renderProfiles() {
+  $("profile-list").replaceChildren();
+  library.profiles.forEach((p, i) => {
+    const row = document.createElement("div"); row.className = "profile-row";
+    const apply = document.createElement("button"); apply.className = "profile-apply";
+    apply.textContent = p.name + " · " + labels[p.settings.mode];
+    apply.onclick = () => run(async () => { await save(); const state = await invoke("apply_profile", { id: p.id }); settings = state.settings; renderRuntime(state); });
+    row.append(apply);
+    const editor = document.createElement("details"); const summary = document.createElement("summary"); summary.textContent = "Edit"; editor.append(summary); row.append(editor);
+    const fields = document.createElement("div"); fields.className = "profile-fields"; editor.append(fields);
+    const field = (label, value) => {
+      const wrap = document.createElement("label"); wrap.textContent = label;
+      const input = document.createElement("input"); input.value = value; input.maxLength = 60;
+      wrap.append(input); fields.append(wrap); return input;
+    };
+    const name = field("Name", p.name); name.maxLength = 50;
+    const shortcut = field("Global shortcut (optional)", p.shortcut); shortcut.placeholder = "Control+Shift+1";
+    const button = (text, action) => {
+      const b = document.createElement("button"); b.className = "secondary"; b.textContent = text;
+      b.onclick = () => run(action); fields.append(b); return b;
+    };
+    button("Save name & shortcut", () => editLibrary(n => { n.profiles[i].name = name.value.trim(); n.profiles[i].shortcut = shortcut.value.trim(); }));
+    button(p.favorite ? "★ Favorite" : "☆ Favorite", () => editLibrary(n => { n.profiles[i].favorite = !p.favorite; })).setAttribute("aria-pressed", String(p.favorite));
+    button("Update settings", async () => { await save(); await editLibrary(n => { n.profiles[i].settings = { ...settings }; }); });
+    button("Duplicate", () => editLibrary(n => { n.profiles.splice(i + 1, 0, { ...structuredClone(p), id: crypto.randomUUID(), name: (p.name + " copy").slice(0, 50), shortcut: "" }); }));
+    button("Move up", () => editLibrary(n => { [n.profiles[i-1], n.profiles[i]] = [n.profiles[i], n.profiles[i-1]]; })).disabled = i === 0;
+    button("Move down", () => editLibrary(n => { [n.profiles[i+1], n.profiles[i]] = [n.profiles[i], n.profiles[i+1]]; })).disabled = i === library.profiles.length - 1;
+    button("Delete", () => editLibrary(n => { n.profiles.splice(i, 1); }));
+    $("profile-list").append(row);
+  });
+  if (!library.profiles.length) $("profile-message").textContent = "No saved profiles yet.";
 }
 init().catch((error) => notice(`Unable to initialize: ${error}`, true));

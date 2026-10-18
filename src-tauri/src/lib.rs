@@ -1,4 +1,5 @@
 mod audio;
+mod beat;
 mod capture;
 #[cfg(target_os = "windows")]
 mod capture_windows;
@@ -12,19 +13,17 @@ mod lighting;
 #[cfg(target_os = "linux")]
 mod linux;
 mod platform;
+mod profiles;
 mod protocol;
 mod settings;
+mod tray;
 
 use engine::{Action, Handle, Snapshot};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
-use tauri::{
-    menu::{Menu, MenuItem},
-    tray::TrayIconBuilder,
-    Emitter, Manager,
-};
+use tauri::{Emitter, Manager};
 struct Preview(Arc<AtomicBool>);
 
 #[tauri::command]
@@ -157,7 +156,9 @@ pub fn run() {
             quit,
             platform_name,
             effect_previews,
-            launch_at_login
+            launch_at_login,
+            profiles::profile_library,
+            profiles::apply_profile
         ])
         .setup(|app| {
             let background = std::env::args().any(|arg| arg == "--autostart");
@@ -209,31 +210,12 @@ pub fn run() {
                 handle.system_event(lifecycle::SystemEvent::Ready, false);
             }
             app.manage(handle);
+            if let Err(e) = app.handle().plugin(tauri_plugin_global_shortcut::Builder::new().build()) {
+                app.state::<Handle>().system_event(lifecycle::SystemEvent::Warning(format!("Global shortcuts unavailable: {e}. Profiles can still be selected in the app or tray.")), false);
+            }
             app.manage(AtomicBool::new(false));
-            let open = MenuItem::with_id(app, "open", "Open DynamicLight", true, None::<&str>)?;
-            let off = MenuItem::with_id(app, "off", "Turn lights off", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&open, &off, &quit])?;
-            TrayIconBuilder::new()
-                .icon(
-                    app.default_window_icon()
-                        .cloned()
-                        .ok_or("Missing app icon")?,
-                )
-                .tooltip("DynamicLight")
-                .menu(&menu)
-                .on_menu_event(|app, event| match event.id.as_ref() {
-                    "open" => show(app),
-                    "off" => {
-                        let handle = app.state::<Handle>().inner().clone();
-                        tauri::async_runtime::spawn_blocking(move || {
-                            let _ = handle.request(Action::Power { on: false });
-                        });
-                    }
-                    "quit" => app.exit(0),
-                    _ => {}
-                })
-                .build(app)?;
+            profiles::init(app.handle()).map_err(std::io::Error::other)?;
+            tray::init(app.handle())?;
             if let Some(window) = app.get_webview_window("main") {
                 if !background {
                     window.show()?;

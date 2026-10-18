@@ -1,6 +1,6 @@
 [package]
 name = "dynamiclight"
-version = "0.4.0"
+version = "0.5.0"
 description = "Local USB monitor backlight controller"
 authors = ["mskutin"]
 license = "MIT"
@@ -16,6 +16,7 @@ cc = "1"
 tauri = { version = "2.12.4", features = ["tray-icon", "image-png"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-autostart = "2"
+tauri-plugin-global-shortcut = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 hidapi = "2.6.7"

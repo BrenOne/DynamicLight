@@ -22,20 +22,29 @@ macOS needs version 13 or newer. Linux builds target Ubuntu 24.04+; screen sync 
 ## Getting started
 
 1. Plug in your USB strip and close SyncLight.
-2. Click **Color**, **Screen**, **Music**, or **Effects**. The app connects and starts that mode in one action.
+2. Click **Color**, **Screen**, **Music**, **Blend**, or **Effects**. The app connects and starts that mode in one action.
 3. Use **Stop** to stop lighting, or **Start** to resume the selected mode.
-4. Adjust brightness. Open **Strip setup & behavior** if you need to change the number or order of LEDs.
+4. Adjust brightness. Use **Strip setup & behavior → Calibrate strip** to check LED count, direction, and placement.
 
 | Mode | What it does |
 | --- | --- |
 | Color | One color, at your chosen brightness |
 | Screen | Colors from the edges of your screen |
-| Music | Spectrum, bass pulse, level meter, or color wave from computer audio or your microphone |
+| Music | Spectrum, bass pulse, beat pulse, level meter, or color wave from computer audio or your microphone |
+| Blend | Screen colors with audio-reactive brightness; silence keeps normal screen lighting |
 | Effects | Color flow, aurora, breathe, comet, or ember, with adjustable speed |
 
 Effect thumbnails animate using the same native patterns as the strip, including your palette, speed, and brightness. They pause when hidden and respect reduced-motion settings.
 
-Tune music with sensitivity, a noise gate, and fade-out controls. Choose an Aurora, Ocean, Sunset, or custom-color palette. Changes reach the lighting engine while you drag; settings save when you pause.
+Tune music with input gain, sensitivity, a noise gate, and fade-out controls. Choose an Aurora, Ocean, Sunset, or custom-color palette. Changes reach the lighting engine while you drag; settings save when you pause.
+
+Open **Profiles** to save settings for work, films, or games. Apply a profile in one click, add it to tray favorites, or assign a shortcut such as `Control+Shift+1` (`Command+Shift+1` on Mac). Selecting a capture profile starts its screen/audio source and may request OS permission. Profiles preserve your strip layout, brightness limits, and startup preferences.
+
+The tray/menu bar offers Start/Stop, brightness, recent colors, favorite profiles, and Retry. Changes also appear in the main window. Linux global shortcuts need X11/XWayland support; if registration is unavailable, use the app or tray.
+
+In Screen and Blend, **Screen color adjustments** offers black-bar detection, RGB balance, saturation, and gamma. **Brightness limits** can cap output, soften abrupt changes, or keep a small ambient glow. Stop always turns lighting off immediately. HDR and protected video can differ from the picture you see.
+
+Calibration temporarily pauses the current scene. Step through individual LEDs, preview the mapped edges, then apply or cancel to restore the scene. An unattended test stops after five minutes. In Blend, losing one capture source uses the remaining source and shows Retry; losing both stops output until recovery.
 
 The live canvas previews outgoing LED colors. **Diagnostics** shows USB frame rate, successful writes, and audio input. The controller cannot report whether the physical LEDs are lit.
 

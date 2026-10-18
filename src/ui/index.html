@@ -42,6 +42,7 @@
               <path d="M4 10v4m4-8v12m4-15v18m4-14v10m4-7v4" /></svg></span
           ><span><strong>Music</strong><small>Audio reactive</small></span>
         </button>
+        <button data-mode="blend" aria-pressed="false"><span class="mode-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 10v2m4-5v8m4-6v4"/></svg></span><span><strong>Blend</strong><small>Screen + audio</small></span></button>
         <button data-mode="rainbow" aria-pressed="false">
           <span class="mode-icon"
             ><svg viewBox="0 0 24 24" aria-hidden="true">
@@ -49,6 +50,16 @@
           ><span><strong>Effects</strong><small>Animated patterns</small></span>
         </button>
       </div>
+      <details class="panel profiles">
+        <summary>Profiles <span class="muted">Save settings · shortcuts · tray favorites</span></summary>
+        <div class="profile-create">
+          <label for="profile-name">Name</label><input id="profile-name" maxlength="50" placeholder="Movies" />
+          <button id="profile-save" class="secondary">Save current settings</button>
+        </div>
+        <p class="help">Selecting a profile starts lighting. Screen and audio profiles may request capture permission. Strip layout and startup preferences stay unchanged.</p>
+        <div id="profile-list"></div>
+        <p id="profile-message" class="help" role="status"></p>
+      </details>
       <div class="workspace">
         <div class="stage-column">
           <section class="preview-card" aria-label="Live lighting preview">
@@ -155,9 +166,11 @@
               <button data-music="spectrum">Spectrum</button
               ><button data-music="bass">Bass pulse</button
               ><button data-music="vu">Level meter</button
-              ><button data-music="wave">Color wave</button>
+              ><button data-music="wave">Color wave</button><button data-music="beat">Beat pulse</button>
             </div>
             <div class="settings-grid">
+              <label>Input gain <output id="input-gain-value">0 dB</output><input id="input-gain" type="range" min="-24" max="24" value="0" /></label>
+              <label id="blend-control">Audio blend <output id="blend-value">60%</output><input id="blend" type="range" min="0" max="100" value="60" /><small>Silence keeps normal screen brightness.</small></label>
               <label for="audio-source"
                 >Audio source<select id="audio-source">
                   <option value="system">Computer audio</option>
@@ -201,6 +214,18 @@
               </div>
             </div>
             <p id="capture-help" class="help"></p>
+            <details id="screen-tuning"><summary>Screen color adjustments</summary>
+              <label class="checkbox"><input id="exclude-bars" type="checkbox" /> Exclude black bars</label>
+              <div class="settings-grid">
+                <label>Red <output id="red-balance-value">100%</output><input id="red-balance" type="range" min="0" max="200" /></label>
+                <label>Green <output id="green-balance-value">100%</output><input id="green-balance" type="range" min="0" max="200" /></label>
+                <label>Blue <output id="blue-balance-value">100%</output><input id="blue-balance" type="range" min="0" max="200" /></label>
+                <label>Saturation <output id="saturation-value">100%</output><input id="saturation" type="range" min="0" max="200" /></label>
+                <label>Gamma <output id="gamma-value">1.00</output><input id="gamma" type="range" min="50" max="250" /></label>
+              </div>
+              <button id="reset-screen" class="secondary">Reset screen adjustments</button>
+              <p class="help">Bar detection waits for a stable border. Dark scenes retain the previous crop. HDR and protected video may not match the displayed picture.</p>
+            </details>
           </section>
         </div>
         <div class="controls-column">
@@ -364,6 +389,12 @@
             >Closing the window keeps lighting running in the tray.</span
           >
         </p>
+        <button id="calibrate" class="secondary">Calibrate strip…</button>
+        <details class="comfort"><summary>Brightness limits</summary><div class="settings-grid">
+          <label>Maximum brightness <output id="max-brightness-value">100%</output><input id="max-brightness" type="range" min="0" max="100" /></label>
+          <label>Change limit <output id="transition-limit-value">Off</output><input id="transition-limit" type="range" min="0" max="500" step="10" /><small>Percentage points per second. Zero disables the limit. Lower values soften flashes.</small></label>
+          <label>Minimum glow <output id="minimum-glow-value">0%</output><input id="minimum-glow" type="range" min="0" max="20" /><small>Only while lighting is running. Stop always turns it off.</small></label>
+        </div><p class="help">These settings apply to all modes. They cannot guarantee protection from photosensitive reactions.</p></details>
         <div class="behavior-grid">
           <fieldset><legend>Startup</legend>
             <label class="checkbox"><input id="launch-at-login" type="checkbox" /> Launch at login</label>
@@ -390,5 +421,23 @@
       </footer>
     </main>
     <script src="renderer.js"></script>
+    <dialog id="calibration-dialog" aria-labelledby="calibration-title">
+      <h2 id="calibration-title">Calibrate your strip</h2>
+      <p class="help">1. Step through LEDs to find the first light and count. The test uses low brightness and pauses your current lighting.</p>
+      <div class="settings-grid">
+        <label>LED count<input id="cal-count" type="number" min="1" max="127" /></label>
+        <label>Test LED<input id="cal-led" type="number" min="1" max="127" /></label>
+      </div>
+      <div class="input-row"><button id="cal-prev" class="secondary">Previous LED</button><button id="cal-next" class="secondary">Next LED</button></div>
+      <p class="help">2. Set the route. In the edge test, red is left, green is top, blue is right and amber is bottom. Adjust offset and direction until they match.</p>
+      <div class="settings-grid">
+        <label>Coverage<select id="cal-sides"><option value="3">Three sides</option><option value="4">Four sides</option></select></label>
+        <label>Starting offset<input id="cal-offset" type="number" min="0" max="126" /></label>
+        <label class="checkbox"><input id="cal-reverse" type="checkbox" /> Reverse direction</label>
+      </div>
+      <button id="cal-preview" class="secondary">Preview mapped edges</button>
+      <p id="cal-status" role="status"></p>
+      <div class="input-row"><button id="cal-apply" class="power">Apply layout</button><button id="cal-cancel" class="secondary">Cancel & restore</button><button id="cal-stop" class="secondary">Stop lighting</button></div>
+    </dialog>
   </body>
 </html>

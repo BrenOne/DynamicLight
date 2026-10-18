@@ -5,6 +5,13 @@ use std::f32::consts::TAU;
 fn scale(rgb: Rgb, level: f32) -> Rgb {
     rgb.map(|c| (c as f32 * level.clamp(0.0, 1.0)).round() as u8)
 }
+pub fn blend(colors: &[Rgb], bands: &[f32], strength: u8) -> Vec<Rgb> {
+    let peak = bands.iter().copied().fold(0.0, f32::max);
+    // Silence keeps screen brightness; audio accents dim between peaks without amplification.
+    let activity = (peak * 12.0).clamp(0.0, 1.0);
+    let level = 1.0 - strength as f32 / 100.0 * activity * (1.0 - peak);
+    colors.iter().map(|c| scale(*c, level)).collect()
+}
 pub fn palette(s: &Settings, position: f32) -> Rgb {
     let stops = match s.palette.as_str() {
         "ocean" => [[20, 60, 255], [0, 220, 220], [80, 160, 255]],
@@ -88,6 +95,13 @@ pub fn envelope(previous: &mut Vec<f32>, incoming: &[f32], dt: f32, release: u8)
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn blend_silence_is_screen_and_never_amplifies_colors() {
+        let colors = [[100, 200, 255]];
+        assert_eq!(blend(&colors, &[0.0; 32], 100), colors);
+        assert_eq!(blend(&colors, &[0.5; 32], 0), colors);
+        assert_eq!(blend(&colors, &[0.5; 32], 100), [[50, 100, 128]]);
+    }
     #[test]
     fn palettes_wrap_negative_and_boundary_phases() {
         for name in ["aurora", "ocean", "sunset", "mono"] {

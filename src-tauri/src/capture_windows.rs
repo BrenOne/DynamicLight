@@ -14,6 +14,7 @@ use windows::{
 };
 
 pub struct Desktop {
+    crop: lighting::Crop,
     device: ID3D11Device,
     context: ID3D11DeviceContext,
     duplication: IDXGIOutputDuplication,
@@ -72,6 +73,7 @@ impl Desktop {
                         device,
                         context,
                         duplication,
+                        crop: lighting::Crop::default(),
                         staging: None,
                         width: 0,
                         height: 0,
@@ -138,13 +140,14 @@ impl Desktop {
                 mapped.pData.cast::<u8>(),
                 mapped.RowPitch as usize * self.height as usize,
             );
-            let colors = lighting::sample_strided(
+            let colors = lighting::sample_tracked(
                 pixels,
                 self.width,
                 self.height,
                 mapped.RowPitch as usize,
                 true,
                 settings,
+                &mut self.crop,
             );
             self.context.Unmap(staging, 0);
             Ok(colors)
