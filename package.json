@@ -15,8 +15,8 @@
     "test": "node --test test/*.test.cjs",
     "devices": "node scripts/devices.cjs",
     "pack": "electron-builder --dir",
-    "build:win": "electron-builder --win portable",
-    "build:mac": "electron-builder --mac dmg --arm64 --x64"
+    "build:win": "electron-builder --win portable --publish never",
+    "build:mac": "electron-builder --mac dmg --arm64 --x64 --publish never"
   },
   "dependencies": { "node-hid": "3.4.0" },
   "devDependencies": { "electron": "44.9.0", "electron-builder": "26.15.3" },
