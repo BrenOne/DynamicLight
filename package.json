@@ -1,0 +1,41 @@
+{
+  "name": "dynamiclight",
+  "productName": "DynamicLight",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "author": "mskutin",
+  "repository": { "type": "git", "url": "https://github.com/mskutin/DynamicLight.git" },
+  "homepage": "https://github.com/mskutin/DynamicLight#readme",
+  "bugs": { "url": "https://github.com/mskutin/DynamicLight/issues" },
+  "description": "Direct USB control for SyncLight-compatible monitor lighting",
+  "main": "src/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.cjs",
+    "devices": "node scripts/devices.cjs",
+    "pack": "electron-builder --dir",
+    "build:win": "electron-builder --win portable",
+    "build:mac": "electron-builder --mac dmg --arm64 --x64"
+  },
+  "dependencies": { "node-hid": "3.4.0" },
+  "devDependencies": { "electron": "44.9.0", "electron-builder": "26.15.3" },
+  "build": {
+    "appId": "com.dynamiclight.desktop",
+    "productName": "DynamicLight",
+    "files": ["src/**/*", "assets/**/*", "package.json", "LICENSE"],
+    "asarUnpack": ["node_modules/node-hid/**/*"],
+    "npmRebuild": false,
+    "directories": { "output": "dist" },
+    "win": { "target": ["portable"], "icon": "assets/icon.png" },
+    "mac": {
+      "target": ["dmg"],
+      "icon": "assets/icon.png",
+      "category": "public.app-category.utilities",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "React to music using your chosen microphone.",
+        "NSAudioCaptureUsageDescription": "React to music playing on your Mac."
+      }
+    }
+  }
+}

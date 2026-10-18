@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.local/
+*.log
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.pfx
+.DS_Store
+Thumbs.db

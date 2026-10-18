@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'none'">
+  <title>DynamicLight</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <aside>
+    <div class="brand"><span class="brand-mark">D</span><div>DynamicLight<small>YOUR SPACE. YOUR LIGHT.</small></div></div>
+    <div class="nav-label">WORKSPACE</div>
+    <div class="nav-active"><span>◈</span> Studio</div>
+    <div class="device-card"><span class="eyebrow">USB CONTROLLER</span><div class="device-icon">▥</div><strong id="device-name">Monitor backlight</strong><p id="device-detail">65 LEDs · USB HID</p><div class="status"><i id="status-dot"></i><span id="status-label">Not connected</span></div><button id="connect" class="connect-button">Connect strip <span>↗</span></button></div>
+    <div class="sidebar-bottom"><span class="local-dot"></span> Runs locally on your computer<small>DynamicLight · v0.1.0</small></div>
+  </aside>
+  <main>
+    <header><div><div class="eyebrow">LIGHTING STUDIO</div><h1>A little atmosphere.</h1><p>Make the space around your screen your own.</p></div><button id="power" class="power" aria-pressed="true">⏻ <span>Lights on</span></button></header>
+    <div id="notice" class="notice" role="status">Close SyncLight, then connect your strip to get started.</div>
+    <section class="preview-card" aria-label="Live lighting preview">
+      <div class="preview-top"><span class="preview-label"><i></i> LIVE PREVIEW</span><span id="mode-badge">Solid color</span></div>
+      <canvas id="preview" width="1000" height="300" aria-label="Monitor and LED color preview"></canvas>
+      <div class="preview-bottom"><span id="preview-caption">A steady glow, exactly how you like it.</span><span id="frame-rate">USB · Ready</span></div>
+    </section>
+    <div class="section-title"><h2>Make it yours</h2><span>Choose a lighting mode</span></div>
+    <div class="modes" role="group" aria-label="Lighting mode">
+      <button data-mode="solid" class="selected" aria-pressed="true"><span class="mode-icon">◉</span><strong>Solid color</strong><small>Set the mood</small></button>
+      <button data-mode="screen" aria-pressed="false"><span class="mode-icon">▣</span><strong>Screen sync</strong><small>Beyond the edges</small></button>
+      <button data-mode="music" aria-pressed="false"><span class="mode-icon">♫</span><strong>Music</strong><small>Feel every beat</small></button>
+      <button data-mode="rainbow" aria-pressed="false"><span class="mode-icon">✺</span><strong>Color flow</strong><small>A moving spectrum</small></button>
+    </div>
+    <section class="control-card">
+      <div class="color-control"><label for="color">Your color <span id="hex-value">#9B72FF</span></label><div class="swatches"><input type="color" id="color" value="#9b72ff" aria-label="Custom light color"><button data-color="#9b72ff" class="swatch violet" aria-label="Violet"></button><button data-color="#568cff" class="swatch blue" aria-label="Blue"></button><button data-color="#4eddb6" class="swatch mint" aria-label="Mint"></button><button data-color="#ffbb74" class="swatch warm" aria-label="Warm white"></button><button data-color="#ff627d" class="swatch rose" aria-label="Rose"></button><button data-color="#ffffff" class="swatch white" aria-label="White"></button></div></div>
+      <div class="brightness-control"><label for="brightness">Brightness <span id="brightness-value">38%</span></label><div class="range-row"><span>☼</span><input id="brightness" type="range" min="0" max="100" value="38"><span>☀</span></div><small>Find the right balance for your room.</small></div>
+      <div id="capture-controls" class="extra-controls" hidden><label for="screen">Display</label><div class="input-row"><select id="screen"><option value="">Primary display</option></select><button id="refresh-screens" class="secondary">Refresh</button><button id="capture" class="secondary">Start capture</button></div><p id="capture-help">Screen capture stays on this computer.</p></div>
+      <div id="music-controls" class="extra-controls" hidden><label for="audio-source">Audio source</label><select id="audio-source"><option value="system">Computer audio</option><option value="microphone">Microphone</option></select><label for="sensitivity">Sensitivity <span id="sensitivity-value">50%</span></label><input type="range" id="sensitivity" min="1" max="100" value="50"><p>Computer audio reacts to playback. Microphone mode listens to your room.</p></div>
+    </section>
+    <details class="setup"><summary><span>Strip setup &amp; behavior</span><span>Fine-tune your space ＋</span></summary><div class="setup-grid">
+      <label>LED count<input id="count" type="number" min="1" max="127" value="65"></label>
+      <label>Monitor coverage<select id="sides"><option value="3">Three sides (no bottom)</option><option value="4">Four sides</option></select></label>
+      <label>Starting offset<input id="offset" type="number" min="0" max="126" value="0"></label>
+      <label>Frame rate<select id="fps"><option value="30">30 FPS</option><option value="20">20 FPS</option><option value="10">10 FPS</option></select></label>
+      <label>Smoothing <span id="smoothing-value">65%</span><input id="smoothing" type="range" min="0" max="95" value="65"></label>
+      <label class="checkbox"><input id="reverse" type="checkbox"> Reverse LED direction</label>
+      <label class="checkbox"><input id="off-on-sleep" type="checkbox" checked> Lights off when computer sleeps</label>
+      <label class="checkbox"><input id="off-on-quit" type="checkbox" checked> Lights off when app quits</label>
+    </div><p>Layout starts at the bottom-left, travels up, then across the top. Use direction and offset to match your installation. Closing the window keeps lighting running in the tray.</p></details>
+    <footer><span id="connection-message">Waiting for your strip</span><span>Designed for Windows &amp; macOS</span></footer>
+  </main>
+  <video id="capture-video" muted playsinline hidden></video>
+  <script src="../lighting.js"></script><script src="renderer.js"></script>
+</body>
+</html>

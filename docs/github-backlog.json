@@ -1,0 +1,176 @@
+{
+  "issues": {
+    "REL-01": {
+      "number": 1,
+      "url": "https://github.com/mskutin/DynamicLight/issues/1"
+    },
+    "REL-02": {
+      "number": 2,
+      "url": "https://github.com/mskutin/DynamicLight/issues/2"
+    },
+    "SCR-01": {
+      "number": 3,
+      "url": "https://github.com/mskutin/DynamicLight/issues/3"
+    },
+    "HW-01": {
+      "number": 4,
+      "url": "https://github.com/mskutin/DynamicLight/issues/4"
+    },
+    "AUT-01": {
+      "number": 5,
+      "url": "https://github.com/mskutin/DynamicLight/issues/5"
+    },
+    "AUD-01": {
+      "number": 6,
+      "url": "https://github.com/mskutin/DynamicLight/issues/6"
+    },
+    "REL-03": {
+      "number": 7,
+      "url": "https://github.com/mskutin/DynamicLight/issues/7"
+    },
+    "HW-02": {
+      "number": 8,
+      "url": "https://github.com/mskutin/DynamicLight/issues/8"
+    },
+    "AUT-02": {
+      "number": 9,
+      "url": "https://github.com/mskutin/DynamicLight/issues/9"
+    },
+    "AUT-03": {
+      "number": 10,
+      "url": "https://github.com/mskutin/DynamicLight/issues/10"
+    },
+    "FX-01": {
+      "number": 11,
+      "url": "https://github.com/mskutin/DynamicLight/issues/11"
+    },
+    "FX-02": {
+      "number": 12,
+      "url": "https://github.com/mskutin/DynamicLight/issues/12"
+    },
+    "SCR-02": {
+      "number": 13,
+      "url": "https://github.com/mskutin/DynamicLight/issues/13"
+    },
+    "FX-03": {
+      "number": 14,
+      "url": "https://github.com/mskutin/DynamicLight/issues/14"
+    },
+    "AUT-04": {
+      "number": 15,
+      "url": "https://github.com/mskutin/DynamicLight/issues/15"
+    },
+    "INT-01": {
+      "number": 16,
+      "url": "https://github.com/mskutin/DynamicLight/issues/16"
+    },
+    "INT-02": {
+      "number": 17,
+      "url": "https://github.com/mskutin/DynamicLight/issues/17"
+    },
+    "AUT-05": {
+      "number": 18,
+      "url": "https://github.com/mskutin/DynamicLight/issues/18"
+    },
+    "FX-04": {
+      "number": 19,
+      "url": "https://github.com/mskutin/DynamicLight/issues/19"
+    },
+    "FX-05": {
+      "number": 20,
+      "url": "https://github.com/mskutin/DynamicLight/issues/20"
+    },
+    "FX-06": {
+      "number": 21,
+      "url": "https://github.com/mskutin/DynamicLight/issues/21"
+    },
+    "FX-07": {
+      "number": 22,
+      "url": "https://github.com/mskutin/DynamicLight/issues/22"
+    },
+    "HW-03": {
+      "number": 23,
+      "url": "https://github.com/mskutin/DynamicLight/issues/23"
+    },
+    "INT-03": {
+      "number": 24,
+      "url": "https://github.com/mskutin/DynamicLight/issues/24"
+    },
+    "AUT-06": {
+      "number": 25,
+      "url": "https://github.com/mskutin/DynamicLight/issues/25"
+    },
+    "REL-04": {
+      "number": 26,
+      "url": "https://github.com/mskutin/DynamicLight/issues/26"
+    },
+    "INT-04": {
+      "number": 27,
+      "url": "https://github.com/mskutin/DynamicLight/issues/27"
+    },
+    "UI-01": {
+      "number": 28,
+      "url": "https://github.com/mskutin/DynamicLight/issues/28"
+    },
+    "UI-02": {
+      "number": 29,
+      "url": "https://github.com/mskutin/DynamicLight/issues/29"
+    },
+    "UI-03": {
+      "number": 30,
+      "url": "https://github.com/mskutin/DynamicLight/issues/30"
+    },
+    "UI-04": {
+      "number": 31,
+      "url": "https://github.com/mskutin/DynamicLight/issues/31"
+    },
+    "UI-05": {
+      "number": 32,
+      "url": "https://github.com/mskutin/DynamicLight/issues/32"
+    },
+    "UI-06": {
+      "number": 33,
+      "url": "https://github.com/mskutin/DynamicLight/issues/33"
+    },
+    "UI-07": {
+      "number": 34,
+      "url": "https://github.com/mskutin/DynamicLight/issues/34"
+    },
+    "UI-08": {
+      "number": 35,
+      "url": "https://github.com/mskutin/DynamicLight/issues/35"
+    },
+    "UI-09": {
+      "number": 36,
+      "url": "https://github.com/mskutin/DynamicLight/issues/36"
+    },
+    "UI-10": {
+      "number": 37,
+      "url": "https://github.com/mskutin/DynamicLight/issues/37"
+    },
+    "PLAT-01": {
+      "number": 38,
+      "url": "https://github.com/mskutin/DynamicLight/issues/38"
+    }
+  },
+  "project": {
+    "closed": false,
+    "fields": {
+      "totalCount": 13
+    },
+    "id": "PVT_kwHOALFZ-84BnmnI",
+    "items": {
+      "totalCount": 0
+    },
+    "number": 4,
+    "owner": {
+      "login": "mskutin",
+      "type": "User"
+    },
+    "public": true,
+    "readme": "All items start in Backlog. P1 covers foundations and core usability; P2 expands the product; P3 covers exploratory integrations. Foundation, Studio, and Ecosystem are planning groups, not dated release commitments. Each issue includes acceptance criteria.",
+    "shortDescription": "Feature and UI backlog for DynamicLight: reliable cross-platform USB lighting, a visual studio, and integrations.",
+    "title": "DynamicLight Roadmap",
+    "url": "https://github.com/users/mskutin/projects/4"
+  }
+}
