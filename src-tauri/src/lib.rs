@@ -3,6 +3,7 @@ mod capture;
 #[cfg(target_os = "windows")]
 mod capture_windows;
 mod device;
+mod effects;
 mod engine;
 mod lighting;
 #[cfg(target_os = "linux")]
@@ -23,9 +24,78 @@ use tauri::{
 };
 struct Preview(Arc<AtomicBool>);
 
+#[cfg(test)]
+mod preview_tests {
+    use super::*;
+    #[test]
+    fn thumbnails_use_native_effects_and_validate_input() {
+        let s = settings::Settings {
+            brightness: 100,
+            palette: "ocean".into(),
+            ..Default::default()
+        };
+        let frames = effect_previews(s.clone(), 2.0).unwrap();
+        for (i, effect) in ["rainbow", "aurora", "breath", "comet", "ember"]
+            .iter()
+            .enumerate()
+        {
+            let expected = effects::animated(
+                &settings::Settings {
+                    count: 48,
+                    effect: (*effect).into(),
+                    ..s.clone()
+                },
+                2.0,
+            );
+            assert_eq!(frames[i], expected);
+        }
+        assert!(effect_previews(s.clone(), f32::NAN).is_err());
+        assert!(effect_previews(s.clone(), -1.0).is_err());
+        assert!(effect_previews(
+            settings::Settings {
+                count: 128,
+                ..s.clone()
+            },
+            0.0
+        )
+        .is_err());
+        assert!(
+            effect_previews(settings::Settings { brightness: 0, ..s }, 2.0)
+                .unwrap()
+                .iter()
+                .flatten()
+                .all(|c| *c == [0; 3])
+        );
+    }
+}
+
 #[tauri::command]
 fn platform_name() -> &'static str {
     std::env::consts::OS
+}
+#[tauri::command]
+fn effect_previews(
+    settings: settings::Settings,
+    seconds: f32,
+) -> Result<Vec<Vec<protocol::Rgb>>, String> {
+    settings.validate()?;
+    if !seconds.is_finite() || !(0.0..=86400.0).contains(&seconds) {
+        return Err("Invalid preview time".into());
+    }
+    Ok(["rainbow", "aurora", "breath", "comet", "ember"]
+        .iter()
+        .map(|name| {
+            let s = settings::Settings {
+                effect: (*name).into(),
+                count: 48,
+                ..settings.clone()
+            };
+            effects::animated(&s, seconds)
+                .iter()
+                .map(|rgb| rgb.map(|c| (c as f32 * s.brightness as f32 / 100.0).round() as u8))
+                .collect()
+        })
+        .collect())
 }
 
 #[tauri::command]
@@ -59,7 +129,8 @@ pub fn run() {
             control,
             displays,
             quit,
-            platform_name
+            platform_name,
+            effect_previews
         ])
         .setup(|app| {
             #[cfg(target_os = "windows")]

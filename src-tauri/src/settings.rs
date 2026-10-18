@@ -18,6 +18,12 @@ pub struct Settings {
     pub screen_id: String,
     pub off_on_sleep: bool,
     pub off_on_quit: bool,
+    pub effect: String,
+    pub palette: String,
+    pub speed: u8,
+    pub music_style: String,
+    pub noise_floor: u8,
+    pub release: u8,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -36,6 +42,12 @@ impl Default for Settings {
             screen_id: String::new(),
             off_on_sleep: true,
             off_on_quit: true,
+            effect: "rainbow".into(),
+            palette: "aurora".into(),
+            speed: 35,
+            music_style: "spectrum".into(),
+            noise_floor: 0,
+            release: 40,
         }
     }
 }
@@ -55,6 +67,9 @@ impl Settings {
             || !(1..=100).contains(&self.sensitivity)
             || ![10, 20, 30].contains(&self.fps)
             || self.screen_id.len() > 200
+            || !(1..=100).contains(&self.speed)
+            || self.noise_floor > 20
+            || self.release > 100
         {
             return Err("Settings outside supported range".into());
         }
@@ -62,6 +77,12 @@ impl Settings {
             || !["system", "microphone"].contains(&self.audio_source.as_str())
         {
             return Err("Unknown lighting mode or audio source".into());
+        }
+        if !["rainbow", "aurora", "breath", "comet", "ember"].contains(&self.effect.as_str())
+            || !["aurora", "ocean", "sunset", "mono"].contains(&self.palette.as_str())
+            || !["spectrum", "bass", "vu", "wave"].contains(&self.music_style.as_str())
+        {
+            return Err("Unknown effect, palette or music style".into());
         }
         Ok(())
     }
@@ -95,6 +116,12 @@ mod tests {
             r#"{"offOnQuit":"false"}"#,
             r#"{"mode":"oops"}"#,
             r#"{"color":"💡fff"}"#,
+            r#"{"effect":"strobe"}"#,
+            r#"{"palette":"unknown"}"#,
+            r#"{"musicStyle":"unknown"}"#,
+            r#"{"speed":0}"#,
+            r#"{"noiseFloor":21}"#,
+            r#"{"release":101}"#,
         ] {
             assert!(serde_json::from_str::<Settings>(patch)
                 .and_then(|s| s.validate().map_err(serde::de::Error::custom))

@@ -1,99 +1,176 @@
-// Windows WebView2 integration test. --hardware explicitly enables USB and capture.
-// Run against a built app, with no other DynamicLight instance running.
-const assert = require('node:assert/strict');
-const { spawn } = require('node:child_process');
-const { once } = require('node:events');
-const path = require('node:path');
-const fs = require('node:fs');
-const { chromium } = require(process.env.PLAYWRIGHT_PATH || 'playwright-core');
-const hardware = process.argv.includes('--hardware');
-const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+// Native Windows UI/IPC test. Only --hardware may connect USB or capture.
+const assert = require("node:assert/strict");
+const { spawn } = require("node:child_process");
+const { once } = require("node:events");
+const path = require("node:path");
+const fs = require("node:fs");
+const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
+const hardware = process.argv.includes("--hardware");
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 (async () => {
-  const executable = process.env.DYNAMICLIGHT_EXECUTABLE || path.resolve('src-tauri/target/release/dynamiclight.exe');
-  const port = Number(process.env.DYNAMICLIGHT_TEST_PORT || 9223);
-  const child = spawn(executable, [], { env: { ...process.env, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}` }, stdio: 'ignore' });
+  const child = spawn(
+    process.env.DYNAMICLIGHT_EXECUTABLE ||
+      path.resolve("src-tauri/target/release/dynamiclight.exe"),
+    [],
+    {
+      env: {
+        ...process.env,
+        WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: "--remote-debugging-port=9223",
+      },
+      stdio: "ignore",
+    },
+  );
   let browser, page, original;
   const errors = [];
   try {
     for (let i = 0; i < 60; i++) {
-      if (child.exitCode !== null) throw new Error('App exited; another instance may already be running.');
-      try { browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`); break; } catch { await delay(500); }
+      if (child.exitCode !== null)
+        throw Error(
+          "App exited; close another instance or use a separate test identifier.",
+        );
+      try {
+        browser = await chromium.connectOverCDP("http://127.0.0.1:9223");
+        break;
+      } catch {
+        await delay(500);
+      }
     }
-    assert(browser, 'WebView2 debugging connection');
-    for (let i = 0; i < 40; i++) { page = browser.contexts()[0]?.pages().find(p => p.url().includes('tauri.localhost')); if (page) break; await delay(250); }
-    assert(page, 'Main WebView');
-    page.on('pageerror', e => errors.push(e.message));
-    await page.waitForFunction(() => typeof settings !== 'undefined' && settings);
-    const control = action => page.evaluate(action => window.__TAURI__.core.invoke('control', { action }), action);
-    original = (await control({ type: 'snapshot' })).settings;
-    assert.equal((await control({ type: 'snapshot' })).capturing, false);
-    await assert.rejects(control({ type: 'settings', settings: { ...original, count: 128 } }));
-    await assert.rejects(control({ type: 'suspend' }));
-    await page.locator('[data-mode="solid"]').click();
-    await page.locator('[data-color="#9b72ff"]').click();
-    await page.locator('#brightness').fill('38'); await delay(350);
-    await page.waitForFunction(() => !busy);
+    assert(browser);
+    for (let i = 0; i < 40; i++) {
+      page = browser
+        .contexts()[0]
+        ?.pages()
+        .find((p) => p.url().includes("tauri.localhost"));
+      if (page) break;
+      await delay(250);
+    }
+    assert(page);
+    page.on("pageerror", (e) => errors.push(e.message));
+    await page.waitForFunction(
+      () => typeof settings !== "undefined" && settings,
+    );
+    const control = (action) =>
+      page.evaluate(
+        (action) => window.__TAURI__.core.invoke("control", { action }),
+        action,
+      );
+    original = (await control({ type: "snapshot" })).settings;
+    assert.equal((await control({ type: "snapshot" })).capturing, false);
+    assert.equal((await control({ type: "snapshot" })).status.connected, false);
+    await assert.rejects(
+      control({ type: "settings", settings: { ...original, count: 128 } }),
+    );
+    await assert.rejects(control({ type: "suspend" }));
+    const frames = await page.evaluate(() =>
+      window.__TAURI__.core.invoke("effect_previews", { settings, seconds: 2 }),
+    );
+    assert.equal(frames.length, 5);
+    assert(frames.every((f) => f.length === 48));
+    const later = await page.evaluate(() =>
+      window.__TAURI__.core.invoke("effect_previews", { settings, seconds: 5 }),
+    );
+    assert.notDeepEqual(frames, later, "Thumbnails reflect native animation");
     if (hardware) {
-      await page.locator('#connect').click();
-      await page.waitForFunction(() => runtime.status.connected, { timeout: 15000 });
-      await page.waitForFunction(() => !busy);
-      await page.locator('[data-mode="screen"]').click();
-      await page.waitForFunction(() => !busy);
-      assert.match(await page.locator('#frame-rate').innerText(), /Capture stopped/);
-      assert.equal(await page.locator('#power span').innerText(), 'Power enabled');
-      await page.locator('#refresh-screens').click();
-      await page.waitForFunction(() => !busy);
-      // Starting capture must recover from both disconnected and power-off,
-      // without requiring separate controls in another part of the window.
-      await page.locator('#connect').click();
-      await page.waitForFunction(() => !runtime.status.connected && !busy);
-      await page.locator('#power').click();
-      await page.waitForFunction(() => !runtime.powered && !busy);
-      assert.equal(await page.locator('#capture').isEnabled(), true);
-      await page.locator('#capture').click();
-      await page.waitForFunction(() => runtime.capturing && runtime.captureSize[0] > 0, { timeout: 15000 });
-      assert.equal((await control({ type: 'snapshot' })).powered, true);
-      // Exclude display enumeration / capture startup from the FPS window.
-      await delay(3000);
-      let state = await control({ type: 'snapshot' });
-      console.log(JSON.stringify({ screen: { dimensions: state.captureSize, fps: state.fps, connected: state.status.connected } }));
-      assert(state.fps > 0 && state.status.connected);
-      await page.waitForFunction(() => !busy);
-      await page.locator('[data-mode="music"]').click();
-      await page.waitForFunction(() => !busy);
-      await page.locator('#audio-source').selectOption('system');
-      await page.locator('#capture').click();
-      await page.waitForFunction(() => runtime.capturing);
-      await delay(1500); state = await control({ type: 'snapshot' });
-      assert.equal(state.error, ''); assert(state.status.connected); assert(state.audioSamples > 0, 'System audio samples arrived');
-      console.log(JSON.stringify({ audio: { capturing: state.capturing, samples: state.audioSamples, fps: state.fps } }));
-      await page.waitForFunction(() => !busy);
-      await page.locator('[data-mode="rainbow"]').click();
-      await page.waitForFunction(() => !busy);
-      const before = await control({ type: 'snapshot' });
+      // No Connect/Power/Capture sequence: selecting the mode must do it all.
+      for (const mode of ["solid", "screen", "music", "rainbow"]) {
+        await page.locator(`[data-mode="${mode}"]`).click();
+        await page.waitForFunction(() => !busy);
+        const s = await control({ type: "snapshot" });
+        assert(s.status.connected && s.powered);
+        assert.equal(s.capturing, ["screen", "music"].includes(mode));
+        assert.equal(s.error, "");
+        if (mode === "screen") {
+          await delay(1500);
+          assert((await control({ type: "snapshot" })).captureSize[0] > 0);
+        }
+        if (mode === "music") {
+          await delay(1500);
+          assert((await control({ type: "snapshot" })).audioSamples > 0);
+        }
+      }
+      const before = await control({ type: "snapshot" });
       const session = await page.context().newCDPSession(page);
-      await session.send('Page.setWebLifecycleState', { state: 'frozen' }); await delay(2000);
-      await session.send('Page.setWebLifecycleState', { state: 'active' });
-      const after = await control({ type: 'snapshot' });
-      assert(after.framesWritten - before.framesWritten > 20, 'Native lighting continues with frozen renderer');
-      console.log(JSON.stringify({ backgroundFrames: after.framesWritten - before.framesWritten, fps: after.fps }));
-      await page.locator('#power').click(); await page.waitForFunction(() => !runtime.powered && !busy);
-      assert.equal((await control({ type: 'snapshot' })).capturing, false);
-      await page.locator('#power').click(); await page.waitForFunction(() => runtime.powered && !busy);
+      await session.send("Page.setWebLifecycleState", { state: "frozen" });
+      await delay(2000);
+      await session.send("Page.setWebLifecycleState", { state: "active" });
+      assert(
+        (await control({ type: "snapshot" })).framesWritten -
+          before.framesWritten >
+          20,
+      );
+      await page.locator("#power").click();
+      await page.waitForFunction(() => !busy);
+      assert.equal((await control({ type: "snapshot" })).powered, false);
+    } else {
+      // Change settings directly for a disconnected preview. Clicking a mode starts hardware now.
+      await page.evaluate(async () => {
+        settings.mode = "rainbow";
+        settings.effect = "aurora";
+        settings.brightness = 80;
+        settings.smoothing = 40;
+        await save();
+        updateUI();
+      });
+      await page.setViewportSize({ width: 1280, height: 950 });
+      await delay(1200);
+      await page.evaluate(() => request({ type: "snapshot" }));
+      const s = await control({ type: "snapshot" });
+      assert.equal(s.status.connected, false);
+      assert.equal(s.framesWritten, 0);
+      assert.equal(s.lastWriteMs, null);
+      assert.equal(await page.locator(".effect-art").count(), 5);
+      assert(
+        await page
+          .locator(".brand img")
+          .evaluate((img) => img.complete && img.naturalWidth > 0),
+        "Shared SVG icon loaded",
+      );
+      fs.mkdirSync(".local", { recursive: true });
+      await page.screenshot({
+        path: ".local/native-effects.png",
+        fullPage: true,
+      });
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await delay(250);
+      const first = await page
+        .locator(".effect-art")
+        .first()
+        .evaluate((c) => c.toDataURL());
+      await delay(350);
+      assert.equal(
+        await page
+          .locator(".effect-art")
+          .first()
+          .evaluate((c) => c.toDataURL()),
+        first,
+        "Reduced-motion native previews freeze",
+      );
     }
-    await page.locator('[data-mode="solid"]').click(); await page.waitForFunction(() => !busy);
-    fs.mkdirSync('.local', { recursive: true });
-    await page.screenshot({ path: '.local/tauri-studio.png' });
-    assert.deepEqual(errors, []); console.log('UI and IPC checks passed');
+    assert.deepEqual(errors, []);
+    console.log(
+      "Native UI, icon, effect preview IPC, startup and reduced-motion checks passed" +
+        (hardware ? " with hardware." : " without USB/capture."),
+    );
   } finally {
     if (page && !page.isClosed()) {
       try {
-        if (original) await page.evaluate(settings => window.__TAURI__.core.invoke('control', { action: { type: 'settings', settings } }), original);
-        await page.evaluate(() => window.__TAURI__.core.invoke('quit'));
+        if (original)
+          await page.evaluate(async (s) => {
+            settings = s;
+            await save();
+          }, original);
+        await page.evaluate(() => window.__TAURI__.core.invoke("quit"));
       } catch {}
     }
-    if (child.exitCode === null) await Promise.race([once(child, 'exit'), delay(5000)]);
-    if (child.exitCode === null) { child.kill(); throw new Error('App did not exit cleanly'); }
+    if (child.exitCode === null)
+      await Promise.race([once(child, "exit"), delay(5000)]);
+    if (child.exitCode === null) {
+      child.kill();
+      throw Error("App did not exit cleanly");
+    }
     await browser?.close();
   }
-})().catch(error => { console.error(error); process.exitCode = 1; });
+})().catch((e) => {
+  console.error(e);
+  process.exitCode = 1;
+});

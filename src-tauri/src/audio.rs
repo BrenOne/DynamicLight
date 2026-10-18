@@ -39,6 +39,11 @@ pub struct Audio {
     fft: Arc<dyn Fft<f32>>,
     rate: f32,
 }
+pub struct Analysis {
+    pub bands: Vec<f32>,
+    pub rms: f32,
+    pub received: u64,
+}
 enum Source {
     Cpal(#[allow(dead_code)] cpal::Stream),
     #[cfg(target_os = "macos")]
@@ -108,15 +113,23 @@ impl Audio {
             rate,
         })
     }
-    pub fn levels(&self, count: usize, sensitivity: u8) -> Result<(Vec<f32>, u64), String> {
+    pub fn analyze(&self, sensitivity: u8, noise_floor: u8) -> Result<Analysis, String> {
         let samples = self.feed.lock().map_err(|e| e.to_string())?;
         if let Some(ref e) = samples.error {
             return Err(e.clone());
         }
         let received = samples.received;
         if samples.updated.elapsed() > Duration::from_millis(250) {
-            return Ok((vec![0.0; count], received));
+            return Ok(Analysis {
+                bands: vec![0.0; 32],
+                rms: 0.0,
+                received,
+            });
         }
+        let rms = (samples.data.iter().map(|v| v * v).sum::<f32>()
+            / samples.data.len().max(1) as f32)
+            .sqrt()
+            .clamp(0.0, 1.0);
         let mut data = vec![Complex::new(0.0, 0.0); SIZE];
         for (i, v) in samples.data.iter().enumerate() {
             data[i].re =
@@ -124,7 +137,15 @@ impl Audio {
         }
         drop(samples);
         self.fft.process(&mut data);
-        Ok((bands(&data, self.rate, count, sensitivity), received))
+        Ok(Analysis {
+            bands: if rms <= noise_floor as f32 / 100.0 {
+                vec![0.0; 32]
+            } else {
+                bands(&data, self.rate, 32, sensitivity)
+            },
+            rms,
+            received,
+        })
     }
 }
 fn bands(data: &[Complex<f32>], rate: f32, count: usize, sensitivity: u8) -> Vec<f32> {

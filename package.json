@@ -1,11 +1,14 @@
 {
   "name": "dynamiclight",
-  "version": "0.2.1",
+  "version": "0.3.1",
   "private": true,
   "license": "MIT",
   "author": "mskutin",
-  "description": "Native USB backlight control for Windows and macOS",
-  "repository": { "type": "git", "url": "https://github.com/mskutin/DynamicLight.git" },
+  "description": "Native USB backlight control for Windows, macOS and Linux",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mskutin/DynamicLight.git"
+  },
   "scripts": {
     "start": "tauri dev",
     "tauri": "tauri",
@@ -14,7 +17,11 @@
     "build:win": "tauri build --bundles nsis",
     "build:mac": "tauri build --bundles dmg",
     "build:linux": "tauri build --bundles deb,appimage",
-    "smoke": "node scripts/smoke.cjs"
+    "smoke": "node scripts/smoke.cjs",
+    "test:ui": "node scripts/ui-test.cjs"
   },
-  "devDependencies": { "@tauri-apps/cli": "2.12.3" }
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.3",
+    "playwright": "1.64.1"
+  }
 }

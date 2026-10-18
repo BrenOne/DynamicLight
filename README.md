@@ -1,6 +1,6 @@
 # DynamicLight
 
-Make your monitor backlight your own. Pick a color, follow the screen, or let your lights move with music.
+Control compatible USB LED strips with fixed colors, screen sync, music, and animated effects.
 
 **Windows · macOS · Linux** — free, open source, and local. No account required.
 
@@ -19,27 +19,33 @@ DynamicLight is in preview. Download a build from [GitHub Actions](https://githu
 
 macOS needs version 13 or newer. Linux builds target Ubuntu 24.04+; screen sync currently needs X11. Preview builds are unsigned. Windows has been tested with a physical strip; Mac and Linux hardware testing is still pending.
 
-## Light it up
+## Getting started
 
 1. Plug in your USB strip and close SyncLight.
-2. Open DynamicLight and choose a mode.
-3. For **Solid color** or **Color flow**, click **Connect strip**. For **Screen sync** or **Music**, click **Start capture**—it connects and turns on the strip for you.
+2. Click **Color**, **Screen**, **Music**, or **Effects**. The app connects and starts that mode in one action.
+3. Use **Stop** to stop lighting, or **Start** to resume the selected mode.
 4. Adjust brightness. Open **Strip setup & behavior** if you need to change the number or order of LEDs.
 
 | Mode | What it does |
 | --- | --- |
-| Solid color | One color, at your chosen brightness |
-| Screen sync | Colors from the edges of your screen |
-| Music | Lighting that reacts to computer audio or your microphone |
-| Color flow | A slowly moving rainbow |
+| Color | One color, at your chosen brightness |
+| Screen | Colors from the edges of your screen |
+| Music | Spectrum, bass pulse, level meter, or color wave from computer audio or your microphone |
+| Effects | Color flow, aurora, breathe, comet, or ember, with adjustable speed |
 
-Closing the window keeps lighting running. Choose **Quit DynamicLight** to exit. After sleep, click **Start capture** again to resume screen or music lighting.
+Effect thumbnails animate using the same native patterns as the strip, including your palette, speed, and brightness. They pause when hidden and respect reduced-motion settings.
+
+Tune music with sensitivity, a noise gate, and fade-out controls. Choose an Aurora, Ocean, Sunset, or custom-color palette. Changes reach the lighting engine while you drag; settings save when you pause.
+
+The live canvas previews outgoing LED colors. **Diagnostics** shows USB frame rate, successful writes, and audio input. The controller cannot report whether the physical LEDs are lit.
+
+Closing the window keeps lighting running. Choose **Quit** to exit. After sleep, click **Start** to resume lighting.
 
 ## Does it work with my strip?
 
 DynamicLight supports the SyncLight-compatible **ROBOBLOQ USB controller (1A86:FE07)**, with 1–127 LEDs. A USB plug alone does not mean a strip is compatible.
 
-Lights still dark? Check brightness and power; screen and music modes need capture running. See [troubleshooting](docs/troubleshooting.md) or [report a problem](https://github.com/mskutin/DynamicLight/issues/new/choose).
+Lights still dark? Check brightness and any error shown when starting. See [troubleshooting](docs/troubleshooting.md) or [report a problem](https://github.com/mskutin/DynamicLight/issues/new/choose).
 
 [Planned features](BACKLOG.md) · [Developer guide](docs/development.md) · [Contributing](CONTRIBUTING.md)
 

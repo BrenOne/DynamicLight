@@ -4,10 +4,16 @@
 
 1. Close SyncLight or any other lighting controller.
 2. Check that your strip is connected and brightness is above zero.
-3. Try **Solid color**, then **Connect strip** and **Turn lights on**.
-4. For **Screen sync** or **Music**, click **Start capture**. Capture stops when you turn power off, change mode/source, disconnect, or put the computer to sleep.
+3. Click **Color**. It connects and starts lighting automatically.
+4. Click **Screen** or **Music** to connect and start capture. Switching an active display or audio source restarts capture automatically. After Stop or sleep, click **Start**.
 
 Screen sync can be dark when the screen edges are black. Music mode is dark during silence. Protected video may not be capturable. HDR color correction is not yet implemented.
+
+## Music is too quiet or reacts slowly
+
+Check **Audio input** under **Diagnostics**. If no input arrives, play audio on your default speakers or select Microphone and check its permissions. Lower **Noise gate** if quiet passages disappear; raise **Sensitivity** for a stronger response. Lower **Release** and **Color smoothing** for sharper changes. Bass Pulse only responds to low frequencies—try Spectrum for a wider range of sounds.
+
+The frequency bars show analyzed audio, even while the strip is disconnected. The LED preview shows outgoing colors; successful USB writes cannot confirm that the physical LEDs are lit.
 
 ## macOS permissions
 
@@ -19,7 +25,7 @@ See [Linux setup](linux.md) for the USB permission rule, supported desktop sessi
 
 ## The window disappeared
 
-On Windows and macOS, closing the window keeps DynamicLight in the tray/menu bar. Choose **Open DynamicLight**, or launch the app again. On Linux, closing minimizes the window instead. **Quit DynamicLight** stops the app.
+On Windows and macOS, closing the window keeps DynamicLight in the tray/menu bar. Choose **Open DynamicLight**, or launch the app again. On Linux, closing minimizes the window instead. **Quit** stops the app.
 
 ## The colors are in the wrong place
 

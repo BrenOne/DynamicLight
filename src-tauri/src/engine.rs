@@ -2,7 +2,7 @@ use crate::{
     audio::Audio,
     capture::ScreenCapture,
     device::{Controller, Status},
-    lighting,
+    effects, lighting,
     protocol::Rgb,
     settings::Settings,
 };
@@ -21,6 +21,9 @@ pub enum Action {
     Connect,
     Disconnect,
     Settings {
+        settings: Settings,
+    },
+    PreviewSettings {
         settings: Settings,
     },
     Power {
@@ -48,6 +51,11 @@ pub struct Snapshot {
     pub capture_size: (u32, u32),
     pub audio_samples: u64,
     pub frames_written: u64,
+    pub audio_bands: Vec<f32>,
+    pub audio_level: f32,
+    pub last_write_ms: Option<u64>,
+    pub write_duration_ms: f64,
+    pub write_errors: u64,
 }
 pub struct Message {
     action: Action,
@@ -99,6 +107,8 @@ pub struct Engine {
     heartbeat: Instant,
     fps_start: Instant,
     fps_frames: u32,
+    last_write: Option<Instant>,
+    last_tick: Instant,
 }
 impl Engine {
     pub fn new(settings: Settings, path: PathBuf, warning: String) -> Self {
@@ -115,6 +125,11 @@ impl Engine {
                 capture_size: (0, 0),
                 audio_samples: 0,
                 frames_written: 0,
+                audio_bands: vec![0.0; 32],
+                audio_level: 0.0,
+                last_write_ms: None,
+                write_duration_ms: 0.0,
+                write_errors: 0,
             },
             controller,
             path,
@@ -129,6 +144,8 @@ impl Engine {
             heartbeat: Instant::now(),
             fps_start: Instant::now(),
             fps_frames: 0,
+            last_write: None,
+            last_tick: Instant::now(),
         }
     }
     fn black(&mut self) {
@@ -146,8 +163,11 @@ impl Engine {
         self.state.capturing = false;
         self.state.capture_size = (0, 0);
         self.state.audio_samples = 0;
+        self.state.audio_bands.fill(0.0);
+        self.state.audio_level = 0.0;
     }
     pub fn action(&mut self, action: Action) -> Result<Snapshot, String> {
+        let persist = matches!(action, Action::Settings { .. });
         match action {
             Action::Snapshot => {}
             Action::Connect => {
@@ -162,9 +182,11 @@ impl Engine {
                 self.stop();
                 self.controller.close("Disconnected");
             }
-            Action::Settings { settings } => {
+            Action::Settings { settings } | Action::PreviewSettings { settings } => {
                 settings.validate()?;
-                settings.save(&self.path)?;
+                if persist {
+                    settings.save(&self.path)?;
+                }
                 if settings.mode != self.state.settings.mode
                     || settings.audio_source != self.state.settings.audio_source
                     || settings.screen_id != self.state.settings.screen_id
@@ -175,7 +197,6 @@ impl Engine {
                     self.black();
                 }
                 self.state.settings = settings;
-                self.previous.clear();
                 self.last_solid = None;
                 self.state.error.clear();
             }
@@ -223,11 +244,12 @@ impl Engine {
                 self.state.capturing = false;
                 self.state.capture_size = (0, 0);
                 self.state.audio_samples = 0;
+                self.state.audio_bands.fill(0.0);
+                self.state.audio_level = 0.0;
             }
             Action::Resume => {
                 self.suspended = false;
-                self.state.error =
-                    "Computer awake. Turn lights on; restart capture if needed.".into();
+                self.state.error = "Computer resumed. Click Start to resume lighting.".into();
                 self.last_solid = None;
             }
             Action::Shutdown => {
@@ -245,6 +267,8 @@ impl Engine {
         Ok(self.state.clone())
     }
     pub fn tick(&mut self) {
+        let dt = self.last_tick.elapsed().as_secs_f32().min(1.0);
+        self.last_tick = Instant::now();
         if self.desired
             && !self.suspended
             && !self.controller.status.connected
@@ -261,15 +285,7 @@ impl Engine {
             }
             match s.mode.as_str() {
                 "solid" => Ok(vec![lighting::hex(&s.color); s.count]),
-                "rainbow" => Ok((0..s.count)
-                    .map(|i| {
-                        lighting::hsv(
-                            (i as f32 / s.count as f32
-                                + self.started.elapsed().as_secs_f32() / 25.0)
-                                % 1.0,
-                        )
-                    })
-                    .collect()),
+                "rainbow" => Ok(effects::animated(s, self.started.elapsed().as_secs_f32())),
                 "screen" => {
                     if let Some(screen) = self.screen.as_mut() {
                         let colors = screen.colors(s)?;
@@ -281,13 +297,20 @@ impl Engine {
                 }
                 "music" => {
                     if let Some(audio) = self.audio.as_ref() {
-                        let (levels, received) = audio.levels(s.count, s.sensitivity)?;
-                        self.state.audio_samples = received;
-                        let base = lighting::hex(&s.color);
-                        Ok(levels
-                            .iter()
-                            .map(|v| base.map(|c| (c as f32 * v).round() as u8))
-                            .collect())
+                        let analysis = audio.analyze(s.sensitivity, s.noise_floor)?;
+                        self.state.audio_samples = analysis.received;
+                        self.state.audio_level = analysis.rms;
+                        effects::envelope(
+                            &mut self.state.audio_bands,
+                            &analysis.bands,
+                            dt,
+                            s.release,
+                        );
+                        Ok(effects::music(
+                            s,
+                            &self.state.audio_bands,
+                            self.started.elapsed().as_secs_f32(),
+                        ))
                     } else {
                         Ok(vec![[0; 3]; s.count])
                     }
@@ -310,6 +333,7 @@ impl Engine {
             }
         }
         if self.controller.status.connected && !self.suspended {
+            let write_started = Instant::now();
             let s = &self.state.settings;
             let active = self.state.powered && (s.mode == "rainbow" || self.state.capturing);
             let result = if active {
@@ -336,10 +360,19 @@ impl Engine {
                 }
             };
             if let Some(Ok(())) = result {
+                if self.state.error.starts_with("USB write failed:") {
+                    self.state.error.clear();
+                }
                 self.fps_frames += 1;
                 self.state.frames_written += 1;
+                self.last_write = Some(Instant::now());
+                self.state.write_duration_ms = write_started.elapsed().as_secs_f64() * 1000.0;
+            } else if let Some(Err(e)) = result {
+                self.state.write_errors += 1;
+                self.state.error = format!("USB write failed: {e}");
             }
         }
+        self.state.last_write_ms = self.last_write.map(|t| t.elapsed().as_millis() as u64);
         let elapsed = self.fps_start.elapsed();
         if elapsed >= Duration::from_secs(1) {
             self.state.fps = (self.fps_frames as f64 / elapsed.as_secs_f64()).round() as u32;
@@ -442,5 +475,35 @@ mod tests {
         };
         assert!(e.action(Action::Settings { settings: invalid }).is_err());
         assert_eq!(e.state.settings, initial);
+    }
+    #[test]
+    fn live_settings_apply_without_disk_writes_then_commit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let mut e = Engine::new(Settings::default(), path.clone(), String::new());
+        let s = Settings {
+            mode: "rainbow".into(),
+            effect: "aurora".into(),
+            brightness: 80,
+            ..Settings::default()
+        };
+        e.action(Action::PreviewSettings {
+            settings: s.clone(),
+        })
+        .unwrap();
+        e.tick();
+        assert!(!path.exists());
+        assert!(e.state.colors.iter().any(|c| *c != [0; 3]));
+        assert!(!e.state.status.connected);
+        assert_eq!(e.state.frames_written, 0);
+        assert_eq!(e.state.last_write_ms, None);
+        e.action(Action::Settings {
+            settings: s.clone(),
+        })
+        .unwrap();
+        assert_eq!(Settings::load(&path).unwrap(), s);
+        e.action(Action::Power { on: false }).unwrap();
+        e.tick();
+        assert!(e.state.colors.iter().all(|c| *c == [0; 3]));
     }
 }
