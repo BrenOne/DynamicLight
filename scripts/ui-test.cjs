@@ -142,6 +142,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
             }
             if (cmd === "profile_library") { if (args.library) profileLibrary = structuredClone(args.library); return structuredClone(profileLibrary); }
             if (cmd === "apply_profile") { state.settings = structuredClone(profileLibrary.profiles.find(p => p.id === args.id).settings); state.requested = true; state.powered = true; return structuredClone(state); }
+            if (cmd === "diagnostic_report") return { text: "DynamicLight test report: no private data", enabled: !!args.enabled };
+            if (cmd === "export_diagnostics") return "Downloads/DynamicLight-diagnostics-test.txt";
             if (cmd === "platform_name") return "windows";
             if (cmd === "launch_at_login") {
               if (fixture.failLogin) { fixture.failLogin = false; throw new Error("Test login registration failed"); }
@@ -157,6 +159,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
             if (a.type === "calibrationStep" && !state.calibrating) throw new Error("Start calibration first");
             if (a.type === "calibrationStart") { calibrationOriginal = structuredClone(state); state.calibrating = true; }
             if (a.type === "calibrationEnd") { const layout = state.settings; Object.assign(state, calibrationOriginal); if (a.apply) Object.assign(state.settings, { count: layout.count, sides: layout.sides, reverse: layout.reverse, offset: layout.offset }); state.calibrating = false; }
+            if (a.type === "selectMode") { state.settings.mode = a.mode; state.capturing = false; }
             if (a.settings) {
               if (
                 state.settings.mode !== a.settings.mode ||
@@ -528,6 +531,21 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
     for (const width of [390, 600, 1180]) { await page.setViewportSize({ width, height: 1000 }); assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)); }
     await page.setViewportSize({ width: 1180, height: 1000 });
     await page.screenshot({ path: ".local/ui-lifecycle.png", fullPage: true });
+    if (!await page.locator('#diagnostic-preview').isVisible()) await page.locator('.telemetry > summary').click();
+    await page.locator('#diagnostic-preview').click();
+    await page.waitForFunction(() => document.querySelector('#diagnostic-dialog').open);
+    assert.match(await page.locator('#diagnostic-text').inputValue(), /no private data/);
+    await page.locator('#diagnostic-enabled').check();
+    await page.waitForTimeout(100);
+    await page.locator('#diagnostic-clear').click();
+    await page.waitForFunction(() => document.querySelector('#diagnostic-status').textContent === 'History cleared.');
+    await page.locator('#diagnostic-export').click();
+    await page.waitForFunction(() => document.querySelector('#diagnostic-status').textContent.startsWith('Saved to '));
+    await page.setViewportSize({ width: 390, height: 800 });
+    await page.screenshot({ path: '.local/ui-diagnostics.png' });
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#diagnostic-dialog').isVisible(), false);
     assert.deepEqual(errors, []);
     console.log(
       "UI passed: profiles, calibration apply/cancel, blend, beat controls, tray synchronization, drag coalescing, effects, recovery, responsive widths and CSP.",

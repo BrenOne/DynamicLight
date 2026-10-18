@@ -1,6 +1,9 @@
 {
   "updated": "2026-10-19",
-  "next": [],
+  "next": [
+    "UI-05",
+    "UI-03"
+  ],
   "items": {
     "REL-01": {
       "status": "Implemented; testing pending",
@@ -18,14 +21,14 @@
       "remaining": "Real-device audio response, routing and permissions on all platforms."
     },
     "REL-03": {
-      "status": "Partial",
-      "delivered": "USB frame rate, write counts/failures/latency, capture resolution and audio telemetry shipped in #40.",
-      "remaining": "Dropped-frame accounting, bounded local logs, redacted export and a copyable recovery summary."
+      "status": "Implemented; testing pending",
+      "delivered": "Missed engine deadlines, allowlisted diagnostic report with preview/copy/export, optional local history (200 changes / 7 days), clear/disable controls and recovery guidance.",
+      "remaining": "Physical recovery and export checks on macOS/Linux; video-source drops are not measured."
     },
     "UI-04": {
-      "status": "Partial",
-      "delivered": "Focused mode panels, live audio spectrum, effect speed and source selection shipped in #40. Screen calibration and saved profiles added in 0.5.",
-      "remaining": "Effect direction and independent automatic per-mode settings retention."
+      "status": "Implemented; testing pending",
+      "delivered": "Native per-mode settings memory persists with settings. Effect direction is independent of physical strip direction. Existing focused panels, source controls, calibration and profiles remain available.",
+      "remaining": "Physical mode switching and directional animation checks."
     },
     "UI-08": {
       "status": "Partial",

@@ -37,6 +37,8 @@ pub struct Settings {
     pub max_brightness: u8,
     pub transition_limit: u16,
     pub minimum_glow: u8,
+    pub effect_reverse: bool,
+    pub mode_settings: std::collections::BTreeMap<String, ModeSettings>,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -74,11 +76,24 @@ impl Default for Settings {
             max_brightness: 100,
             transition_limit: 0,
             minimum_glow: 0,
+            effect_reverse: false,
+            mode_settings: Default::default(),
         }
     }
 }
 impl Settings {
     pub fn validate(&self) -> Result<(), String> {
+        if self.mode_settings.len() > 5 {
+            return Err("Too many remembered modes".into());
+        }
+        for (mode, memory) in &self.mode_settings {
+            let mut candidate = Settings {
+                mode: mode.clone(),
+                ..Default::default()
+            };
+            memory.apply(&mut candidate);
+            candidate.validate()?;
+        }
         if self.color.len() != 7
             || !self.color.starts_with('#')
             || !self.color.as_bytes()[1..].iter().all(u8::is_ascii_hexdigit)
@@ -185,5 +200,79 @@ mod tests {
             serde_json::from_str::<Settings>("{}").unwrap(),
             Settings::default()
         );
+    }
+}
+
+/// Only scene controls are remembered. Hardware, privacy and comfort remain global.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ModeSettings {
+    color: String,
+    brightness: u8,
+    smoothing: u8,
+    audio_source: String,
+    sensitivity: u8,
+    fps: u8,
+    screen_id: String,
+    effect: String,
+    palette: String,
+    speed: u8,
+    music_style: String,
+    noise_floor: u8,
+    release: u8,
+    exclude_bars: bool,
+    rgb_balance: [u8; 3],
+    saturation: u16,
+    gamma: u16,
+    input_gain: i8,
+    blend: u8,
+    effect_reverse: bool,
+}
+impl ModeSettings {
+    pub fn capture(s: &Settings) -> Self {
+        Self {
+            color: s.color.clone(),
+            brightness: s.brightness,
+            smoothing: s.smoothing,
+            audio_source: s.audio_source.clone(),
+            sensitivity: s.sensitivity,
+            fps: s.fps,
+            screen_id: s.screen_id.clone(),
+            effect: s.effect.clone(),
+            palette: s.palette.clone(),
+            speed: s.speed,
+            music_style: s.music_style.clone(),
+            noise_floor: s.noise_floor,
+            release: s.release,
+            exclude_bars: s.exclude_bars,
+            rgb_balance: s.rgb_balance,
+            saturation: s.saturation,
+            gamma: s.gamma,
+            input_gain: s.input_gain,
+            blend: s.blend,
+            effect_reverse: s.effect_reverse,
+        }
+    }
+    pub fn apply(&self, s: &mut Settings) {
+        s.color = self.color.clone();
+        s.brightness = self.brightness;
+        s.smoothing = self.smoothing;
+        s.audio_source = self.audio_source.clone();
+        s.sensitivity = self.sensitivity;
+        s.fps = self.fps;
+        s.screen_id = self.screen_id.clone();
+        s.effect = self.effect.clone();
+        s.palette = self.palette.clone();
+        s.speed = self.speed;
+        s.music_style = self.music_style.clone();
+        s.noise_floor = self.noise_floor;
+        s.release = self.release;
+        s.exclude_bars = self.exclude_bars;
+        s.rgb_balance = self.rgb_balance;
+        s.saturation = self.saturation;
+        s.gamma = self.gamma;
+        s.input_gain = self.input_gain;
+        s.blend = self.blend;
+        s.effect_reverse = self.effect_reverse;
     }
 }

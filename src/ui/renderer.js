@@ -114,6 +114,7 @@ function renderRuntime(value) {
         ? `${value.lastWriteMs} ms ago`
         : `${Math.floor(value.lastWriteMs / 1000)} s ago`;
   $("frames-written").textContent = value.framesWritten.toLocaleString();
+  $("dropped-frames").textContent = (value.droppedFrames || 0).toLocaleString();
   $("write-errors").textContent = value.writeErrors.toLocaleString();
   $("capture-size").textContent = value.captureSize[0]
     ? value.captureSize.join(" × ")
@@ -179,6 +180,8 @@ function updateUI() {
   document.querySelector(".music-styles").hidden = settings.mode === "blend";
   $("audio-source").value = settings.audioSource;
   $("reverse").checked = settings.reverse;
+  $("effect-direction").value = settings.effectReverse ? "reverse" : "forward";
+  $("effect-direction-control").hidden = settings.mode !== "rainbow";
   $("off-on-sleep").checked = settings.offOnSleep;
   $("off-on-quit").checked = settings.offOnQuit;
   for (const [id, key] of behaviorSettings) $(id).checked = !!settings[key];
@@ -587,6 +590,7 @@ async function init() {
       if (loginEnabled !== enabled) throw new Error("Login startup was not changed. Check your operating system's login-item settings.");
     });
   };
+  $("effect-direction").onchange = () => { settings.effectReverse = $("effect-direction").value === "reverse"; changed(); };
   document.querySelectorAll("[data-mode]").forEach((button) => {
     button.setAttribute(
       "aria-label",
@@ -594,7 +598,8 @@ async function init() {
     );
     button.onclick = () =>
       run(async () => {
-        settings.mode = button.dataset.mode;
+        await save();
+        settings = (await request({ type: "selectMode", mode: button.dataset.mode })).settings;
         updateUI();
         await startLighting();
         if (["screen", "blend"].includes(settings.mode)) await refreshDisplays();
@@ -778,3 +783,30 @@ function renderProfiles() {
   if (!library.profiles.length) $("profile-message").textContent = "No saved profiles yet.";
 }
 init().catch((error) => notice(`Unable to initialize: ${error}`, true));
+
+async function refreshDiagnostics(enabled = null, clear = false) {
+  const report = await invoke("diagnostic_report", { enabled, clear });
+  $("diagnostic-text").value = report.text;
+  $("diagnostic-enabled").checked = report.enabled;
+}
+async function diagnosticAction(action) {
+  const controls = $("diagnostic-dialog").querySelectorAll("button, input");
+  controls.forEach(c => c.disabled = true);
+  $("diagnostic-status").textContent = "";
+  try { await action(); } catch (e) { $("diagnostic-status").textContent = String(e); }
+  finally { controls.forEach(c => c.disabled = false); }
+}
+$("diagnostic-preview").onclick = () => { $("diagnostic-dialog").showModal(); diagnosticAction(() => refreshDiagnostics()); };
+$("diagnostic-close").onclick = () => $("diagnostic-dialog").close();
+$("diagnostic-enabled").onchange = () => diagnosticAction(async () => {
+  try { await refreshDiagnostics($("diagnostic-enabled").checked); }
+  catch (e) { $("diagnostic-enabled").checked = !$("diagnostic-enabled").checked; throw e; }
+});
+$("diagnostic-clear").onclick = () => diagnosticAction(async () => { await refreshDiagnostics(null, true); $("diagnostic-status").textContent = "History cleared."; });
+$("diagnostic-copy").onclick = () => diagnosticAction(async () => {
+  try { await navigator.clipboard.writeText($("diagnostic-text").value); $("diagnostic-status").textContent = "Copied."; }
+  catch { $("diagnostic-text").focus(); $("diagnostic-text").select(); $("diagnostic-status").textContent = "Select Copy from the text menu, or press Ctrl+C / ⌘C."; }
+});
+$("diagnostic-export").onclick = () => diagnosticAction(async () => {
+  const path = await invoke("export_diagnostics"); $("diagnostic-status").textContent = "Saved to " + path;
+});

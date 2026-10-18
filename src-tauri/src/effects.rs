@@ -31,7 +31,8 @@ pub fn animated(s: &Settings, seconds: f32) -> Vec<Rgb> {
     let t = seconds * (0.03 + s.speed as f32 / 250.0);
     (0..s.count)
         .map(|i| {
-            let x = i as f32 / s.count as f32;
+            let index = if s.effect_reverse { s.count - 1 - i } else { i };
+            let x = index as f32 / s.count as f32;
             match s.effect.as_str() {
                 "breath" => scale(palette(s, x), 0.08 + 0.92 * (0.5 - 0.5 * (t * TAU).cos())),
                 "comet" => {
@@ -95,6 +96,20 @@ pub fn envelope(previous: &mut Vec<f32>, incoming: &[f32], dt: f32, release: u8)
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn effect_direction_mirrors_animation_without_changing_strip_mapping() {
+        for effect in ["rainbow", "aurora", "breath", "comet", "ember"] {
+            let mut s = Settings {
+                effect: effect.into(),
+                ..Default::default()
+            };
+            let mut forward = animated(&s, 2.3);
+            forward.reverse();
+            s.effect_reverse = true;
+            assert_eq!(animated(&s, 2.3), forward);
+            assert!(!s.reverse);
+        }
+    }
     #[test]
     fn blend_silence_is_screen_and_never_amplifies_colors() {
         let colors = [[100, 200, 255]];

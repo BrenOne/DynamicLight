@@ -65,6 +65,15 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     assert.equal((await control({ type: "snapshot" })).lifecycleReady, true, "Native initial display/session state arrived");
     assert.equal((await control({ type: "snapshot" })).capturing, false);
     assert.equal((await control({ type: "snapshot" })).status.connected, false);
+    const diagnostic = await page.evaluate(() => window.__TAURI__.core.invoke('diagnostic_report', { enabled: null, clear: false }));
+    assert(diagnostic.text.includes('Missed frame slots:'));
+    assert(!diagnostic.text.includes(process.env.USERPROFILE));
+    await control({ type: 'settings', settings: { ...original, mode: 'solid', brightness: 23 } });
+    await control({ type: 'selectMode', mode: 'rainbow' });
+    await control({ type: 'settings', settings: { ...(await control({ type: 'snapshot' })).settings, brightness: 71, effectReverse: true } });
+    assert.equal((await control({ type: 'selectMode', mode: 'solid' })).settings.brightness, 23);
+    assert.equal((await control({ type: 'snapshot' })).status.connected, false);
+    await control({ type: 'settings', settings: original });
     await assert.rejects(
       control({ type: "settings", settings: { ...original, count: 128 } }),
     );

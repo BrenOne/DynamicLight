@@ -32,7 +32,9 @@ macOS needs version 13 or newer. Linux builds target Ubuntu 24.04+; screen sync 
 | Screen | Colors from the edges of your screen |
 | Music | Spectrum, bass pulse, beat pulse, level meter, or color wave from computer audio or your microphone |
 | Blend | Screen colors with audio-reactive brightness; silence keeps normal screen lighting |
-| Effects | Color flow, aurora, breathe, comet, or ember, with adjustable speed |
+| Effects | Color flow, aurora, breathe, comet, or ember, with adjustable speed and direction |
+
+Each mode remembers its brightness, colors, sources, and tuning when you switch away and return. Strip layout, brightness limits, and startup preferences stay shared.
 
 Effect thumbnails animate using the same native patterns as the strip, including your palette, speed, and brightness. They pause when hidden and respect reduced-motion settings.
 
@@ -46,7 +48,7 @@ In Screen and Blend, **Screen color adjustments** offers black-bar detection, RG
 
 Calibration temporarily pauses the current scene. Step through individual LEDs, preview the mapped edges, then apply or cancel to restore the scene. An unattended test stops after five minutes. In Blend, losing one capture source uses the remaining source and shows Retry; losing both stops output until recovery.
 
-The live canvas previews outgoing LED colors. **Diagnostics** shows USB frame rate, successful writes, and audio input. The controller cannot report whether the physical LEDs are lit.
+The live canvas previews outgoing LED colors. **Diagnostics** shows USB frame rate, successful writes, audio input, and missed animation deadlines. Open **Troubleshooting report** to preview, copy, or save a report to Downloads. Optional local history keeps up to 200 state changes for seven days; disable it or choose Clear history to erase it. Reports exclude paths, identifiers, profile names, screen content, and audio. The controller cannot report whether the physical LEDs are lit.
 
 Closing the window keeps lighting running. Choose **Quit** to exit.
 

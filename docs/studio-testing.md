@@ -27,3 +27,9 @@ Profiles store lighting settings locally, with a maximum of 40 profiles. They pr
 Calibration test patterns use at most 20% brightness and respect a lower user cap. Individual LED tests use physical order; the edge test uses calibrated order. Calibration is never persisted as the active scene.
 
 All modes use the same Rust lighting worker and USB writer. Screen/audio data remain local. Native platform hardware and permission validation is still pending.
+
+## Diagnostics and mode memory
+
+Rust tests cover mode persistence through restart, separation from hardware/comfort settings and capture consent, invalid-mode rejection, direction mirroring, missed-deadline accounting, bounded history and allowlisted output. Native smoke checks the commands without starting hardware. History is opt-in, flushed at most every five seconds, bounded to 200 state transitions and seven days. Abrupt exit can lose the last five seconds. Counters cover this app session; missed slots exclude deliberate idle frames and sleep, and do not measure capture-source frame drops.
+
+Physical follow-up: tune each mode, switch and restart; verify remembered source choices still honor OS permission. Exercise a failed connection/capture and verify report guidance. Enable history, restart, clear it and disable it. Check copy and Downloads export on each OS.

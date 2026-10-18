@@ -4,6 +4,7 @@ mod capture;
 #[cfg(target_os = "windows")]
 mod capture_windows;
 mod device;
+mod diagnostics;
 mod effects;
 mod engine;
 mod lifecycle;
@@ -159,6 +160,8 @@ pub fn run() {
             launch_at_login,
             profiles::profile_library,
             profiles::apply_profile
+            ,diagnostics::diagnostic_report,
+            diagnostics::export_diagnostics
         ])
         .setup(|app| {
             let background = std::env::args().any(|arg| arg == "--autostart");
@@ -196,9 +199,13 @@ pub fn run() {
                 settings::Settings::default()
             };
             let emitter = app.handle().clone();
+            let diagnostics = diagnostics::Diagnostics::new(path.with_file_name("diagnostics.json"));
+            diagnostics.start_writer();
+            app.manage(diagnostics.clone());
             let preview = Arc::new(AtomicBool::new(!background));
             app.manage(Preview(preview.clone()));
             let handle = engine::start(settings, path, warning, move |snapshot| {
+                diagnostics.observe(snapshot);
                 // Never synchronously query the GUI thread from the lighting
                 // worker: the GUI may be waiting for a suspend acknowledgement.
                 if preview.load(Ordering::Relaxed) {

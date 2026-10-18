@@ -297,6 +297,7 @@
                 >Motion speed <output id="speed-value">35%</output></label
               ><input id="speed" type="range" min="1" max="100" />
             </div>
+            <label id="effect-direction-control" hidden>Effect direction<select id="effect-direction"><option value="forward">Forward</option><option value="reverse">Reverse</option></select></label>
             <label for="smoothing"
               >Color smoothing <output id="smoothing-value">65%</output></label
             ><input id="smoothing" type="range" min="0" max="95" />
@@ -337,6 +338,9 @@
                 <dd id="audio-level">—</dd>
               </div>
             </dl>
+            <dl><div><dt>Missed frame slots</dt><dd id="dropped-frames">0</dd></div></dl>
+            <p class="help">Missed engine deadlines while animation or capture is active. Video-source drops are not measured.</p>
+            <button id="diagnostic-preview" class="secondary">Troubleshooting report…</button>
             <p class="help">
               USB delivery is measured. Physical LED state is not available.
             </p>
@@ -420,6 +424,15 @@
         ><button id="quit" class="text-button">Quit</button>
       </footer>
     </main>
+    <dialog id="diagnostic-dialog" aria-labelledby="diagnostic-title">
+      <h2 id="diagnostic-title">Troubleshooting report</h2>
+      <p class="help">Only app state and counters are included. No paths, source names, profile names, screen content or audio.</p>
+      <label class="checkbox"><input id="diagnostic-enabled" type="checkbox" /> Keep local state history</label>
+      <p class="help">Off by default. Keeps up to 200 changes for 7 days. Turning it off clears saved history.</p>
+      <label for="diagnostic-text">Report preview</label><textarea id="diagnostic-text" readonly spellcheck="false" rows="12"></textarea>
+      <div class="input-row"><button id="diagnostic-copy" class="power">Copy report</button><button id="diagnostic-export" class="secondary">Save to Downloads</button><button id="diagnostic-clear" class="secondary">Clear history</button><button id="diagnostic-close" class="secondary">Close</button></div>
+      <p id="diagnostic-status" class="help" role="status"></p>
+    </dialog>
     <script src="renderer.js"></script>
     <dialog id="calibration-dialog" aria-labelledby="calibration-title">
       <h2 id="calibration-title">Calibrate your strip</h2>

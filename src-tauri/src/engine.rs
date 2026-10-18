@@ -20,6 +20,9 @@ use std::{
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 pub enum Action {
     Snapshot,
+    SelectMode {
+        mode: String,
+    },
     #[serde(skip)]
     ApplyProfile {
         settings: Settings,
@@ -80,6 +83,7 @@ pub struct Snapshot {
     pub last_write_ms: Option<u64>,
     pub write_duration_ms: f64,
     pub write_errors: u64,
+    pub dropped_frames: u64,
     pub beat_level: f32,
     pub calibrating: bool,
     pub calibration_led: Option<usize>,
@@ -164,6 +168,7 @@ impl Engine {
                 last_write_ms: None,
                 write_duration_ms: 0.0,
                 write_errors: 0,
+                dropped_frames: 0,
                 beat_level: 0.0,
                 calibrating: false,
                 calibration_led: None,
@@ -466,7 +471,10 @@ impl Engine {
         if self.calibration.is_some()
             && matches!(
                 action,
-                Action::Start | Action::Settings { .. } | Action::PreviewSettings { .. }
+                Action::Start
+                    | Action::SelectMode { .. }
+                    | Action::Settings { .. }
+                    | Action::PreviewSettings { .. }
             )
         {
             return Err("Finish or cancel strip calibration first".into());
@@ -474,6 +482,14 @@ impl Engine {
         let persist = matches!(action, Action::Settings { .. });
         match action {
             Action::Snapshot => {}
+            Action::SelectMode { mode } => {
+                let mut settings = self.state.settings.clone();
+                if let Some(memory) = settings.mode_settings.get(&mode).cloned() {
+                    memory.apply(&mut settings);
+                }
+                settings.mode = mode;
+                return self.action(Action::Settings { settings });
+            }
             Action::ApplyProfile { settings } => {
                 let settings = crate::profiles::scene(&settings, &self.state.settings);
                 self.action(Action::Settings { settings })?;
@@ -559,7 +575,21 @@ impl Engine {
                 self.controller.close("Disconnected");
                 self.remember()?;
             }
-            Action::Settings { settings } | Action::PreviewSettings { settings } => {
+            Action::Settings { mut settings } | Action::PreviewSettings { mut settings } => {
+                settings.mode_settings = self.state.settings.mode_settings.clone();
+                // Do not create memory on a first same-mode edit; older settings remain valid.
+                if settings.mode != self.state.settings.mode {
+                    settings.mode_settings.insert(
+                        self.state.settings.mode.clone(),
+                        crate::settings::ModeSettings::capture(&self.state.settings),
+                    );
+                }
+                if settings.mode_settings.contains_key(&settings.mode) {
+                    settings.mode_settings.insert(
+                        settings.mode.clone(),
+                        crate::settings::ModeSettings::capture(&settings),
+                    );
+                }
                 settings.validate()?;
                 if persist {
                     settings.save(&self.path)?;
@@ -959,6 +989,8 @@ pub fn start(
             loop {
                 while let Ok((event, reply)) = event_rx.try_recv() {
                     engine.system_event(event);
+                    // Time spent suspended is not a dropped animation frame.
+                    next = Instant::now();
                     let _ = reply.send(());
                 }
                 match rx.recv_timeout(next.saturating_duration_since(Instant::now())) {
@@ -988,8 +1020,16 @@ pub fn start(
                             && (engine.state.capturing || engine.state.settings.mode == "rainbow"),
                     );
                     let began = Instant::now();
+                    let period = Duration::from_secs_f64(1.0 / engine.state.settings.fps as f64);
+                    if engine.state.powered
+                        && (engine.state.capturing || engine.state.settings.mode == "rainbow")
+                    {
+                        engine.state.dropped_frames = engine.state.dropped_frames.saturating_add(
+                            missed_slots(began.saturating_duration_since(next), period),
+                        );
+                    }
                     engine.tick();
-                    next = began + Duration::from_secs_f64(1.0 / engine.state.settings.fps as f64);
+                    next = began + period;
                     if last_event.elapsed() >= Duration::from_millis(100) {
                         emit(&engine.state);
                         last_event = Instant::now();
@@ -1000,9 +1040,71 @@ pub fn start(
         .expect("start lighting worker");
     Handle { tx, events }
 }
+fn missed_slots(late: Duration, period: Duration) -> u64 {
+    (late.as_nanos() / period.as_nanos().max(1)).min(u64::MAX as u128) as u64
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn modes_survive_restart_without_restoring_hardware_or_capture_consent() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let mut e = Engine::new(Settings::default(), path.clone(), String::new());
+        e.action(Action::SelectMode {
+            mode: "music".into(),
+        })
+        .unwrap();
+        let mut music = e.state.settings.clone();
+        music.brightness = 17;
+        music.input_gain = 8;
+        music.palette = "ocean".into();
+        e.action(Action::Settings { settings: music }).unwrap();
+        e.action(Action::SelectMode {
+            mode: "rainbow".into(),
+        })
+        .unwrap();
+        let mut effects = e.state.settings.clone();
+        effects.brightness = 60;
+        effects.effect_reverse = true;
+        effects.count = 90;
+        effects.max_brightness = 30;
+        e.action(Action::Settings { settings: effects }).unwrap();
+        let mut restarted = Engine::new(Settings::load(&path).unwrap(), path, String::new());
+        restarted
+            .action(Action::SelectMode {
+                mode: "music".into(),
+            })
+            .unwrap();
+        let s = &restarted.state.settings;
+        assert_eq!(
+            (s.brightness, s.input_gain, s.palette.as_str()),
+            (17, 8, "ocean")
+        );
+        assert_eq!((s.count, s.max_brightness), (90, 30));
+        assert!(!restarted.state.capturing && !restarted.state.requested);
+        restarted
+            .action(Action::SelectMode {
+                mode: "rainbow".into(),
+            })
+            .unwrap();
+        assert_eq!(restarted.state.settings.brightness, 60);
+        assert!(restarted.state.settings.effect_reverse);
+        let before = restarted.state.settings.clone();
+        assert!(restarted
+            .action(Action::SelectMode {
+                mode: "invalid".into()
+            })
+            .is_err());
+        assert_eq!(restarted.state.settings, before);
+    }
+    #[test]
+    fn frame_deadlines_count_only_whole_missed_slots() {
+        let period = Duration::from_millis(50);
+        assert_eq!(missed_slots(Duration::from_millis(49), period), 0);
+        assert_eq!(missed_slots(Duration::from_millis(50), period), 1);
+        assert_eq!(missed_slots(Duration::from_millis(151), period), 3);
+    }
     fn simulated(settings: Settings, path: PathBuf) -> Engine {
         let mut e = Engine::new(settings, path, String::new());
         e.controller.test_bus = Some(crate::device::TestBus {
@@ -1303,7 +1405,9 @@ mod tests {
             settings: s.clone(),
         })
         .unwrap();
-        assert_eq!(Settings::load(&path).unwrap(), s);
+        let saved = Settings::load(&path).unwrap();
+        assert_eq!(saved, e.state.settings);
+        assert_eq!(saved.brightness, s.brightness);
         e.action(Action::Power { on: false }).unwrap();
         e.tick();
         assert!(e.state.colors.iter().all(|c| *c == [0; 3]));
