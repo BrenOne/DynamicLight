@@ -1,0 +1,88 @@
+"use strict";
+const $ = id => document.getElementById(id);
+const { invoke } = window.__TAURI__.core;
+const names = { solid: "Color", screen: "Screen", music: "Music", blend: "Screen + music", rainbow: "Effects" };
+let state, favorites = [], busy = false, brightnessTimer, editingBrightness = false, queue = Promise.resolve(), actionError = "";
+let brightnessPreview, brightnessDirty = false;
+function serialized(task) { const next = queue.catch(() => {}).then(task); queue = next; return next; }
+function statusText(id, text) { if ($(id).textContent !== text) $(id).textContent = text; }
+function render(s) {
+  state = s;
+  $("quick-mode").textContent = names[s.settings.mode];
+  statusText("quick-status", s.pauseReason || (s.captureRequiresStart ? "Capture paused" : s.recovering ? "Reconnecting" : !s.requested ? "Stopped" : !s.status.connected ? "Disconnected" : "Running"));
+  $("quick-power").textContent = s.requested ? "Stop" : "Start";
+  $("quick-power").classList.toggle("running", s.requested);
+  $("quick-power").setAttribute("aria-pressed", String(s.requested));
+  $("quick-power").disabled = busy;
+  $("quick-pin").disabled = busy;
+  $("open-studio").disabled = busy;
+  $("quick-brightness").disabled = busy || s.calibrating;
+  if (!editingBrightness) { $("quick-brightness").value = s.settings.brightness; $("quick-value").textContent = s.settings.brightness + "%"; }
+  statusText("quick-error", actionError || s.error);
+  $("quick-error").hidden = !$("quick-error").textContent;
+  $("quick-retry").hidden = !s.requested || !!s.pauseReason || !(s.error || s.captureRequiresStart || s.recovering);
+  $("quick-retry").disabled = busy;
+  $("quick-delivery").textContent = s.status.connected ? `${s.fps} FPS · USB` : "USB disconnected";
+  const ctx = $("quick-strip").getContext("2d"); ctx.clearRect(0, 0, 600, 20);
+  s.colors.forEach((color, i) => { ctx.fillStyle = s.powered ? `rgb(${color.join(",")})` : "#182221"; ctx.fillRect(i * 600 / s.colors.length, 0, 600 / s.colors.length + 1, 20); });
+  document.querySelectorAll("#quick-favorites button").forEach((button, i) => button.disabled = busy || s.calibrating);
+}
+async function action(task) {
+  if (busy) return;
+  busy = true; actionError = ""; if (state) render(state);
+  try { await flushBrightness(); const s = await serialized(task); if (s?.settings) render(s); }
+  catch(e) { actionError = String(e); }
+  finally { busy = false; if (state) render(state); }
+}
+async function flushBrightness() {
+  clearTimeout(brightnessTimer);
+  if (!editingBrightness) return;
+  await brightnessPreview;
+  const brightness = +$("quick-brightness").value;
+  editingBrightness = false;
+  render(await serialized(() => invoke("compact_control", { brightness, toggle: false })));
+}
+function previewBrightness() {
+  brightnessDirty = true;
+  if (!brightnessPreview) brightnessPreview = (async () => {
+    while (brightnessDirty) {
+      brightnessDirty = false;
+      const brightness = +$("quick-brightness").value;
+      render(await serialized(() => invoke("compact_control", { brightness, toggle:false, preview:true })));
+    }
+  })().catch(e => {actionError=String(e);render(state);}).finally(() => {brightnessPreview=null;});
+}
+$("quick-brightness").oninput = () => {
+  editingBrightness = true;
+  $("quick-value").textContent = $("quick-brightness").value + "%";
+  previewBrightness();
+  clearTimeout(brightnessTimer);
+  brightnessTimer = setTimeout(() => flushBrightness().catch(e => { actionError=String(e); render(state); }), 500);
+};
+$("quick-brightness").onchange = () => flushBrightness().catch(e => { actionError=String(e); render(state); });
+$("quick-power").onclick = () => action(() => invoke("compact_control", { brightness: null, toggle: true }));
+$("quick-retry").onclick = () => action(() => invoke("control", { action: { type:"start" } }));
+$("open-studio").onclick = () => action(() => invoke("compact_window", { operation:"studio", pinned:null }));
+document.addEventListener("keydown", e => { if (e.key === "Escape") action(() => invoke("compact_window", { operation:"hide", pinned:null })); });
+$("quick-pin").onchange = () => action(async () => {
+  try { $("quick-pin").checked = await invoke("compact_window", { operation:"pin", pinned:$("quick-pin").checked }); }
+  catch(e) { $("quick-pin").checked = !$("quick-pin").checked; throw e; }
+});
+async function loadFavorites() {
+  const library=await invoke("profile_library", { library:null }); favorites=library.profiles.filter(p => p.favorite);
+  $("quick-favorites").replaceChildren(); $("quick-empty").hidden=!!favorites.length;
+  for(const p of favorites) { const button=document.createElement("button"); button.className="secondary"; button.textContent=p.name;
+    button.onclick=()=>action(()=>invoke("apply_profile",{id:p.id})); $("quick-favorites").append(button); }
+  if(state) render(state);
+}
+async function poll() {
+  try { if(!document.hidden && !busy) render(await serialized(()=>invoke("control",{action:{type:"snapshot"}}))); }
+  catch(e) { actionError=String(e); if(state) render(state); }
+  finally { setTimeout(poll,500); }
+}
+(async()=>{
+  await window.__TAURI__.event.listen("profiles-changed",()=>loadFavorites().catch(e=>{actionError=String(e);}));
+  await window.__TAURI__.event.listen("control-error",({payload})=>{actionError=String(payload);if(state)render(state);});
+  $("quick-pin").checked=await invoke("compact_window",{operation:"get",pinned:null});
+  await loadFavorites(); render(await invoke("control",{action:{type:"snapshot"}}));
+})().catch(e=>{ $("quick-error").textContent=String(e);$("quick-error").hidden=false; }).finally(poll);

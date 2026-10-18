@@ -48,6 +48,7 @@ function notice(message, error = false) {
   $("notice").hidden = !message;
   $("notice").classList.toggle("error", error);
 }
+$("open-compact").onclick = () => run(async () => { await save(); await invoke("compact_window", { operation: "open", pinned: null }); });
 function request(action) {
   const pending = queue
     .catch(() => {})
@@ -145,6 +146,7 @@ function renderRuntime(value) {
   else if (value.recovering) $("frame-rate").textContent = "Waiting to reconnect";
   draw(value.colors);
   drawSpectrum(value.audioBands);
+  updateSceneSelection();
 }
 function selectButtons(selector, key, selected) {
   document.querySelectorAll(selector).forEach((button) => {
@@ -723,10 +725,14 @@ function initCalibration() {
   $("cal-stop").onclick = safe(() => end(false, true));
   dialog.addEventListener("cancel", e => { e.preventDefault(); safe(() => end(false))(); });
 }
-let library = { profiles: [] };
+let library = { profiles: [] }, starters = { profiles: [] };
 async function initProfiles() {
   library = await invoke("profile_library", { library: null });
+  starters = await invoke("starter_scenes");
   renderProfiles();
+  $("scene-search").oninput = renderProfiles;
+  $("scene-filter").onchange = renderProfiles;
+  document.querySelector(".profiles").addEventListener("toggle", refreshScenePreviews);
   await window.__TAURI__.event.listen("external-settings", async ({ payload }) => {
     clearTimeout(saveTimer); saveTimer = null; previewDirty = false;
     await previewPending;
@@ -739,7 +745,7 @@ async function initProfiles() {
     await save();
     const name = $("profile-name").value.trim();
     if (!name) throw new Error("Enter a profile name.");
-    await editLibrary(next => next.profiles.push({ id: crypto.randomUUID(), name, favorite: true, shortcut: "", settings: { ...settings } }));
+    await editLibrary(next => next.profiles.push({ id: crypto.randomUUID(), name, favorite: true, shortcut: "", settings: { ...settings, modeSettings: {} } }));
     $("profile-name").value = "";
   });
 }
@@ -751,13 +757,16 @@ async function editLibrary(edit) {
   } catch (e) { $("profile-message").textContent = String(e); throw e; }
 }
 function renderProfiles() {
+  lastScenePreviewKey = "";
   $("profile-list").replaceChildren();
   library.profiles.forEach((p, i) => {
-    const row = document.createElement("div"); row.className = "profile-row";
+    if (!sceneVisible(p, false)) return;
+    const row = document.createElement("div"); row.className = "profile-row scene-card"; row.setAttribute("role", "group"); row.setAttribute("aria-label", p.name);
     const apply = document.createElement("button"); apply.className = "profile-apply";
-    apply.textContent = p.name + " · " + labels[p.settings.mode];
+    decorateScene(apply, p);
     apply.onclick = () => run(async () => { await save(); const state = await invoke("apply_profile", { id: p.id }); settings = state.settings; renderRuntime(state); });
     row.append(apply);
+    const favorite = document.createElement("button"); favorite.className = "scene-favorite text-button"; favorite.textContent = p.favorite ? "★ Favorite" : "☆ Favorite"; favorite.setAttribute("aria-pressed", String(p.favorite)); favorite.onclick = () => run(() => editLibrary(n => { n.profiles[i].favorite = !p.favorite; })); row.append(favorite);
     const editor = document.createElement("details"); const summary = document.createElement("summary"); summary.textContent = "Edit"; editor.append(summary); row.append(editor);
     const fields = document.createElement("div"); fields.className = "profile-fields"; editor.append(fields);
     const field = (label, value) => {
@@ -773,14 +782,26 @@ function renderProfiles() {
     };
     button("Save name & shortcut", () => editLibrary(n => { n.profiles[i].name = name.value.trim(); n.profiles[i].shortcut = shortcut.value.trim(); }));
     button(p.favorite ? "★ Favorite" : "☆ Favorite", () => editLibrary(n => { n.profiles[i].favorite = !p.favorite; })).setAttribute("aria-pressed", String(p.favorite));
-    button("Update settings", async () => { await save(); await editLibrary(n => { n.profiles[i].settings = { ...settings }; }); });
+    button("Update settings", async () => { await save(); await editLibrary(n => { n.profiles[i].settings = { ...settings, modeSettings: {} }; }); });
     button("Duplicate", () => editLibrary(n => { n.profiles.splice(i + 1, 0, { ...structuredClone(p), id: crypto.randomUUID(), name: (p.name + " copy").slice(0, 50), shortcut: "" }); }));
     button("Move up", () => editLibrary(n => { [n.profiles[i-1], n.profiles[i]] = [n.profiles[i], n.profiles[i-1]]; })).disabled = i === 0;
     button("Move down", () => editLibrary(n => { [n.profiles[i+1], n.profiles[i]] = [n.profiles[i], n.profiles[i+1]]; })).disabled = i === library.profiles.length - 1;
     button("Delete", () => editLibrary(n => { n.profiles.splice(i, 1); }));
     $("profile-list").append(row);
   });
-  if (!library.profiles.length) $("profile-message").textContent = "No saved profiles yet.";
+  if (!library.profiles.length) $("profile-message").textContent = "Save a scene to add it to favorites or assign a shortcut.";
+  $("starter-list").replaceChildren();
+  for (const p of starters.profiles) {
+    if (!sceneVisible(p, true)) continue;
+    const row = document.createElement("div"); row.className = "scene-card starter-card"; row.setAttribute("role", "group"); row.setAttribute("aria-label", p.name);
+    const apply = document.createElement("button"); apply.className = "profile-apply"; decorateScene(apply,p);
+    apply.onclick = () => run(async () => { await save(); const state = await invoke("apply_starter", { id:p.id }); settings = state.settings; renderRuntime(state); });
+    const copy = document.createElement("button"); copy.className = "text-button"; copy.textContent = "Save a copy";
+    copy.onclick = () => run(() => editLibrary(n => n.profiles.push({ ...structuredClone(p), id:crypto.randomUUID(), favorite:true })));
+    row.append(apply,copy); $("starter-list").append(row);
+  }
+  $("scene-empty").hidden = !!document.querySelector(".scene-card");
+  refreshScenePreviews();
 }
 init().catch((error) => notice(`Unable to initialize: ${error}`, true));
 
@@ -810,3 +831,52 @@ $("diagnostic-copy").onclick = () => diagnosticAction(async () => {
 $("diagnostic-export").onclick = () => diagnosticAction(async () => {
   const path = await invoke("export_diagnostics"); $("diagnostic-status").textContent = "Saved to " + path;
 });
+
+let sceneTimer, scenePreviewBusy = false, lastScenePreviewKey = "";
+function sceneVisible(p, starter) {
+  const filter = $("scene-filter").value;
+  const query = $("scene-search").value.trim().toLowerCase();
+  return !(filter === "favorites" && !p.favorite || filter === "saved" && starter || filter === "starters" && !starter) && (p.name + " " + labels[p.settings.mode]).toLowerCase().includes(query);
+}
+function decorateScene(button,p) {
+  button.scene = p;
+  const canvas = document.createElement("canvas"); canvas.className = "scene-art"; canvas.width=240; canvas.height=150; canvas.setAttribute("aria-hidden","true");
+  const title = document.createElement("strong"); title.textContent = p.name;
+  const meta = document.createElement("small"); const s=p.settings;
+  meta.textContent = (s.mode === "rainbow" ? effectLabels[s.effect] : labels[s.mode]) + " · " + s.brightness + "%" + (s.mode === "rainbow" ? " · " + s.speed + "% speed" : "");
+  const status = document.createElement("span"); status.className="scene-tag"; status.textContent="Example preview";
+  button.append(canvas,title,meta,status); button.setAttribute("aria-label", "Start " + p.name);
+}
+async function refreshScenePreviews() {
+  clearTimeout(sceneTimer);
+  if (scenePreviewBusy || !document.querySelector(".profiles").open || document.hidden || !thumbnailsFocused) return;
+  scenePreviewBusy=true;
+  try {
+    const buttons=[...document.querySelectorAll(".scene-card .profile-apply")].filter(b => { const r=b.getBoundingClientRect(); return r.bottom>0 && r.top<innerHeight; });
+    const key = JSON.stringify(buttons.map(b => [b.scene.id, b.scene.settings]));
+    if (reducedMotion.matches && key === lastScenePreviewKey) return;
+    for (let i=0;i<buttons.length;i+=8) {
+      const chunk=buttons.slice(i,i+8);
+      const frames=await invoke("scene_previews",{settings:chunk.map(b=>b.scene.settings),seconds:reducedMotion.matches?2:(performance.now()/1000)%86400});
+      chunk.forEach((b,j)=>{ if(b.isConnected) drawEffectThumbnail(b.querySelector("canvas"),frames[j]); });
+    }
+    lastScenePreviewKey = reducedMotion.matches ? key : "";
+    updateSceneSelection();
+  } catch(e) { $("profile-message").textContent="Scene previews unavailable: "+String(e); }
+  finally { scenePreviewBusy=false; if(!reducedMotion.matches) sceneTimer=setTimeout(refreshScenePreviews,150); }
+}
+function updateSceneSelection() {
+  if(!runtime) return;
+  const common=["mode","brightness","smoothing"];
+  const keys={solid:["color"],rainbow:["effect","palette","color","speed","effectReverse"],music:["musicStyle","palette","color","audioSource","inputGain","sensitivity","noiseFloor","release","speed"],screen:["screenId","excludeBars","rgbBalance","saturation","gamma"],blend:["screenId","audioSource","blend","inputGain","sensitivity","noiseFloor","release","excludeBars","rgbBalance","saturation","gamma"]};
+  for(const b of document.querySelectorAll(".scene-card .profile-apply")) {
+    const s=b.scene.settings;
+    const match=!runtime.calibrating && [...common,...keys[s.mode]].every(k=>JSON.stringify(s[k])===JSON.stringify(runtime.settings[k]));
+    b.classList.toggle("scene-current",match);
+    b.querySelector(".scene-tag").textContent = match ? "Current settings · example" : "Example preview";
+  }
+}
+document.addEventListener("scroll",()=>{if(reducedMotion.matches)refreshScenePreviews();},{passive:true});
+window.addEventListener("focus",refreshScenePreviews);
+document.addEventListener("visibilitychange",refreshScenePreviews);
+reducedMotion.addEventListener("change",refreshScenePreviews);

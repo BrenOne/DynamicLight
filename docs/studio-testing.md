@@ -22,7 +22,7 @@ Physical checks are deferred at the user's request. Automated tests and successf
 
 Black-bar detection samples a bounded grid, accepts symmetric borders up to one quarter of each dimension, waits 600 ms for a stable change and retains its crop on entirely dark frames. It is optional and can mistake sustained, symmetric dark picture content for borders. It does not capture protected video or perform HDR tone mapping.
 
-Profiles store lighting settings locally, with a maximum of 40 profiles. They preserve current hardware mapping, comfort limits and startup/privacy settings when applied. Shortcuts register only when configured; a conflicting registration prevents the edit from being saved. Removing a binding before assigning it to another profile supports deliberate reassignment. Recent tray colors are kept for the current app session. There is no floating controller yet (#32).
+Profiles store lighting settings locally, with a maximum of 40 profiles. They preserve current hardware mapping, comfort limits and startup/privacy settings when applied. Shortcuts register only when configured; a conflicting registration prevents the edit from being saved. Removing a binding before assigning it to another profile supports deliberate reassignment. Recent tray colors are kept for the current app session. Quick controls (#32) now shares the same worker, with optional pinning and saved placement.
 
 Calibration test patterns use at most 20% brightness and respect a lower user cap. Individual LED tests use physical order; the edge test uses calibrated order. Calibration is never persisted as the active scene.
 
@@ -33,3 +33,11 @@ All modes use the same Rust lighting worker and USB writer. Screen/audio data re
 Rust tests cover mode persistence through restart, separation from hardware/comfort settings and capture consent, invalid-mode rejection, direction mirroring, missed-deadline accounting, bounded history and allowlisted output. Native smoke checks the commands without starting hardware. History is opt-in, flushed at most every five seconds, bounded to 200 state transitions and seven days. Abrupt exit can lose the last five seconds. Counters cover this app session; missed slots exclude deliberate idle frames and sleep, and do not measure capture-source frame drops.
 
 Physical follow-up: tune each mode, switch and restart; verify remembered source choices still honor OS permission. Exercise a failed connection/capture and verify report guidance. Enable history, restart, clear it and disable it. Check copy and Downloads export on each OS.
+
+## Quick controls and scenes (0.6)
+
+Automated checks cover native compact-window creation, real brightness synchronization back to the main window, pin/unpin, and safe disconnected operation. Rust tests exercise off-screen position clamping, starter validity, bounded preview requests and native effect parity. Browser checks cover scene search, filters, Save a copy, simulated previews and reduced motion, plus compact brightness, Stop, recovery status and responsive widths.
+
+Physical follow-up: move Quick controls between differently scaled monitors; close/reopen, restart, then disconnect a monitor and reopen. Verify keyboard use, pinning and return to studio on Windows/macOS/Linux. Window placement and always-on-top depend on the desktop compositor; Wayland may control placement itself. Apply favorites from all three surfaces, and test Stop during capture failure. Test all four starters and saved scenes on the strip.
+
+Scene cards always show examples, never live captures. Screen examples use synthetic colors and music examples use synthetic input; effect examples use the same native animation functions as output. The current-settings marker compares relevant controls. This is not a claim that a particular saved profile is actively controlling physical LEDs.

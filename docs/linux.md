@@ -20,7 +20,7 @@ Wayland screen sync is not enabled yet. Other modes remain available. Closing th
 Download the Linux artifact, extract it, then install the `.deb` from your Downloads directory (replace the filename with the one you downloaded):
 
 ```sh
-sudo apt install ./DynamicLight_0.5.0_amd64.deb
+sudo apt install ./DynamicLight_0.6.0_amd64.deb
 ```
 
 The package installs the required libraries, audio helper, app icon, and a USB permission rule. **Unplug and reconnect the strip after installation**, then launch DynamicLight from your applications menu. Run the app as your normal user.
@@ -38,8 +38,8 @@ sudo udevadm control --reload-rules
 Unplug and reconnect the strip. Mark the AppImage executable in its file properties, or run:
 
 ```sh
-chmod +x DynamicLight_0.5.0_amd64.AppImage
-./DynamicLight_0.5.0_amd64.AppImage
+chmod +x DynamicLight_0.6.0_amd64.AppImage
+./DynamicLight_0.6.0_amd64.AppImage
 ```
 
 The rule grants only the active local user access to this controller's lighting interface; it does not grant access to all USB devices or the keyboard interface. AppImage updates do not install system permission rules automatically.

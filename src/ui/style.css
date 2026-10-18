@@ -832,3 +832,26 @@ dialog button { min-height: 40px; }
 
 #diagnostic-dialog { width: min(640px, calc(100vw - 32px)); }
 #diagnostic-text { width:100%; box-sizing:border-box; resize:vertical; font:12px/1.6 ui-monospace,monospace; color:var(--text); background:#101115; border:1px solid #34393e; border-radius:10px; padding:12px; margin:12px 0; }
+input:not([type]), input[type="text"], input[type="search"] { color:var(--text); background:#10191d; border:1px solid var(--border); border-radius:7px; padding:11px 12px; min-height:40px; }
+input::placeholder { color:var(--muted); opacity:.8; }
+
+.scene-toolbar { display:flex; gap:14px; align-items:end; margin:20px 0 12px; }
+.scene-toolbar label { flex:1; display:grid; gap:7px; min-width:0; }
+.scene-toolbar input,.scene-toolbar select { width:100%; min-width:0; }
+.scene-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(205px,1fr)); gap:14px; }
+#starter-list:not(:empty) { margin-top:14px; }
+.scene-card { display:flex; flex-direction:column; padding:0; gap:0; border:1px solid var(--border); border-radius:12px; background:#121b1f; overflow:hidden; min-width:0; }
+.scene-card .profile-apply { display:flex; flex-direction:column; flex:none; gap:6px; width:100%; padding:0 14px 14px; border:0; border-radius:0; background:transparent; color:var(--text); }
+.scene-art { display:block; width:calc(100% + 28px); height:140px; object-fit:contain; margin:0 -14px 6px; background:#0e171b; }
+.scene-card strong { font-size:14px; }
+.scene-card small { color:var(--muted); font-size:11px; }
+.scene-tag { font-size:10px; color:var(--muted); margin-top:5px; }
+.scene-card .scene-current { box-shadow:inset 0 0 0 1px var(--accent); background:#20312d; }
+.scene-current .scene-tag { color:var(--accent); }
+.scene-card .text-button { text-align:left; padding:10px 14px; font-size:11px; }
+.scene-card details { padding:10px 14px; border-top:1px solid var(--border); }
+.scene-card .profile-fields { display:flex; flex-direction:column; }
+.scene-card .profile-fields label { flex:auto; }
+.scene-card .profile-fields button { padding:9px; font-size:12px; }
+.scene-card details[open] { flex-basis:auto; }
+@media(max-width:600px) { .header-actions { flex-wrap:wrap; justify-content:flex-end; } #open-compact { font-size:11px; } .scene-toolbar { flex-wrap:wrap; } }

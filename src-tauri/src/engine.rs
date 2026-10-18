@@ -24,6 +24,10 @@ pub enum Action {
         mode: String,
     },
     #[serde(skip)]
+    PreviewBrightness {
+        brightness: u8,
+    },
+    #[serde(skip)]
     ApplyProfile {
         settings: Settings,
     },
@@ -482,6 +486,13 @@ impl Engine {
         let persist = matches!(action, Action::Settings { .. });
         match action {
             Action::Snapshot => {}
+            Action::PreviewBrightness { brightness } => {
+                let settings = Settings {
+                    brightness,
+                    ..self.state.settings.clone()
+                };
+                return self.action(Action::PreviewSettings { settings });
+            }
             Action::SelectMode { mode } => {
                 let mut settings = self.state.settings.clone();
                 if let Some(memory) = settings.mode_settings.get(&mode).cloned() {
@@ -1021,15 +1032,20 @@ pub fn start(
                     );
                     let began = Instant::now();
                     let period = Duration::from_secs_f64(1.0 / engine.state.settings.fps as f64);
+                    let late = began.saturating_duration_since(next);
                     if engine.state.powered
                         && (engine.state.capturing || engine.state.settings.mode == "rainbow")
                     {
-                        engine.state.dropped_frames = engine.state.dropped_frames.saturating_add(
-                            missed_slots(began.saturating_duration_since(next), period),
-                        );
+                        engine.state.dropped_frames = engine
+                            .state
+                            .dropped_frames
+                            .saturating_add(missed_slots(late, period));
                     }
                     engine.tick();
-                    next = began + period;
+                    // Preserve cadence so repeated small delays cannot silently lower FPS.
+                    let remainder =
+                        Duration::from_nanos((late.as_nanos() % period.as_nanos()) as u64);
+                    next = began + period.saturating_sub(remainder);
                     if last_event.elapsed() >= Duration::from_millis(100) {
                         emit(&engine.state);
                         last_event = Instant::now();

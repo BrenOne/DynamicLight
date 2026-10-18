@@ -9,7 +9,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
   const server = http.createServer((req, res) => {
     const name = req.url === "/" ? "index.html" : req.url.slice(1);
     if (
-      !["index.html", "style.css", "renderer.js", "icon.svg"].includes(name)
+      !["index.html", "style.css", "renderer.js", "icon.svg", "compact.html", "compact.css", "compact.js"].includes(name)
     ) {
       res.writeHead(404).end();
       return;
@@ -141,6 +141,16 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
               );
             }
             if (cmd === "profile_library") { if (args.library) profileLibrary = structuredClone(args.library); return structuredClone(profileLibrary); }
+            if (cmd === "starter_scenes") return { profiles: [
+              { id:'warm-desk',name:'Warm desk',favorite:false,shortcut:'',settings:{...initial,mode:'solid',brightness:28,color:'#ffbf80'} },
+              { id:'cinema',name:'Cinema',favorite:false,shortcut:'',settings:{...initial,mode:'screen',brightness:35} },
+              { id:'neon',name:'Neon',favorite:false,shortcut:'',settings:{...initial,mode:'rainbow',effect:'aurora',brightness:55} },
+              { id:'ocean',name:'Ocean',favorite:false,shortcut:'',settings:{...initial,mode:'rainbow',effect:'aurora',palette:'ocean',brightness:40} }
+            ] };
+            if (cmd === "scene_previews") { fixture.sceneCalls=(fixture.sceneCalls||0)+1; return args.settings.map(s=>Array.from({length:48},(_,i)=>[50+i*3,140,200])); }
+            if (cmd === "apply_starter") { state.settings = {...initial,mode:'rainbow',palette:'ocean'}; state.powered=true; state.requested=true; return structuredClone(state); }
+            if (cmd === "compact_window") { if(args.operation==='pin')fixture.pinned=args.pinned; return !!fixture.pinned; }
+            if (cmd === "compact_control") { if(args.brightness!==null)state.settings.brightness=args.brightness; if(args.toggle)state.requested=state.powered=!state.requested; return structuredClone(state); }
             if (cmd === "apply_profile") { state.settings = structuredClone(profileLibrary.profiles.find(p => p.id === args.id).settings); state.requested = true; state.powered = true; return structuredClone(state); }
             if (cmd === "diagnostic_report") return { text: "DynamicLight test report: no private data", enabled: !!args.enabled };
             if (cmd === "export_diagnostics") return "Downloads/DynamicLight-diagnostics-test.txt";
@@ -546,6 +556,38 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await page.keyboard.press('Escape');
     assert.equal(await page.locator('#diagnostic-dialog').isVisible(), false);
+    await page.locator('.profiles > summary').click();
+    assert.equal(await page.locator('.starter-card').count(),4);
+    await page.locator('#scene-search').fill('ocean');
+    assert.equal(await page.locator('.scene-card').count(),1);
+    await page.locator('.starter-card .profile-apply').click(); await page.waitForFunction(()=>!busy);
+    assert.equal(await page.evaluate(()=>fixture.state.settings.palette),'ocean');
+    await page.locator('.starter-card').getByRole('button',{name:'Save a copy'}).click(); await page.waitForFunction(()=>!busy);
+    await page.locator('#scene-filter').selectOption('favorites');
+    assert.equal(await page.locator('.profile-row').count(),1);
+    assert.equal(await page.locator('.starter-card').count(),0);
+    await page.locator('#scene-search').fill(''); await page.locator('#scene-filter').selectOption('all');
+    await page.setViewportSize({width:1180,height:1000});
+    await page.locator('#scene-search').scrollIntoViewIfNeeded();
+    await page.waitForFunction(()=>fixture.sceneCalls>0);
+    await page.waitForTimeout(300);
+    await page.screenshot({path:'.local/ui-scenes.png'});
+    await page.emulateMedia({reducedMotion:'reduce'}); await page.waitForTimeout(300);
+    const sceneCalls=await page.evaluate(()=>fixture.sceneCalls);
+    await page.waitForTimeout(400); assert.equal(await page.evaluate(()=>fixture.sceneCalls),sceneCalls);
+    await page.goto(`http://127.0.0.1:${server.address().port}/compact.html`);
+    await page.waitForFunction(()=>document.querySelector('#quick-power').disabled===false);
+    await page.setViewportSize({width:360,height:460});
+    await page.locator('#quick-brightness').fill('32'); await page.locator('#quick-brightness').dispatchEvent('input');
+    await page.waitForFunction(()=>fixture.state.settings.brightness===32);
+    await page.locator('#quick-power').click(); await page.waitForFunction(()=>fixture.state.requested);
+    await page.locator('#quick-power').click(); await page.waitForFunction(()=>!fixture.state.requested);
+    await page.evaluate(()=>{fixture.state.settings.brightness=57; fixture.state.recovering=true; fixture.state.requested=true;});
+    await page.waitForFunction(()=>document.querySelector('#quick-value').textContent==='57%');
+    assert.equal(await page.locator('#quick-status').innerText(),'Reconnecting');
+    await page.locator('#quick-pin').check(); await page.waitForFunction(()=>fixture.pinned);
+    await page.screenshot({path:'.local/ui-compact.png'});
+    for(const width of [300,360,540]) {await page.setViewportSize({width,height:460});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
     assert.deepEqual(errors, []);
     console.log(
       "UI passed: profiles, calibration apply/cancel, blend, beat controls, tray synchronization, drag coalescing, effects, recovery, responsive widths and CSP.",

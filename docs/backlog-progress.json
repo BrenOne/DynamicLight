@@ -1,9 +1,6 @@
 {
   "updated": "2026-10-19",
-  "next": [
-    "UI-05",
-    "UI-03"
-  ],
+  "next": [],
   "items": {
     "REL-01": {
       "status": "Implemented; testing pending",
@@ -32,8 +29,8 @@
     },
     "UI-08": {
       "status": "Partial",
-      "delivered": "Main-window and tray status share the native engine; lifecycle recovery, Retry and Stop are implemented.",
-      "remaining": "Floating controller and assistive-technology validation."
+      "delivered": "Main-window and tray status share the native engine; lifecycle recovery, Retry and Stop are implemented. Compact controller now shares engine state, errors, Retry and Stop.",
+      "remaining": "Assistive-technology and physical desktop validation."
     },
     "UI-10": {
       "status": "Partial",
@@ -74,6 +71,16 @@
       "status": "Implemented; testing pending",
       "delivered": "Global maximum brightness, time-based change limiting to soften flashes, optional minimum glow and immediate Stop across every mode.",
       "remaining": "Physical comfort-control validation. These controls are not a medical safety guarantee."
+    },
+    "UI-05": {
+      "status": "Implemented; testing pending",
+      "delivered": "Compact native window with Start/Stop, live brightness, favorites, Retry, optional always-on-top and remembered position constrained to available work areas. Shares the native engine and stays synchronized with studio/tray.",
+      "remaining": "Physical multi-monitor, DPI scaling, keyboard and desktop-compositor behavior on macOS/Linux."
+    },
+    "UI-03": {
+      "status": "Implemented; testing pending",
+      "delivered": "Searchable/filterable scene cards, favorites, saved-profile editing and duplication, Warm desk/Cinema/Neon/Ocean starter scenes with Save a copy and native-rendered animated example previews. Current settings are marked; previews never start capture.",
+      "remaining": "Physical scene application and assistive-technology checks on each platform."
     }
   }
 }

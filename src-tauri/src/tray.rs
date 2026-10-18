@@ -31,6 +31,14 @@ pub fn init(app: &tauri::AppHandle) -> tauri::Result<()> {
             let id = event.id.as_ref().to_owned();
             match id.as_str() {
                 "open" => super::show(app),
+                "compact" => {
+                    let app = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let Err(e) = crate::compact::open(&app) {
+                            let _ = app.emit("control-error", e);
+                        }
+                    });
+                }
                 "quit" => app.exit(0),
                 _ => {
                     let app = app.clone();
@@ -85,6 +93,7 @@ fn menu(
     let menu = Menu::new(app)?;
     for (id, label, enabled) in [
         ("open", "Open DynamicLight".to_owned(), true),
+        ("compact", "Quick controls".to_owned(), true),
         ("status", status(s), false),
         (
             "toggle",

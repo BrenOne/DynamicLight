@@ -40,7 +40,11 @@ Effect thumbnails animate using the same native patterns as the strip, including
 
 Tune music with input gain, sensitivity, a noise gate, and fade-out controls. Choose an Aurora, Ocean, Sunset, or custom-color palette. Changes reach the lighting engine while you drag; settings save when you pause.
 
-Open **Profiles** to save settings for work, films, or games. Apply a profile in one click, add it to tray favorites, or assign a shortcut such as `Control+Shift+1` (`Command+Shift+1` on Mac). Selecting a capture profile starts its screen/audio source and may request OS permission. Profiles preserve your strip layout, brightness limits, and startup preferences.
+Open **Profiles & scenes** to browse starter scenes or save settings for work, films, or games. Apply a profile in one click, add it to tray favorites, or assign a shortcut such as `Control+Shift+1` (`Command+Shift+1` on Mac). Selecting a capture profile starts its screen/audio source and may request OS permission. Profiles preserve your strip layout, brightness limits, and startup preferences.
+
+Search by name or mode, filter favorites, or choose **Save a copy** to customize Warm desk, Cinema, Neon, or Ocean. Scene thumbnails are simulated examples; they never start screen or audio capture.
+
+Open **Quick controls** from the header or tray for a small window with Start/Stop, live brightness, favorites, and Retry. You can keep it on top or return to the studio. Closing it leaves lighting running.
 
 The tray/menu bar offers Start/Stop, brightness, recent colors, favorite profiles, and Retry. Changes also appear in the main window. Linux global shortcuts need X11/XWayland support; if registration is unavailable, use the app or tray.
 

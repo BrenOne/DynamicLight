@@ -3,6 +3,7 @@ mod beat;
 mod capture;
 #[cfg(target_os = "windows")]
 mod capture_windows;
+mod compact;
 mod device;
 mod diagnostics;
 mod effects;
@@ -16,6 +17,7 @@ mod linux;
 mod platform;
 mod profiles;
 mod protocol;
+mod scenes;
 mod settings;
 mod tray;
 
@@ -162,6 +164,11 @@ pub fn run() {
             profiles::apply_profile
             ,diagnostics::diagnostic_report,
             diagnostics::export_diagnostics
+            ,compact::compact_window,
+            compact::compact_control
+            ,scenes::starter_scenes,
+            scenes::apply_starter,
+            scenes::scene_previews
         ])
         .setup(|app| {
             let background = std::env::args().any(|arg| arg == "--autostart");
@@ -237,6 +244,16 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if window.label() == "compact" {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    if let Some(webview) = window.app_handle().get_webview_window("compact") {
+                        if let Err(e) = compact::remember(&webview) { let _ = window.emit("control-error", e); }
+                    }
+                    let _ = window.hide();
+                }
+                return;
+            }
             if let tauri::WindowEvent::Focused(focused) = event {
                 if let Some(preview) = window.try_state::<Preview>() {
                     preview.0.store(*focused, Ordering::Relaxed);
@@ -260,6 +277,9 @@ pub fn run() {
     app.run(|app, event| {
         if let tauri::RunEvent::ExitRequested { api, .. } = event {
             if !app.state::<AtomicBool>().swap(true, Ordering::SeqCst) {
+                if let Some(window) = app.get_webview_window("compact") {
+                    let _ = compact::remember(&window);
+                }
                 api.prevent_exit();
                 let handle = app.state::<Handle>().inner().clone();
                 let app = app.clone();

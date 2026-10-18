@@ -74,6 +74,33 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     assert.equal((await control({ type: 'selectMode', mode: 'solid' })).settings.brightness, 23);
     assert.equal((await control({ type: 'snapshot' })).status.connected, false);
     await control({ type: 'settings', settings: original });
+    const starters = await page.evaluate(() => window.__TAURI__.core.invoke('starter_scenes'));
+    assert.equal(starters.profiles.length, 4);
+    const previews = await page.evaluate(settings => window.__TAURI__.core.invoke('scene_previews', { settings, seconds: 2 }), starters.profiles.map(p => p.settings));
+    assert.equal(previews.length, 4);
+    assert(previews.every(frame => frame.length === 48));
+    await page.evaluate(() => window.__TAURI__.core.invoke('compact_window', { operation:'open',pinned:null }));
+    let compactPage;
+    for (let i=0; i<40; i++) { compactPage=browser.contexts()[0].pages().find(p=>p.url().includes('compact.html')); if(compactPage)break; await delay(100); }
+    assert(compactPage, 'Native compact webview opened');
+    compactPage.on('pageerror',e=>errors.push(e.message));
+    await compactPage.waitForFunction(()=>!document.querySelector('#quick-power').disabled);
+    await compactPage.locator('#quick-brightness').fill('42');
+    await compactPage.locator('#quick-brightness').dispatchEvent('input');
+    await page.waitForFunction(()=>settings.brightness===42);
+    assert.equal((await control({ type:'snapshot' })).status.connected,false);
+    await compactPage.locator('#quick-pin').check();
+    await compactPage.waitForFunction(()=>!busy);
+    assert.equal(await compactPage.evaluate(()=>window.__TAURI__.core.invoke('compact_window',{operation:'get',pinned:null})),true);
+    await compactPage.locator('#quick-pin').uncheck(); await compactPage.waitForFunction(()=>!busy);
+    await compactPage.screenshot({path:'.local/native-compact.png'});
+    await compactPage.locator('#open-studio').click(); await compactPage.waitForFunction(()=>!busy);
+    await compactPage.evaluate(()=>window.__TAURI__.core.invoke('compact_window',{operation:'hide',pinned:null}));
+    await page.locator('.profiles > summary').click();
+    await page.waitForTimeout(500);
+    await page.screenshot({path:'.local/native-scenes.png',fullPage:true});
+    await page.locator('.profiles > summary').click();
+    await control({ type:'settings', settings:original });
     await assert.rejects(
       control({ type: "settings", settings: { ...original, count: 128 } }),
     );

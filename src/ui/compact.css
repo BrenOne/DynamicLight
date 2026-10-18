@@ -1,0 +1,23 @@
+.compact-body { min-width: 0; background: #101719; }
+.quick-controls { padding: 20px; max-width: 580px; margin: auto; }
+.quick-controls header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:22px; }
+.quick-controls .brand { gap:9px; }
+.quick-controls h1 { font-size:15px; letter-spacing:-.3px; }
+.quick-controls h2 { font-size:11px; font-weight:600; color:var(--muted); margin:0 0 12px; }
+.quick-controls .text-button { font-size:11px; white-space:nowrap; padding:6px 0; }
+.quick-state { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+#quick-mode { font-size:24px; font-weight:600; letter-spacing:-.7px; }
+#quick-status { color:var(--muted); font-size:12px; margin-left:auto; }
+#quick-strip { display:block; width:100%; height:10px; margin:16px 0; border-radius:6px; background:#080d0e; }
+#quick-power { width:100%; min-height:44px; margin-bottom:22px; }
+.quick-controls label { font-size:12px; }
+.quick-controls output { float:right; font-variant-numeric:tabular-nums; }
+.quick-favorites { margin:22px 0 12px; }
+#quick-favorites { display:flex; gap:8px; flex-wrap:wrap; }
+#quick-favorites button { font-size:12px; padding:9px 12px; min-height:36px; max-width:100%; overflow-wrap:anywhere; text-align:left; }
+#quick-favorites button[aria-pressed="true"] { border-color:var(--accent); background:#203a31; }
+.quick-controls footer { margin-top:20px; padding-top:14px; gap:8px; flex-wrap:wrap; }
+.quick-controls footer .checkbox { margin:0; }
+#quick-delivery { font-size:10px; }
+#quick-error { color:#ffb5a8; overflow-wrap:anywhere; }
+@media(max-width:340px) { .quick-controls { padding:14px; } .quick-controls header { gap:6px; } }

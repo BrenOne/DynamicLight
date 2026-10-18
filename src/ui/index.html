@@ -14,6 +14,7 @@
           <h1>DynamicLight</h1>
         </div>
         <div class="header-actions">
+          <button id="open-compact" class="text-button">Quick controls ↗</button>
           <div class="status">
             <i id="status-dot"></i><span id="status-label">Not connected</span>
           </div>
@@ -51,13 +52,15 @@
         </button>
       </div>
       <details class="panel profiles">
-        <summary>Profiles <span class="muted">Save settings · shortcuts · tray favorites</span></summary>
+        <summary>Profiles & scenes <span class="muted">Saved settings and starter scenes</span></summary>
         <div class="profile-create">
           <label for="profile-name">Name</label><input id="profile-name" maxlength="50" placeholder="Movies" />
           <button id="profile-save" class="secondary">Save current settings</button>
         </div>
         <p class="help">Selecting a profile starts lighting. Screen and audio profiles may request capture permission. Strip layout and startup preferences stay unchanged.</p>
-        <div id="profile-list"></div>
+        <div class="scene-toolbar"><label for="scene-search">Find a scene<input id="scene-search" type="search" placeholder="Name or mode" /></label><label for="scene-filter">Show<select id="scene-filter"><option value="all">All scenes</option><option value="favorites">Favorites</option><option value="saved">Saved profiles</option><option value="starters">Starter scenes</option></select></label></div>
+        <p class="help">Thumbnails are examples, not captured content. The main LED preview shows current output.</p>
+        <div id="profile-list" class="scene-grid"></div><div id="starter-list" class="scene-grid"></div><p id="scene-empty" class="help" hidden>No matching scenes.</p>
         <p id="profile-message" class="help" role="status"></p>
       </details>
       <div class="workspace">
