@@ -1,0 +1,19 @@
+# Window and region capture
+
+In Screen or Blend, choose **Capture source**. Full display keeps the existing display selection. Rectangle captures a selected portion of that display; drag its outline or enter left/top/width/height percentages. The diagram previews geometry without taking a screenshot. Once started, the regular LED preview shows sampled edge colors.
+
+Window selection lists available applications and titles locally. Choose **Refresh windows**, select the intended window, and Apply. Applying a new source stops capture; Start / Retry is required to capture it. Movement and resizing are followed. Minimization, closure, or a revoked source interrupts screen capture. Blend can continue with its available audio source. Restore/reselect the window and Retry; opt-in capture recovery retains its usual behavior.
+
+Window IDs are bound to their process and the current DynamicLight session. Re-select a window after restarting DynamicLight. This prevents a saved window ID being silently reused for another application. Local profiles retain source bindings; exported scenes exclude window identities, titles, and region/display bindings.
+
+Rectangle coordinates are normalized to the selected display and rounded out to physical pixel boundaries. The rectangle therefore retains its relative coverage at different scale factors. Display resolution/rearrangement still uses the existing source-change recovery policy. The selected physical display determines LED edge allocation; a window or rectangle changes sampling coordinates without reassigning LEDs to different physical edges.
+
+## Platform behavior
+
+- Windows window capture uses a retained [Windows Graphics Capture session](https://learn.microsoft.com/en-us/windows/win32/api/windows.graphics.capture.interop/nf-windows-graphics-capture-interop-igraphicscaptureiteminterop-createforwindow), requiring Windows 10 1903+. The free-threaded pool is polled without calling the target application's blocking PrintWindow implementation. The OS capture indicator remains enabled. Explicit handle/process/minimization checks prevent continued use of a closed window's last frame. Full display keeps Desktop Duplication and GDI fallback; rectangles use a bounded GDI thumbnail of the selected region.
+- macOS uses the selected window or display-region capture API through xcap. Screen-recording permission is required. Validate behavior on physical Intel and Apple Silicon Macs before claiming platform parity.
+- Linux supports X11 window/region capture. Wayland remains unsupported, avoiding the screenshot-to-disk/repeated-prompt fallback. Compositor-dependent occlusion behavior must be validated on the target desktop.
+
+Protected video, DRM, secure desktops, permission restrictions, and unsupported GPU paths can yield black or unavailable frames. The application does not bypass these protections. Captured pixels are sampled locally; only RGB lighting colors reach USB. Window titles and source IDs are excluded from diagnostic exports and the automation status API.
+
+Native validation includes rectangle rounding at multiple resolutions, source-change consent revocation, and an interactive Windows test that captures only its own generated fixture window, resizes it, then verifies capture terminates on closure. No USB is used by that test. Physical multi-DPI, protected video, macOS and Linux window behavior remain in the platform validation trackers.

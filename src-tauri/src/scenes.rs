@@ -113,6 +113,7 @@ pub fn scene_previews(settings: Vec<Settings>, seconds: f32) -> Result<Vec<Vec<R
                     48
                 ],
                 "rainbow" => effects::animated(&s, seconds),
+                "replay" => vec![[0; 3]; 48],
                 "music" => effects::music(
                     &s,
                     if s.music_style == "beat" {

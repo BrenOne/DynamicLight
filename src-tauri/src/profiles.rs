@@ -56,6 +56,7 @@ impl Library {
                 return Err("Use a profile name of 1–50 characters".into());
             }
             p.settings.validate()?;
+            p.source.capture_source.validate()?;
             if p.source.screen_id.len() > 200 {
                 return Err("Display binding is too long".into());
             }
@@ -104,6 +105,7 @@ impl<'de> Deserialize<'de> for Profile {
             shortcut: stored.shortcut,
             source: stored.source.unwrap_or(SourceBinding {
                 screen_id: stored.settings.screen_id.clone(),
+                capture_source: stored.settings.capture_source.clone(),
             }),
             settings: SceneSettings::capture(&stored.settings),
         })
@@ -112,6 +114,7 @@ impl<'de> Deserialize<'de> for Profile {
 pub fn scene(profile: &SceneSettings, source: &SourceBinding, current: &Settings) -> Settings {
     let mut settings = profile.apply(current);
     settings.screen_id = source.screen_id.clone();
+    settings.capture_source = source.capture_source.clone();
     settings
 }
 pub fn apply(app: &tauri::AppHandle, id: &str) -> Result<Snapshot, String> {

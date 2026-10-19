@@ -322,6 +322,9 @@
                       </div>
                     </div>
                   </div>
+                  <button id="source-open" type="button">
+                    Capture source: <span id="source-label">Full display</span>…
+                  </button>
                   <p id="capture-help" class="help"></p>
                   <label class="checkbox"
                     ><input id="exclude-bars" type="checkbox" /> Exclude black
@@ -567,6 +570,9 @@
                 >Save scene
               </button>
             </div>
+            <button id="sequence-open" type="button">
+              Record / replay RGB sequence…
+            </button>
             <div class="scene-toolbar">
               <label for="scene-search"
                 >Find a scene<input
@@ -1479,6 +1485,166 @@
         ><button id="studio-apply" class="power">Apply</button>
       </div>
     </dialog>
+    <dialog id="source-dialog" aria-labelledby="source-title">
+      <div class="dialog-heading">
+        <h2 id="source-title">Capture source</h2>
+        <button id="source-cancel">Cancel</button>
+      </div>
+      <label
+        >Source type<select id="source-kind">
+          <option value="display">Full selected display</option>
+          <option value="window">Application window</option>
+          <option value="region">Rectangle on selected display</option>
+        </select></label
+      >
+      <p class="help">
+        The outline previews the sampled area; no screenshot is taken here.
+        Selected edges map to the calibrated LED route. Changing source stops
+        capture until you press Start / Retry.
+      </p>
+      <canvas
+        id="source-preview"
+        width="600"
+        height="340"
+        aria-label="Selected capture rectangle. Drag to select, or enter percentages below."
+      ></canvas>
+      <div id="source-region" class="settings-grid" hidden>
+        <label
+          >Left %<input
+            id="source-left"
+            type="number"
+            min="0"
+            max="99.9"
+            step="0.1" /></label
+        ><label
+          >Top %<input
+            id="source-top"
+            type="number"
+            min="0"
+            max="99.9"
+            step="0.1" /></label
+        ><label
+          >Width %<input
+            id="source-width"
+            type="number"
+            min="0.1"
+            max="100"
+            step="0.1" /></label
+        ><label
+          >Height %<input
+            id="source-height"
+            type="number"
+            min="0.1"
+            max="100"
+            step="0.1"
+        /></label>
+      </div>
+      <div id="source-window" hidden>
+        <label>Window<select id="source-windows"></select></label
+        ><button id="source-refresh">Refresh windows</button>
+      </div>
+      <p class="help">
+        Window capture follows movement and resizing. Minimized, closed, or
+        revoked sources stop or fall back to Music in Blend; Retry after
+        restoring them. Select windows again after restarting DynamicLight.
+        Protected video may be black. macOS requires screen-recording
+        permission; Linux requires X11.
+      </p>
+      <p id="source-status" class="help" role="status"></p>
+      <button id="source-apply" class="power">Apply source</button>
+    </dialog>
+    <dialog id="sequence-dialog" aria-labelledby="sequence-title">
+      <div class="dialog-heading">
+        <h2 id="sequence-title">RGB sequences</h2>
+        <button id="sequence-close">Close</button>
+      </div>
+      <p class="help">
+        Record generated LED colors only, never screenshots or audio. Up to 60
+        seconds / 1800 frames. Recording does not start lights or capture.
+        Export to keep a file before replacing the current sequence.
+      </p>
+      <fieldset>
+        <legend>Record current lighting</legend>
+        <label
+          >Maximum duration (seconds)<input
+            id="sequence-seconds"
+            type="number"
+            min="1"
+            max="60"
+            value="15"
+        /></label>
+        <div class="input-row">
+          <button id="sequence-record">Start recording</button
+          ><button id="sequence-stop-record">Finish recording</button>
+        </div>
+        <p id="sequence-record-state" class="help" role="status"></p>
+      </fieldset>
+      <fieldset>
+        <legend>Offline playback</legend>
+        <p id="sequence-clip" class="help"></p>
+        <label
+          >Import RGB sequence<input
+            id="sequence-file"
+            type="file"
+            accept=".json,application/json" /></label
+        ><button id="sequence-export">Export to Downloads</button>
+        <div class="settings-grid">
+          <label
+            >Trim start (seconds)<input
+              id="sequence-start"
+              type="number"
+              min="0"
+              max="59.999"
+              step="0.001"
+              value="0" /></label
+          ><label
+            >Trim end (seconds)<input
+              id="sequence-end"
+              type="number"
+              min="0.001"
+              max="60"
+              step="0.001"
+              value="1" /></label
+          ><label
+            >Speed %<input
+              id="sequence-speed"
+              type="number"
+              min="25"
+              max="400"
+              value="100" /></label
+          ><label
+            >Replay level %<input
+              id="sequence-level"
+              type="number"
+              min="0"
+              max="100"
+              value="100"
+          /></label>
+        </div>
+        <label class="checkbox"
+          ><input id="sequence-loop" type="checkbox" checked /> Loop trimmed
+          range</label
+        >
+        <p id="sequence-mapping" class="help"></p>
+        <label class="checkbox"
+          ><input id="sequence-remap" type="checkbox" /> Proportionally remap to
+          the current LED count and coverage</label
+        >
+        <p class="help">
+          Non-looping playback holds its final frame. Recorded intensity can be
+          dimmed; global comfort limits still apply. Decorative zones are
+          ignored during replay. Playback settings can be saved as a scene;
+          another computer also needs the matching RGB file.
+        </p>
+        <div class="input-row">
+          <button id="sequence-play" class="power">Play / restart</button
+          ><button id="sequence-stop">Stop lighting</button>
+        </div>
+      </fieldset>
+      <p id="sequence-status" class="help" role="status"></p>
+    </dialog>
+    <script src="sequences.js"></script>
+    <script src="capture-sources.js"></script>
     <script src="image-palette.js"></script>
     <script src="studio.js"></script>
     <script src="appearance.js"></script>

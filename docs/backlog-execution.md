@@ -12,6 +12,8 @@ Each batch must include working native and UI behavior, bounded/validated persis
 
 Physical validation remains tracked in #37, #38 and #45. Automated tests and CI builds do not complete physical USB, actual capture/audio, assistive technology, or cross-host testing. Record unsupported platform behavior explicitly.
 
-Studio foundations: implemented on `codex/studio-backlog` for 0.11.0. Local validation: 69 Rust tests, strict Clippy, browser interaction/contrast/layout/CSP checks, and isolated native Windows studio/Quick-controls smoke. Cross-platform CI and release verification follow before delivery.
+Studio foundations: shipped in 0.11.0 via #56. All four platform builds passed; published 21 assets, 20 SHA256 checksums, and four production updater signatures were verified. Local validation included 69 Rust tests, strict Clippy, browser interaction/contrast/layout/CSP checks and isolated native Windows studio/Quick-controls smoke.
 
-Next: capture and playback (#13, #22).
+Capture and playback (#13, #22): implemented on `codex/capture-playback` for 0.12.0. Local validation: 75 Rust tests, strict Clippy, browser source/sequence controls, isolated native persistence/playback setup, and real Windows capture of a generated fixture window (including resize and closure). No USB was used. Cross-platform CI/release verification pending.
+
+Next: scheduling, temporary cues, focus timers and application rules (#10, #15, #25, #9).

@@ -3,6 +3,7 @@ mod audio;
 mod automation;
 mod beat;
 mod capture;
+mod capture_source;
 #[cfg(target_os = "windows")]
 mod capture_windows;
 mod compact;
@@ -20,6 +21,7 @@ mod platform;
 mod profiles;
 mod protocol;
 mod scenes;
+mod sequence;
 mod settings;
 mod sharing;
 mod studio;
@@ -141,6 +143,12 @@ async fn displays() -> Result<Vec<capture::Screen>, String> {
         .map_err(|e| e.to_string())?
 }
 #[tauri::command]
+async fn capture_windows_list() -> Result<Vec<capture_source::Choice>, String> {
+    tauri::async_runtime::spawn_blocking(capture_source::windows)
+        .await
+        .map_err(|e| e.to_string())?
+}
+#[tauri::command]
 fn quit(app: tauri::AppHandle) {
     app.exit(0);
 }
@@ -165,11 +173,14 @@ pub fn run() {
         ))
         .invoke_handler(tauri::generate_handler![
             appearance::appearance,
+            sequence::import_sequence,
+            sequence::export_sequence,
             studio::studio_library,
             studio::studio_preview,
             studio::wallpaper_image,
             control,
             displays,
+            capture_windows_list,
             quit,
             platform_name,
             app_version,

@@ -29,6 +29,7 @@ const labels = {
   blend: "Screen + audio",
   music: "Music",
   rainbow: "Effects",
+  replay: "RGB replay",
 };
 const effectLabels = {
   rainbow: "Color flow",
@@ -82,6 +83,7 @@ function request(action) {
 function renderRuntime(value) {
   const endedCalibration = runtime?.calibrating && !value.calibrating;
   runtime = value;
+  window.Sequences?.sync(value);
   if (endedCalibration && $("calibration-dialog").open) {
     $("calibration-dialog").close();
     settings = value.settings;
@@ -122,7 +124,7 @@ function renderRuntime(value) {
         ? "Capture stopped · Strip dark"
         : current.brightness === 0
           ? "Brightness zero · Strip dark"
-          : value.capturing || current.mode === "rainbow"
+          : value.capturing || ["rainbow", "replay"].includes(current.mode)
             ? `${value.fps} FPS · USB`
             : "Solid color · USB";
   $("activity-label").textContent = !connected
@@ -250,7 +252,7 @@ function updateUI() {
       : "Fixed colors for this effect."
     : "";
   $("color-control").hidden =
-    ["screen", "blend"].includes(settings.mode) ||
+    ["screen", "blend", "replay"].includes(settings.mode) ||
     (settings.mode !== "solid" &&
       (settings.palette !== "mono" || fixedPalette));
   $("speed-controls").hidden =
@@ -277,6 +279,7 @@ function updateUI() {
   if (runtime) renderRuntime(runtime);
   refreshEffectPreviews();
   window.LibraryTools?.sync();
+  window.CaptureSources?.sync();
   updateWorkspaceSummary();
 }
 // Coalesce drag updates: at most one preview IPC in flight, then the newest value.
@@ -576,14 +579,18 @@ function updateWorkspaceSummary() {
       ? musicNames[settings.musicStyle]
       : settings.mode === "solid"
         ? "Fixed color"
-        : "Animated pattern";
+        : settings.mode === "replay"
+          ? "Offline RGB sequence · controls in Scenes"
+          : "Animated pattern";
   $("preview-title").textContent = ["screen", "blend"].includes(settings.mode)
     ? display
     : settings.mode === "solid"
       ? settings.color.toUpperCase()
       : settings.mode === "music"
         ? musicNames[settings.musicStyle]
-        : effectLabels[settings.effect];
+        : settings.mode === "replay"
+          ? "Recorded LED colors"
+          : effectLabels[settings.effect];
   $("preview-state").textContent = runtime?.calibrating
     ? "Calibration output"
     : !runtime?.status.connected
@@ -691,6 +698,8 @@ async function init() {
   await initProfiles();
   window.LibraryTools.init();
   window.Studio.init();
+  window.CaptureSources.init();
+  window.Sequences.init();
   window.Updates.init({ save, showSettings: () => showView("settings") });
   window.Automation.init();
   initCalibration();
@@ -1124,7 +1133,10 @@ function editScene(p) {
       await save();
       await mutate((next, i) => {
         next.profiles[i].settings = { ...settings, modeSettings: {} };
-        next.profiles[i].source = { screenId: settings.screenId };
+        next.profiles[i].source = {
+          screenId: settings.screenId,
+          captureSource: settings.captureSource || { kind: "display" },
+        };
       });
     },
     "refresh-cw",

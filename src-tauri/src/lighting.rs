@@ -124,6 +124,7 @@ pub fn sample_strided(
         &mut Crop::default(),
     )
 }
+#[cfg(any(test, target_os = "windows"))]
 pub fn sample_tracked(
     data: &[u8],
     width: u32,
@@ -133,6 +134,22 @@ pub fn sample_tracked(
     settings: &Settings,
     crop: &mut Crop,
 ) -> Vec<Rgb> {
+    sample_geometry(
+        data,
+        (width, height, stride, bgra),
+        settings,
+        crop,
+        width as f32 / height.max(1) as f32,
+    )
+}
+pub fn sample_geometry(
+    data: &[u8],
+    frame: (u32, u32, usize, bool),
+    settings: &Settings,
+    crop: &mut Crop,
+    aspect: f32,
+) -> Vec<Rgb> {
+    let (width, height, stride, bgra) = frame;
     if width == 0
         || height == 0
         || stride < width as usize * 4
@@ -144,7 +161,7 @@ pub fn sample_tracked(
     let (cw, ch) = (width - 2 * left, height - 2 * top);
     // LED edge allocation follows the physical display. Cropping changes where
     // each LED samples the picture, not which physical LEDs belong to an edge.
-    positions(settings.count, settings.sides, width as f32 / height as f32)
+    positions(settings.count, settings.sides, aspect)
         .iter()
         .map(|&(x, y)| {
             let cx = left + (x * (cw - 1) as f32).round() as u32;

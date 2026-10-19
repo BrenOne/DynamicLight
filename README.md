@@ -63,3 +63,5 @@ Lights still dark? Check brightness and the message shown when starting. See [tr
 Released under the [MIT License](LICENSE). Copyright © 2026 mskutin.
 
 Studio tools: [effects, zones, bias lighting, image palettes and appearance](docs/studio-authoring.md).
+
+Capture tools: [window/region sources](docs/capture-sources.md) and [RGB sequence recording/replay](docs/rgb-sequences.md).

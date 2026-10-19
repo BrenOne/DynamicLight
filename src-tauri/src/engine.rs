@@ -25,6 +25,18 @@ pub enum Action {
         active: std::sync::Arc<std::sync::atomic::AtomicBool>,
         allow_capture: bool,
     },
+    RecordStart {
+        seconds: u8,
+    },
+    RecordStop {},
+    #[serde(skip)]
+    LoadSequence {
+        sequence: crate::sequence::Sequence,
+    },
+    #[serde(skip)]
+    ExportSequence {
+        path: PathBuf,
+    },
     Snapshot,
     SelectMode {
         mode: String,
@@ -83,6 +95,7 @@ pub enum Action {
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
     pub settings: Settings,
+    pub sequence: crate::sequence::Status,
     pub status: Status,
     pub powered: bool,
     pub requested: bool,
@@ -167,13 +180,16 @@ pub struct Engine {
     last_tick: Instant,
     beat: crate::beat::Detector,
     calibration: Option<CalibrationSession>,
+    sequences: crate::sequence::Deck,
 }
 impl Engine {
     pub fn new(settings: Settings, path: PathBuf, warning: String) -> Self {
         let controller = Controller::new();
+        let sequences = crate::sequence::Deck::load(path.with_file_name("lighting-sequence.json"));
         Self {
             state: Snapshot {
                 settings,
+                sequence: sequences.status(),
                 status: controller.status.clone(),
                 powered: false,
                 requested: false,
@@ -200,6 +216,7 @@ impl Engine {
                 calibration_led: None,
             },
             controller,
+            sequences,
             path,
             desired: false,
             life: Lifecycle::default(),
@@ -331,6 +348,12 @@ impl Engine {
         .save(&self.intent_path())
     }
     fn restore(&mut self) {
+        if self.state.settings.mode == "replay" {
+            if let Err(error) = self.sequences.validate_playback(&self.state.settings) {
+                self.state.error = error;
+                return;
+            }
+        }
         match SavedIntent::load(&self.intent_path()) {
             Ok(intent) if self.state.settings.restore_on_start && intent.running => {
                 self.life.requested = true;
@@ -471,7 +494,7 @@ impl Engine {
         self.state.error.clear();
         match self.state.settings.mode.as_str() {
             "blend" => {
-                let screen = ScreenCapture::start(&self.state.settings.screen_id);
+                let screen = ScreenCapture::start(&self.state.settings);
                 let audio = Audio::start(self.state.settings.audio_source == "system");
                 let errors: Vec<_> = [screen.as_ref().err(), audio.as_ref().err()]
                     .into_iter()
@@ -490,7 +513,7 @@ impl Engine {
                     );
                 }
             }
-            "screen" => self.screen = Some(ScreenCapture::start(&self.state.settings.screen_id)?),
+            "screen" => self.screen = Some(ScreenCapture::start(&self.state.settings)?),
             "music" => {
                 self.audio = Some(Audio::start(self.state.settings.audio_source == "system")?)
             }
@@ -499,7 +522,7 @@ impl Engine {
         self.state.capturing = true;
         if self.state.settings.mode == "blend" {
             self.blend_sources = (
-                crate::capture::source_signature(&self.state.settings.screen_id).ok(),
+                crate::capture::source_signature(&self.state.settings).ok(),
                 crate::audio::source_signature(self.state.settings.audio_source == "system").ok(),
             );
         }
@@ -511,15 +534,18 @@ impl Engine {
         match self.state.settings.mode.as_str() {
             "blend" => Ok(format!(
                 "{:?}|{:?}",
-                crate::capture::source_signature(&self.state.settings.screen_id),
+                crate::capture::source_signature(&self.state.settings),
                 crate::audio::source_signature(self.state.settings.audio_source == "system")
             )),
-            "screen" => crate::capture::source_signature(&self.state.settings.screen_id),
+            "screen" => crate::capture::source_signature(&self.state.settings),
             "music" => crate::audio::source_signature(self.state.settings.audio_source == "system"),
             _ => Ok(String::new()),
         }
     }
     fn start_requested(&mut self) -> Result<(), String> {
+        if self.state.settings.mode == "replay" {
+            self.sequences.validate_playback(&self.state.settings)?;
+        }
         self.started = Instant::now();
         self.life.requested = true;
         self.life.capture_allowed = true;
@@ -564,12 +590,16 @@ impl Engine {
             );
         }
         settings.validate()?;
+        if settings.mode == "replay" {
+            self.sequences.validate_playback(&settings)?;
+        }
         if persist {
             settings.save(&self.path)?;
         }
         if settings.mode != self.state.settings.mode
             || settings.audio_source != self.state.settings.audio_source
             || settings.screen_id != self.state.settings.screen_id
+            || settings.capture_source != self.state.settings.capture_source
         {
             self.stop();
             self.life.capture_allowed = false;
@@ -584,6 +614,7 @@ impl Engine {
         if settings.mode != self.state.settings.mode
             || settings.effect != self.state.settings.effect
             || settings.studio != self.state.settings.studio
+            || settings.replay != self.state.settings.replay
         {
             self.started = Instant::now();
         }
@@ -649,6 +680,20 @@ impl Engine {
                 }
                 return self.action(*action);
             }
+            Action::RecordStart { seconds } => {
+                if self.state.calibrating {
+                    return Err("Finish calibration before recording".into());
+                }
+                self.sequences.begin(&self.state.settings, seconds)?;
+            }
+            Action::RecordStop {} => self.sequences.finish()?,
+            Action::LoadSequence { sequence } => {
+                if self.state.settings.mode == "replay" {
+                    self.action(Action::Power { on: false })?;
+                }
+                self.sequences.replace(sequence)?;
+            }
+            Action::ExportSequence { path } => self.sequences.export(&path)?,
             Action::Snapshot => {}
             Action::PatchSettings { patch, persist } => {
                 let settings = patch.apply(&self.state.settings)?;
@@ -704,6 +749,9 @@ impl Engine {
                 })
             }
             Action::CalibrationStart => {
+                if self.sequences.status().recording {
+                    return Err("Stop recording before calibration".into());
+                }
                 self.begin_calibration()?;
             }
             Action::CalibrationStep { settings, led } => {
@@ -767,6 +815,11 @@ impl Engine {
                 self.remember()?;
             }
             Action::PrepareUpdate | Action::Shutdown => {
+                if self.sequences.status().recording {
+                    if let Err(e) = self.sequences.finish() {
+                        self.state.error = e;
+                    }
+                }
                 self.end_calibration(false, true)?;
                 if matches!(action, Action::PrepareUpdate) {
                     self.state.settings.save(&self.path)?;
@@ -784,6 +837,7 @@ impl Engine {
         }
         self.update_lifecycle();
         self.state.status = self.controller.status.clone();
+        self.state.sequence = self.sequences.status();
         Ok(self.state.clone())
     }
     fn reconcile_capture(&mut self) {
@@ -791,7 +845,7 @@ impl Engine {
             self.source_check = Instant::now();
             if self.state.settings.mode == "blend" {
                 let sources = (
-                    crate::capture::source_signature(&self.state.settings.screen_id).ok(),
+                    crate::capture::source_signature(&self.state.settings).ok(),
                     crate::audio::source_signature(self.state.settings.audio_source == "system")
                         .ok(),
                 );
@@ -825,13 +879,13 @@ impl Engine {
             self.capture_retry = Instant::now();
             if crate::platform::check_capture_permission(&self.state.settings).is_ok() {
                 if self.screen.is_none() {
-                    self.screen = ScreenCapture::start(&self.state.settings.screen_id).ok();
+                    self.screen = ScreenCapture::start(&self.state.settings).ok();
                 }
                 if self.audio.is_none() {
                     self.audio = Audio::start(self.state.settings.audio_source == "system").ok();
                 }
                 self.blend_sources = (
-                    crate::capture::source_signature(&self.state.settings.screen_id).ok(),
+                    crate::capture::source_signature(&self.state.settings).ok(),
                     crate::audio::source_signature(self.state.settings.audio_source == "system")
                         .ok(),
                 );
@@ -883,6 +937,7 @@ impl Engine {
                 .collect());
         }
         match s.mode.as_str() {
+            "replay" => self.sequences.sample(s, self.started.elapsed()),
             "solid" => Ok(vec![
                 if s.studio.bias.enabled {
                     s.studio.bias.color()
@@ -998,7 +1053,7 @@ impl Engine {
         let generated = self.generate_frame(dt);
         match generated {
             Ok(mut colors) => {
-                if !self.state.calibrating {
+                if !self.state.calibrating && self.state.settings.mode != "replay" {
                     self.state.settings.studio.overlay(
                         &mut colors,
                         self.started.elapsed().as_secs_f32(),
@@ -1041,15 +1096,24 @@ impl Engine {
             }
             Err(e) => {
                 self.interrupt_capture();
-                self.state.error = format!("Capture unavailable: {e}");
+                self.previous = vec![[0.0; 3]; self.state.settings.count];
+                self.state.colors = vec![[0; 3]; self.state.settings.count];
+                self.state.error = format!("Lighting source unavailable: {e}");
             }
         }
+        if let Err(e) = self
+            .sequences
+            .record(&self.state.colors, &self.state.settings)
+        {
+            self.state.error = e;
+        }
+        self.state.sequence = self.sequences.status();
         if self.controller.status.connected && !self.life.sleeping {
             let write_started = Instant::now();
             let s = &self.state.settings;
             let active = self.state.powered
                 && (self.state.calibrating
-                    || s.mode == "rainbow"
+                    || matches!(s.mode.as_str(), "rainbow" | "replay")
                     || self.state.capturing
                     || (s.mode == "solid" && !s.studio.zones.is_empty()));
             let result = if active {
@@ -1152,7 +1216,10 @@ pub fn start(
                         !engine.life.sleeping
                             && engine.state.powered
                             && (engine.state.capturing
-                                || engine.state.settings.mode == "rainbow"
+                                || matches!(
+                                    engine.state.settings.mode.as_str(),
+                                    "rainbow" | "replay"
+                                )
                                 || !engine.state.settings.studio.zones.is_empty()),
                     );
                     let began = Instant::now();
@@ -1477,6 +1544,74 @@ mod tests {
         })
         .unwrap();
         assert!(!e.state.settings.studio.bias.enabled);
+    }
+    #[test]
+    fn changing_capture_region_revokes_prior_capture_consent() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut e = simulated(
+            Settings {
+                mode: "screen".into(),
+                ..Default::default()
+            },
+            dir.path().join("settings.json"),
+        );
+        e.life.requested = true;
+        e.life.capture_allowed = true;
+        e.state.capturing = true;
+        let source = crate::capture_source::Source::Region {
+            left: 250,
+            top: 0,
+            width: 500,
+            height: 1000,
+        };
+        e.action(Action::PatchSettings {
+            patch: SettingsPatch(serde_json::Map::from_iter([(
+                "captureSource".into(),
+                serde_json::to_value(source).unwrap(),
+            )])),
+            persist: true,
+        })
+        .unwrap();
+        assert!(!e.state.capturing && !e.life.capture_allowed);
+        assert!(e.state.capture_requires_start);
+        let portable = serde_json::to_value(SceneSettings::capture(&e.state.settings)).unwrap();
+        assert!(
+            portable.get("captureSource").is_none(),
+            "Local source identities are not portable scene data"
+        );
+    }
+    #[test]
+    fn offline_replay_stops_capture_and_respects_stop_and_comfort() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut e = simulated(
+            Settings {
+                mode: "screen".into(),
+                count: 2,
+                brightness: 100,
+                max_brightness: 10,
+                ..Default::default()
+            },
+            dir.path().join("settings.json"),
+        );
+        let sequence:crate::sequence::Sequence=serde_json::from_value(serde_json::json!({"format":"dynamiclight-rgb","version":1,"id":"test","count":2,"sides":3,"durationMs":1000,"frames":[{"ms":0,"colors":[[255,0,0],[0,0,255]]}]})).unwrap();
+        e.action(Action::LoadSequence { sequence }).unwrap();
+        assert!(!e.state.requested && !e.state.status.connected);
+        e.state.capturing = true;
+        e.life.capture_allowed = true;
+        let mut s = e.state.settings.clone();
+        s.mode = "replay".into();
+        s.replay.clip = "test".into();
+        s.smoothing = 0;
+        e.action(Action::Settings { settings: s }).unwrap();
+        assert!(!e.state.capturing && !e.life.capture_allowed);
+        e.action(Action::Start).unwrap();
+        e.tick();
+        assert_eq!(e.state.colors, [[26, 0, 0], [0, 0, 26]]);
+        assert!(!e.state.capturing);
+        assert!(e.action(Action::RecordStart { seconds: 1 }).is_err());
+        e.action(Action::Power { on: false }).unwrap();
+        e.tick();
+        assert!(e.state.colors.iter().all(|c| *c == [0; 3]));
     }
     #[test]
     fn start_mode_restores_memory_and_respects_calibration_and_stop() {

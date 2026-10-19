@@ -16,6 +16,8 @@ pub struct Settings {
     pub sensitivity: u8,
     pub fps: u8,
     pub screen_id: String,
+    #[serde(default)]
+    pub capture_source: crate::capture_source::Source,
     pub off_on_sleep: bool,
     pub off_on_display_sleep: bool,
     pub off_on_lock: bool,
@@ -42,6 +44,8 @@ pub struct Settings {
     pub effect_reverse: bool,
     #[serde(default)]
     pub studio: crate::studio::Studio,
+    #[serde(default)]
+    pub replay: crate::sequence::Playback,
     pub mode_settings: std::collections::BTreeMap<String, ModeSettings>,
 }
 impl Default for Settings {
@@ -59,6 +63,7 @@ impl Default for Settings {
             sensitivity: 50,
             fps: 30,
             screen_id: String::new(),
+            capture_source: Default::default(),
             off_on_sleep: true,
             off_on_display_sleep: true,
             off_on_lock: true,
@@ -83,14 +88,17 @@ impl Default for Settings {
             minimum_glow: 0,
             effect_reverse: false,
             studio: Default::default(),
+            replay: Default::default(),
             mode_settings: Default::default(),
         }
     }
 }
 impl Settings {
     pub fn validate(&self) -> Result<(), String> {
+        self.capture_source.validate()?;
         self.studio.validate()?;
-        if self.mode_settings.len() > 5 {
+        self.replay.validate()?;
+        if self.mode_settings.len() > 6 {
             return Err("Too many remembered modes".into());
         }
         for (mode, memory) in &self.mode_settings {
@@ -138,7 +146,7 @@ impl Settings {
         {
             return Err("Settings outside supported range".into());
         }
-        if !["solid", "screen", "music", "rainbow", "blend"].contains(&self.mode.as_str())
+        if !["solid", "screen", "music", "rainbow", "blend", "replay"].contains(&self.mode.as_str())
             || !["system", "microphone"].contains(&self.audio_source.as_str())
         {
             return Err("Unknown lighting mode or audio source".into());
@@ -231,6 +239,8 @@ pub struct ModeSettings {
     sensitivity: u8,
     fps: u8,
     screen_id: String,
+    #[serde(default)]
+    capture_source: crate::capture_source::Source,
     effect: String,
     palette: String,
     #[serde(default)]
@@ -248,6 +258,8 @@ pub struct ModeSettings {
     effect_reverse: bool,
     #[serde(default)]
     studio: crate::studio::Studio,
+    #[serde(default)]
+    replay: crate::sequence::Playback,
 }
 impl ModeSettings {
     pub fn capture(s: &Settings) -> Self {
@@ -259,6 +271,7 @@ impl ModeSettings {
             sensitivity: s.sensitivity,
             fps: s.fps,
             screen_id: s.screen_id.clone(),
+            capture_source: s.capture_source.clone(),
             effect: s.effect.clone(),
             palette: s.palette.clone(),
             custom_palette: s.custom_palette.clone(),
@@ -274,6 +287,7 @@ impl ModeSettings {
             blend: s.blend,
             effect_reverse: s.effect_reverse,
             studio: s.studio.clone(),
+            replay: s.replay.clone(),
         }
     }
     pub fn apply(&self, s: &mut Settings) {
@@ -284,6 +298,7 @@ impl ModeSettings {
         s.sensitivity = self.sensitivity;
         s.fps = self.fps;
         s.screen_id = self.screen_id.clone();
+        s.capture_source = self.capture_source.clone();
         s.effect = self.effect.clone();
         s.palette = self.palette.clone();
         s.custom_palette = self.custom_palette.clone();
@@ -299,6 +314,7 @@ impl ModeSettings {
         s.blend = self.blend;
         s.effect_reverse = self.effect_reverse;
         s.studio = self.studio.clone();
+        s.replay = self.replay.clone();
     }
 }
 
@@ -331,6 +347,8 @@ pub struct SceneSettings {
     pub effect_reverse: bool,
     #[serde(default)]
     pub studio: crate::studio::Studio,
+    #[serde(default)]
+    pub replay: crate::sequence::Playback,
 }
 impl SceneSettings {
     pub fn capture(s: &Settings) -> Self {
@@ -357,6 +375,7 @@ impl SceneSettings {
             blend: s.blend,
             effect_reverse: s.effect_reverse,
             studio: s.studio.clone(),
+            replay: s.replay.clone(),
         }
     }
     pub fn apply(&self, current: &Settings) -> Settings {
@@ -383,6 +402,7 @@ impl SceneSettings {
             blend: self.blend,
             effect_reverse: self.effect_reverse,
             studio: self.studio.clone(),
+            replay: self.replay.clone(),
             ..current.clone()
         }
     }
@@ -396,6 +416,8 @@ impl SceneSettings {
 #[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 pub struct SourceBinding {
     pub screen_id: String,
+    #[serde(default)]
+    pub capture_source: crate::capture_source::Source,
 }
 
 /// Atomic field edits resolved against the worker's current settings. Disjoint

@@ -323,6 +323,7 @@ mod tests {
                 shortcut: "Control+Shift+D".into(),
                 source: SourceBinding {
                     screen_id: "private-screen-path".into(),
+                    ..Default::default()
                 },
                 settings: SceneSettings::capture(&Settings {
                     custom_palette: vec!["#123456".into(), "#abcdef".into()],

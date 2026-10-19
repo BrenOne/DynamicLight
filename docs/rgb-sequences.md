@@ -1,0 +1,15 @@
+# RGB sequence recording and offline playback
+
+Open **Scenes → Record / replay RGB sequence**. Recording samples the native engine's generated LED colors, after brightness/comfort processing and before physical reversal/offset. It does not record screenshots, audio, window titles, or proof that a disconnected strip actually received the frames. Starting a recording does not turn on lighting or start capture.
+
+Choose a maximum duration of 1–60 seconds and Start recording. Finish early or let the limit end it. The engine stores at most 1,800 RGB frames at the current configured frame cadence, with monotonic timestamps; missed deadlines retain their real elapsed timing. Off/paused lighting records black. Changing LED count or coverage ends the recording. Recording from offline replay and during strip calibration is disallowed. Closing the dialog keeps recording; quitting or preparing an update finishes the current recording.
+
+The latest sequence is saved locally as `lighting-sequence.json`. **Export to Downloads** writes a separate version 1 `dynamiclight-rgb` JSON file. Keep exported files before making another recording or importing a replacement. Import is limited to 10 MiB; native validation enforces version, layout, duration, frame count, strictly increasing timestamps, and exactly one RGB triple per LED. Arbitrary extra fields are rejected.
+
+For offline replay, import a sequence, choose trim start/end, 25–400% speed, loop behavior, and replay level. **Play / restart** stops capture and starts the replay through the ordinary lighting engine. Non-looping playback holds the final frame. Stop turns the strip off. Replay uses recorded RGB values and ignores decorative zones; current brightness, maximum brightness, minimum glow, transition limits, and lifecycle pauses still apply. A replay level of 100% preserves recorded intensity subject to those limits. Sleep/wake retains intent; its elapsed timeline can advance across a pause.
+
+If LED count or side coverage differs, playback refuses until **Proportionally remap** is explicitly enabled. Mapping samples the recorded route at the center of each current LED. Physical reversal and offset still use this computer's calibrated route. This proportional remap does not infer corner placement; inspect the preview/output after changing layouts.
+
+Playback can be saved as a scene and applied through the tray, shortcuts, or CLI's existing `profiles apply` command. The scene references a sequence ID, not a private path or captured content. Import the matching RGB file on the destination computer before applying it. Applying a scene referencing a missing/mismatched clip fails with an actionable message rather than starting capture. Direct recording/file editing remains in the studio.
+
+Automated checks cover bounded recording/persistence, malformed files, trim/speed/loop timing, explicit remapping, offline capture shutdown, Stop and comfort limits, UI import/play/error states, and an isolated Windows native smoke that records only the stopped engine's black output. Physical replay timing and strip mapping remain in #37/#38/#45 validation as applicable.

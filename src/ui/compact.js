@@ -7,6 +7,7 @@ const names = {
   music: "Music",
   blend: "Screen + music",
   rainbow: "Effects",
+  replay: "RGB replay",
 };
 let state,
   favorites = [],

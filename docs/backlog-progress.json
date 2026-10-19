@@ -1,8 +1,10 @@
 {
   "updated": "2026-10-19",
   "next": [
-    "SCR-02",
-    "FX-07"
+    "AUT-03",
+    "AUT-04",
+    "AUT-06",
+    "AUT-02"
   ],
   "items": {
     "REL-01": {
@@ -244,6 +246,26 @@
       "status": "Implemented",
       "delivered": "0.11: Interactive simulated LED/edge/range selection, keyboard range controls, draft placement/color/zone edits, undo and cancel before applying.",
       "remaining": "Physical output and assistive-technology validation; see docs/studio-authoring.md for supported scope.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
+    },
+    "SCR-02": {
+      "status": "Implemented",
+      "delivered": "0.12: full-display, session-bound application-window and normalized rectangle selection. Retained Windows Graphics Capture handles motion/resize/closure; macOS/X11 source APIs retain permission and recovery guards. Geometric source preview and explicit source-change restart.",
+      "remaining": "Physical multi-DPI, protected-content and macOS/Linux capture behavior. Windows generated-window capture/resize/closure test passed locally.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
+    },
+    "FX-07": {
+      "status": "Implemented",
+      "delivered": "0.12: bounded RGB-only recording, local persistence and import/export, offline replay with trim/loop/speed, explicit layout remapping and profile/CLI reuse by clip identity. Existing power and comfort limits retained.",
+      "remaining": "Physical replay timing and strip remapping across devices.",
       "validation": [
         "QA-01",
         "PLAT-01",

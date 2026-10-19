@@ -146,8 +146,42 @@ const delay = (ms) => new Promise((r) => setTimeout(r, ms));
       () => document.documentElement.dataset.theme === "light",
     );
     await page.screenshot({ path: ".local/native-studio-settings.png" });
+    await invoke("control", { action: { type: "selectMode", mode: "solid" } });
+    await invoke("control", { action: { type: "recordStart", seconds: 1 } });
+    await delay(200);
+    const recorded = await invoke("control", {
+      action: { type: "recordStop" },
+    });
+    assert(recorded.sequence.clip.frames > 0);
+    assert(
+      !recorded.requested && !recorded.capturing && !recorded.status.connected,
+    );
+    const playback = await invoke("control", {
+      action: {
+        type: "patchSettings",
+        patch: {
+          mode: "replay",
+          replay: {
+            clip: recorded.sequence.clip.id,
+            startMs: 0,
+            endMs: 0,
+            speed: 150,
+            looping: true,
+            remap: false,
+          },
+        },
+        persist: true,
+      },
+    });
+    assert.equal(playback.settings.mode, "replay");
+    assert(!playback.capturing && !playback.status.connected);
+    await assert.rejects(
+      invoke("import_sequence", {
+        text: JSON.stringify({ format: "dynamiclight-rgb", version: 99 }),
+      }),
+    );
     console.log(
-      "Native studio passed: bounded frames, invalid effect rejection, editor Apply while off, native persistence, cross-window appearance; no USB/capture.",
+      "Native studio passed: bounded frames, invalid effect rejection, editor Apply while off, native persistence, RGB recording/offline setup, cross-window appearance; no USB/capture.",
     );
   } finally {
     if (page && isolated) {
