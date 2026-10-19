@@ -172,6 +172,16 @@ fn dispatch(
 ) -> Result<Value, String> {
     command.validate()?;
     let (action, allow_capture) = match command {
+        Command::Routine { action } => {
+            let snapshot = app.state::<Handle>().request(Action::Automation {
+                action: Box::new(Action::Routine {
+                    command: action.command().into(),
+                }),
+                active,
+                allow_capture: false,
+            })?;
+            return serde_json::to_value(&snapshot.routines).map_err(|e| e.to_string());
+        }
         Command::Status {} => {
             return app
                 .state::<Handle>()

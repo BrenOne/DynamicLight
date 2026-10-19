@@ -10,6 +10,9 @@ pub const VERSION: u8 = 1;
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "command", rename_all = "camelCase", deny_unknown_fields)]
 pub enum Command {
+    Routine {
+        action: RoutineControl,
+    },
     Status {},
     Power {
         state: Power,
@@ -31,6 +34,34 @@ pub enum Command {
         #[serde(default, rename = "allowCapture")]
         allow_capture: bool,
     },
+}
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum RoutineControl {
+    Status,
+    Start,
+    Pause,
+    Skip,
+    Cancel,
+    Cue,
+    ResumeRules,
+    PauseSchedules,
+    ResumeSchedules,
+}
+impl RoutineControl {
+    pub fn command(self) -> &'static str {
+        match self {
+            Self::Status => "status",
+            Self::Start => "start",
+            Self::Pause => "pause",
+            Self::Skip => "skip",
+            Self::Cancel => "cancel",
+            Self::Cue => "cue",
+            Self::ResumeRules => "resumeRules",
+            Self::PauseSchedules => "pauseSchedules",
+            Self::ResumeSchedules => "resumeSchedules",
+        }
+    }
 }
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]

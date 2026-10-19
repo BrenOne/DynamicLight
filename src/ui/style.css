@@ -1722,29 +1722,36 @@ dd {
   min-width: 0;
 }
 
-#sequence-dialog {
+#sequence-dialog,
+#routine-dialog {
   width: min(680px, calc(100vw - 32px));
 }
-#sequence-dialog fieldset {
+#sequence-dialog fieldset,
+#routine-dialog fieldset {
   margin-block: 14px;
   min-width: 0;
 }
-#sequence-dialog label {
+#sequence-dialog label,
+#routine-dialog label {
   display: flex;
   flex-direction: column;
   gap: 5px;
   margin-block: 12px;
   min-width: 0;
 }
-#sequence-dialog label.checkbox {
+#sequence-dialog label.checkbox,
+#routine-dialog label.checkbox {
   flex-direction: row;
   align-items: center;
 }
-#sequence-dialog input:not([type="checkbox"]) {
+#sequence-dialog input:not([type="checkbox"]),
+#routine-dialog input:not([type="checkbox"]),
+#routine-dialog select {
   min-width: 0;
   width: 100%;
 }
-#sequence-dialog .input-row {
+#sequence-dialog .input-row,
+#routine-dialog .input-row {
   flex-wrap: wrap;
 }
 #sequence-status {

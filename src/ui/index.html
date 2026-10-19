@@ -573,6 +573,9 @@
             <button id="sequence-open" type="button">
               Record / replay RGB sequence…
             </button>
+            <button id="routine-open" type="button">
+              Schedules, timers &amp; app rules…
+            </button>
             <div class="scene-toolbar">
               <label for="scene-search"
                 >Find a scene<input
@@ -1643,6 +1646,241 @@
       </fieldset>
       <p id="sequence-status" class="help" role="status"></p>
     </dialog>
+    <dialog id="routine-dialog" aria-labelledby="routine-title">
+      <div class="dialog-heading">
+        <h2 id="routine-title">Lighting routines</h2>
+        <button id="routine-close" type="button">Close</button>
+      </div>
+      <p id="routine-status" class="help" role="status"></p>
+      <p class="help">
+        Changes are drafts until Save. Routines run while DynamicLight is open.
+        App rules and cues respect Stop. Scheduled actions may turn lights on at
+        their chosen time; pause schedules to override them.
+      </p>
+      <fieldset>
+        <legend>Recurring schedules</legend>
+        <label class="checkbox"
+          ><input id="routine-paused" type="checkbox" /> Pause schedules</label
+        >
+        <div id="routine-schedules"></div>
+        <div class="input-row">
+          <label
+            >Local time<input
+              id="routine-time"
+              type="time"
+              value="20:00"
+              required /></label
+          ><label
+            >Saved offline scene<select id="routine-scene"></select
+          ></label>
+        </div>
+        <div id="routine-days" class="input-row">
+          <label
+            ><input id="routine-mon" type="checkbox" value="0" checked />
+            Mon</label
+          ><label
+            ><input id="routine-tue" type="checkbox" value="1" checked />
+            Tue</label
+          ><label
+            ><input id="routine-wed" type="checkbox" value="2" checked />
+            Wed</label
+          ><label
+            ><input id="routine-thu" type="checkbox" value="3" checked />
+            Thu</label
+          ><label
+            ><input id="routine-fri" type="checkbox" value="4" checked />
+            Fri</label
+          ><label
+            ><input id="routine-sat" type="checkbox" value="5" checked />
+            Sat</label
+          ><label
+            ><input id="routine-sun" type="checkbox" value="6" checked />
+            Sun</label
+          >
+        </div>
+        <div class="input-row">
+          <label
+            >Transition<select id="routine-transition">
+              <option value="immediate">Apply scene immediately</option>
+              <option value="fadeIn">Fade in selected scene</option>
+              <option value="fadeOut">Fade current scene to off</option>
+            </select></label
+          ><label
+            >Fade seconds<input
+              id="routine-seconds"
+              type="number"
+              min="1"
+              max="3600"
+              value="30" /></label
+          ><button id="routine-add-schedule" type="button">Add schedule</button>
+        </div>
+        <p class="help">
+          First matching row wins. Missed times, startup/current-minute edits
+          and wake-up events are skipped. Clock changes follow the new local
+          time; repeated hours run at most once per day, missing hours are
+          skipped. Scenes are saved copies; re-add a schedule to use an updated
+          profile. Capture scenes require manual Start.
+        </p>
+      </fieldset>
+      <fieldset>
+        <legend>Application rules</legend>
+        <label class="checkbox"
+          ><input id="routine-apps-enabled" type="checkbox" /> Enable local
+          application rules</label
+        >
+        <div id="routine-rules"></div>
+        <div class="input-row">
+          <button id="routine-refresh-apps" type="button">
+            Refresh applications</button
+          ><label>Application<select id="routine-app"></select></label
+          ><label
+            >Saved offline scene<select id="routine-app-scene"></select></label
+          ><button id="routine-add-rule" type="button">Add rule</button>
+        </div>
+        <p class="help">
+          First matching row wins. The previous scene returns on focus loss or
+          exit. Manual lighting changes override the rule until focus changes.
+          Capture scenes restore stopped and need fresh Start. Application names
+          stay on this computer. OS permissions may be needed on macOS; Wayland
+          does not expose active applications.
+        </p>
+        <button id="routine-resume-rules" type="button">
+          Resume rules for current application
+        </button>
+      </fieldset>
+      <fieldset>
+        <legend>Focus and break timer</legend>
+        <div class="input-row">
+          <label
+            >Focus minutes<input
+              id="routine-focus"
+              type="number"
+              min="1"
+              max="240"
+              value="25" /></label
+          ><label
+            >Break minutes<input
+              id="routine-break"
+              type="number"
+              min="1"
+              max="120"
+              value="5" /></label
+          ><label
+            >Cycles<input
+              id="routine-cycles"
+              type="number"
+              min="1"
+              max="20"
+              value="1"
+          /></label>
+        </div>
+        <p id="routine-timer-status" role="status">Timer stopped</p>
+        <div class="input-row">
+          <button id="routine-start" type="button">
+            Save &amp; start timer</button
+          ><button id="routine-pause-timer" type="button">Pause timer</button
+          ><button id="routine-skip" type="button">Skip phase</button
+          ><button id="routine-cancel" type="button">Cancel timer</button>
+        </div>
+        <p class="help">
+          Timers pause after sleep or a long interruption and stop when the app
+          exits. Save resets the timer. Each cycle includes a focus phase and a
+          break; the focus cue also marks completion.
+        </p>
+      </fieldset>
+      <fieldset>
+        <legend>Temporary cues</legend>
+        <p class="help">
+          Enable only the sources you want. Cues never turn stopped lights on,
+          and the current scene continues underneath. One pending cue is kept;
+          newer events replace it. No notification content is read.
+        </p>
+        <div class="input-row">
+          <label
+            ><input id="routine-manualCue-enabled" type="checkbox" /> Manual cue
+            button</label
+          ><label
+            >Color<input
+              id="routine-manualCue-color"
+              type="color"
+              value="#86b7ff" /></label
+          ><label
+            >Seconds<input
+              id="routine-manualCue-seconds"
+              type="number"
+              min="1"
+              max="10"
+              value="3"
+          /></label>
+        </div>
+        <div class="input-row">
+          <label
+            ><input id="routine-focusCue-enabled" type="checkbox" /> Focus /
+            completion cue</label
+          ><label
+            >Color<input
+              id="routine-focusCue-color"
+              type="color"
+              value="#86b7ff" /></label
+          ><label
+            >Seconds<input
+              id="routine-focusCue-seconds"
+              type="number"
+              min="1"
+              max="10"
+              value="3"
+          /></label>
+        </div>
+        <div class="input-row">
+          <label
+            ><input id="routine-breakCue-enabled" type="checkbox" /> Break
+            cue</label
+          ><label
+            >Color<input
+              id="routine-breakCue-color"
+              type="color"
+              value="#86b7ff" /></label
+          ><label
+            >Seconds<input
+              id="routine-breakCue-seconds"
+              type="number"
+              min="1"
+              max="10"
+              value="3"
+          /></label>
+        </div>
+        <label class="checkbox"
+          ><input id="routine-quiet-enabled" type="checkbox" /> Quiet hours for
+          all cues</label
+        >
+        <div class="input-row">
+          <label
+            >From<input
+              id="routine-quiet-start"
+              type="time"
+              value="22:00"
+              required /></label
+          ><label
+            >Until<input
+              id="routine-quiet-end"
+              type="time"
+              value="08:00"
+              required /></label
+          ><button id="routine-cue" type="button">
+            Trigger saved manual cue
+          </button>
+        </div>
+        <p class="help">
+          Equal start/end means quiet all day. Brightness and transition comfort
+          limits apply to every cue.
+        </p>
+      </fieldset>
+      <button id="routine-save" class="power" type="button">
+        Save routines
+      </button>
+      <p id="routine-message" class="help" role="status"></p>
+    </dialog>
+    <script src="routines.js"></script>
     <script src="sequences.js"></script>
     <script src="capture-sources.js"></script>
     <script src="image-palette.js"></script>

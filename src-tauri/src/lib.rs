@@ -20,6 +20,7 @@ mod linux;
 mod platform;
 mod profiles;
 mod protocol;
+mod routines;
 mod scenes;
 mod sequence;
 mod settings;
@@ -172,6 +173,8 @@ pub fn run() {
             Some(vec!["--autostart"]),
         ))
         .invoke_handler(tauri::generate_handler![
+            routines::routines_config,
+            routines::routine_apps,
             appearance::appearance,
             sequence::import_sequence,
             sequence::export_sequence,
@@ -269,6 +272,7 @@ pub fn run() {
             appearance::init(app.handle()).map_err(std::io::Error::other)?;
             profiles::init(app.handle()).map_err(std::io::Error::other)?;
             automation::init(app.handle()).map_err(std::io::Error::other)?;
+            routines::init(app.handle()).map_err(std::io::Error::other)?;
             tray::init(app.handle())?;
             if let Some(window) = app.get_webview_window("main") {
                 if !background {

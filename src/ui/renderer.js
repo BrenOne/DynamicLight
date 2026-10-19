@@ -81,8 +81,16 @@ function request(action) {
   });
 }
 function renderRuntime(value) {
+  const routineChanged =
+    runtime &&
+    value.routines?.sceneRevision !== runtime.routines?.sceneRevision;
   const endedCalibration = runtime?.calibrating && !value.calibrating;
   runtime = value;
+  if (routineChanged) {
+    acceptSettings(value);
+    updateUI();
+  }
+  window.Routines?.sync(value);
   window.Sequences?.sync(value);
   if (endedCalibration && $("calibration-dialog").open) {
     $("calibration-dialog").close();
@@ -350,7 +358,7 @@ async function run(action) {
   busy = true;
   document
     .querySelectorAll(
-      "input:not([id^=automation-]):not([id^=studio-]), select:not([id^=appearance-]):not([id^=studio-])",
+      "input:not([id^=automation-]):not([id^=studio-]):not([id^=routine-]), select:not([id^=appearance-]):not([id^=studio-]):not([id^=routine-])",
     )
     .forEach((input) => {
       input.disabled = true;
@@ -374,7 +382,7 @@ async function run(action) {
     busy = false;
     document
       .querySelectorAll(
-        "input:not([id^=automation-]):not([id^=studio-]), select:not([id^=appearance-]):not([id^=studio-])",
+        "input:not([id^=automation-]):not([id^=studio-]):not([id^=routine-]), select:not([id^=appearance-]):not([id^=studio-]):not([id^=routine-])",
       )
       .forEach((input) => {
         input.disabled = false;
@@ -700,6 +708,7 @@ async function init() {
   window.Studio.init();
   window.CaptureSources.init();
   window.Sequences.init();
+  window.Routines.init();
   window.Updates.init({ save, showSettings: () => showView("settings") });
   window.Automation.init();
   initCalibration();

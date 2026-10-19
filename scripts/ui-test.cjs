@@ -20,6 +20,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
         "image-palette.js",
         "capture-sources.js",
         "sequences.js",
+        "routines.js",
         "library-tools.js",
         "ui-common.js",
         "icons.svg",
@@ -132,6 +133,21 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
       let listener;
       let calibrationOriginal;
       let profileLibrary = { profiles: [] };
+      let routineConfig = {
+        paused: true,
+        schedules: [],
+        appRules: [],
+        appsEnabled: false,
+        quietEnabled: false,
+        quietStart: 1320,
+        quietEnd: 480,
+        focusMinutes: 25,
+        breakMinutes: 5,
+        cycles: 1,
+        manualCue: { enabled: false, color: "#86b7ff", seconds: 3 },
+        focusCue: { enabled: false, color: "#86b7ff", seconds: 3 },
+        breakCue: { enabled: false, color: "#86b7ff", seconds: 3 },
+      };
       function portableProfile(p) {
         const settings = structuredClone(p.settings);
         const source = p.source || { screenId: settings.screenId || "" };
@@ -196,6 +212,12 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
         },
         core: {
           invoke: async (cmd, args) => {
+            if (cmd === "routines_config") {
+              if (args.config) routineConfig = structuredClone(args.config);
+              return structuredClone(routineConfig);
+            }
+            if (cmd === "routine_apps")
+              return ["Fixture editor", "Fixture video"];
             if (cmd === "import_sequence") {
               const clip = JSON.parse(args.text);
               state.sequence = {
@@ -492,6 +514,26 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
             if (cmd !== "control") return;
             const a = args.action;
             calls.push(structuredClone(a));
+            if (a.type === "routine") {
+              state.routines ||= {
+                sceneRevision: 0,
+                timerPhase: "",
+                timerPaused: false,
+                remainingSeconds: 0,
+                cycle: 0,
+              };
+              if (a.command === "start")
+                Object.assign(state.routines, {
+                  timerPhase: "Focus",
+                  remainingSeconds: routineConfig.focusMinutes * 60,
+                  cycle: 1,
+                  timerPaused: false,
+                });
+              if (a.command === "pause")
+                state.routines.timerPaused = !state.routines.timerPaused;
+              if (a.command === "skip") state.routines.timerPhase = "Break";
+              if (a.command === "cancel") state.routines.timerPhase = "";
+            }
             if (a.type === "recordStart")
               state.sequence = {
                 ...state.sequence,
@@ -1583,7 +1625,9 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
     await page.waitForFunction(
       () => fixture.state.sequence?.clip?.id === "recorded",
     );
-    await page.waitForFunction(()=>!document.querySelector("#sequence-file").disabled);
+    await page.waitForFunction(
+      () => !document.querySelector("#sequence-file").disabled,
+    );
     await page.locator("#sequence-file").setInputFiles({
       name: "fixture-rgb.json",
       mimeType: "application/json",
@@ -1611,12 +1655,18 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
       () => fixture.state.sequence?.clip?.id === "imported",
     );
     await page.locator("#sequence-play").click();
-    await page.waitForFunction(()=>/remapping/.test(document.querySelector("#sequence-status").textContent));
+    await page.waitForFunction(() =>
+      /remapping/.test(document.querySelector("#sequence-status").textContent),
+    );
     await page.locator("#sequence-remap").check();
     await page.locator("#sequence-speed").fill("200");
     await page.locator("#sequence-start").fill("0.2");
     await page.locator("#sequence-play").click();
-    await page.waitForFunction(() => /Offline replay started/.test(document.querySelector("#sequence-status").textContent));
+    await page.waitForFunction(() =>
+      /Offline replay started/.test(
+        document.querySelector("#sequence-status").textContent,
+      ),
+    );
     assert.equal(
       await page.evaluate(() => fixture.state.settings.replay.startMs),
       200,
@@ -1633,6 +1683,39 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
     await page.locator("#sequence-stop").click();
     await page.waitForFunction(() => !fixture.state.requested);
     await page.locator("#sequence-close").click();
+    await page.locator("#routine-open").click();
+    await page.locator("#routine-focus").fill("10");
+    await page.locator("#routine-break").fill("2");
+    await page.locator("#routine-cycles").fill("3");
+    await page.locator("#routine-manualCue-enabled").check();
+    await page.locator("#routine-add-schedule").click();
+    await page.locator("#routine-refresh-apps").click();
+    await page.locator("#routine-app").selectOption("Fixture editor");
+    await page.locator("#routine-add-rule").click();
+    await page.locator("#routine-apps-enabled").check();
+    await page.locator("#routine-paused").uncheck();
+    await page.locator("#routine-start").click();
+    await page.waitForFunction(
+      () => fixture.state.routines?.timerPhase === "Focus",
+    );
+    await page.waitForFunction(() =>
+      /10:00/.test(document.querySelector("#routine-timer-status").textContent),
+    );
+    const savedRoutines = await page.evaluate(() =>
+      window.__TAURI__.core.invoke("routines_config", { config: null }),
+    );
+    assert.equal(savedRoutines.schedules.length, 1);
+    assert.equal(savedRoutines.appRules[0].app, "Fixture editor");
+    assert.equal(savedRoutines.cycles, 3);
+    await page.locator("#routine-pause-timer").click();
+    await page.waitForFunction(() => fixture.state.routines.timerPaused);
+    await page.locator("#routine-skip").click();
+    await page.waitForFunction(
+      () => fixture.state.routines.timerPhase === "Break",
+    );
+    await page.locator("#routine-cancel").click();
+    await page.waitForFunction(() => !fixture.state.routines.timerPhase);
+    await page.locator("#routine-close").click();
     // Capture source changes remain a deliberate, local selection.
     await page.locator('[data-view="control"]').click();
     await page.locator('[data-mode="screen"]').click();

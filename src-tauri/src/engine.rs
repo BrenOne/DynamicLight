@@ -20,6 +20,17 @@ use std::{
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 pub enum Action {
     #[serde(skip)]
+    RoutinesConfig {
+        config: Option<crate::routines::Config>,
+    },
+    Routine {
+        command: String,
+    },
+    #[serde(skip)]
+    Foreground {
+        result: Result<String, String>,
+    },
+    #[serde(skip)]
     Automation {
         action: Box<Action>,
         active: std::sync::Arc<std::sync::atomic::AtomicBool>,
@@ -94,6 +105,9 @@ pub enum Action {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
+    pub routines: crate::routines::Status,
+    #[serde(skip)]
+    pub routines_config: crate::routines::Config,
     pub settings: Settings,
     pub sequence: crate::sequence::Status,
     pub status: Status,
@@ -181,13 +195,19 @@ pub struct Engine {
     beat: crate::beat::Detector,
     calibration: Option<CalibrationSession>,
     sequences: crate::sequence::Deck,
+    routines: crate::routines::Runtime,
+    routine_restore: Option<(SceneSettings, SourceBinding, bool)>,
+    fade: Option<(Instant, Duration, bool)>,
 }
 impl Engine {
     pub fn new(settings: Settings, path: PathBuf, warning: String) -> Self {
         let controller = Controller::new();
         let sequences = crate::sequence::Deck::load(path.with_file_name("lighting-sequence.json"));
+        let routines = crate::routines::Runtime::load(path.with_file_name("routines.json"));
         Self {
             state: Snapshot {
+                routines: routines.status.clone(),
+                routines_config: routines.config.clone(),
                 settings,
                 sequence: sequences.status(),
                 status: controller.status.clone(),
@@ -217,6 +237,9 @@ impl Engine {
             },
             controller,
             sequences,
+            routines,
+            routine_restore: None,
+            fade: None,
             path,
             desired: false,
             life: Lifecycle::default(),
@@ -437,6 +460,8 @@ impl Engine {
                     return;
                 }
                 self.life.sleeping = sleeping;
+                self.routines.suspend();
+                self.fade = None;
                 if sleeping {
                     if self.state.settings.off_on_sleep {
                         self.black();
@@ -627,6 +652,32 @@ impl Engine {
         Ok(())
     }
     pub fn action(&mut self, action: Action) -> Result<Snapshot, String> {
+        // A manual change atomically invalidates any pending app-rule restore/fade.
+        // Internal routine changes call apply_settings directly on this worker.
+        if matches!(
+            action,
+            Action::Start
+                | Action::StartMode { .. }
+                | Action::SelectMode { .. }
+                | Action::PreviewBrightness { .. }
+                | Action::ApplyProfile { .. }
+                | Action::Adjust { .. }
+                | Action::Toggle
+                | Action::CalibrationStart
+                | Action::Disconnect
+                | Action::PatchSettings { .. }
+                | Action::Settings { .. }
+                | Action::PreviewSettings { .. }
+                | Action::Power { .. }
+                | Action::StartCapture
+                | Action::StopCapture
+                | Action::PrepareUpdate
+                | Action::Shutdown
+        ) {
+            self.routines.manual_override();
+            self.routine_restore = None;
+            self.fade = None;
+        }
         if self.calibration.is_some()
             && matches!(
                 action,
@@ -642,6 +693,74 @@ impl Engine {
         }
         let persist = matches!(action, Action::Settings { .. });
         match action {
+            Action::RoutinesConfig { config } => {
+                if let Some(config) = config {
+                    config.validate()?;
+                    self.restore_routine()?;
+                    self.routines.configure(config)?;
+                    self.fade = None;
+                }
+            }
+            Action::Routine { command } => {
+                self.routines
+                    .command(&command, self.state.powered && !self.state.calibrating)?;
+            }
+            Action::Foreground { result } => {
+                if self.routines.config.apps_enabled {
+                    match result {
+                        Err(error) => {
+                            self.restore_routine()?;
+                            self.routines.foreground.clear();
+                            self.routines.status.message =
+                                format!("Application rules unavailable: {error}");
+                        }
+                        Ok(app) => {
+                            if app != self.routines.foreground {
+                                let establish_baseline = self.routines.app_override
+                                    && self.routines.foreground.is_empty();
+                                self.restore_routine()?;
+                                self.routines.foreground = app.clone();
+                                self.routines.app_override = false;
+                                if !establish_baseline
+                                    && self.life.requested
+                                    && !self.state.calibrating
+                                    && self.life.pause_reason(&self.state.settings).is_empty()
+                                {
+                                    if let Some(rule) = self
+                                        .routines
+                                        .config
+                                        .app_rules
+                                        .iter()
+                                        .find(|r| r.app == app)
+                                        .cloned()
+                                    {
+                                        self.routine_restore = Some((
+                                            SceneSettings::capture(&self.state.settings),
+                                            SourceBinding {
+                                                screen_id: self.state.settings.screen_id.clone(),
+                                                capture_source: self
+                                                    .state
+                                                    .settings
+                                                    .capture_source
+                                                    .clone(),
+                                            },
+                                            self.life.requested,
+                                        ));
+                                        if let Err(e) = self.apply_routine(&rule.scene) {
+                                            self.restore_routine()?;
+                                            self.routines.status.message =
+                                                format!("Application rule skipped: {e}");
+                                        } else {
+                                            self.routines.status.active_rule =
+                                                format!("{} → {}", app, rule.scene.name);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             Action::Automation {
                 action,
                 active,
@@ -652,7 +771,12 @@ impl Engine {
                 if !active.load(std::sync::atomic::Ordering::Acquire) {
                     return Err("Automation session revoked".into());
                 }
-                if self.calibration.is_some() && !matches!(*action, Action::Power { on: false }) {
+                if self.calibration.is_some()
+                    && !matches!(
+                        *action,
+                        Action::Power { on: false } | Action::Routine { .. }
+                    )
+                {
                     return Err("Finish or cancel strip calibration first".into());
                 }
                 let target = match action.as_ref() {
@@ -662,6 +786,7 @@ impl Engine {
                         Some(crate::profiles::scene(scene, source, &self.state.settings))
                     }
                     Action::Toggle
+                    | Action::Routine { .. }
                     | Action::Power { on: false }
                     | Action::Adjust {
                         brightness: Some(_),
@@ -838,7 +963,98 @@ impl Engine {
         self.update_lifecycle();
         self.state.status = self.controller.status.clone();
         self.state.sequence = self.sequences.status();
+        self.sync_routines();
         Ok(self.state.clone())
+    }
+    fn sync_routines(&mut self) {
+        self.routines.status.paused = self.routines.config.paused;
+        self.routines.status.watch_apps =
+            self.routines.config.apps_enabled && !self.routines.config.app_rules.is_empty();
+        self.state.routines = self.routines.status.clone();
+        self.state.routines_config = self.routines.config.clone();
+    }
+    fn apply_routine(&mut self, scene: &crate::routines::Scene) -> Result<(), String> {
+        let settings = crate::profiles::scene(&scene.settings, &scene.source, &self.state.settings);
+        if matches!(settings.mode.as_str(), "screen" | "music" | "blend") {
+            return Err("Start capture manually".into());
+        }
+        self.apply_settings(settings, false)?;
+        self.routines.status.scene_revision += 1;
+        self.start_requested()
+    }
+    fn restore_routine(&mut self) -> Result<(), String> {
+        self.routines.status.active_rule.clear();
+        if let Some((scene, source, requested)) = self.routine_restore.take() {
+            let settings = crate::profiles::scene(&scene, &source, &self.state.settings);
+            self.apply_settings(settings, false)?;
+            self.routines.status.scene_revision += 1;
+            if requested && !matches!(scene.mode.as_str(), "screen" | "music" | "blend") {
+                if self.life.pause_reason(&self.state.settings).is_empty() {
+                    self.start_requested()?;
+                } else {
+                    self.life.requested = true;
+                    self.desired = true;
+                }
+            } else {
+                self.life.stop();
+                self.desired = false;
+                self.stop();
+                self.remember()?;
+                if requested {
+                    self.routines.status.message = "Previous capture scene restored. Press Start to grant fresh capture consent.".into();
+                }
+            }
+        }
+        Ok(())
+    }
+    fn tick_routines(&mut self) {
+        let available =
+            !self.state.calibrating && self.life.pause_reason(&self.state.settings).is_empty();
+        self.routines.tick_timer(
+            Instant::now(),
+            available,
+            self.state.powered,
+            crate::routines::local_minute(),
+        );
+        if let Some(schedule) = self.routines.schedule(chrono::Local::now(), available) {
+            self.routine_restore = None;
+            self.routines.manual_override();
+            self.fade = None;
+            let result = if matches!(schedule.transition, crate::routines::Transition::FadeOut) {
+                self.fade = self.life.requested.then(|| {
+                    (
+                        Instant::now(),
+                        Duration::from_secs(schedule.seconds.into()),
+                        true,
+                    )
+                });
+                Ok(())
+            } else {
+                self.apply_routine(&schedule.scene).map(|()| {
+                    if matches!(schedule.transition, crate::routines::Transition::FadeIn) {
+                        self.fade = Some((
+                            Instant::now(),
+                            Duration::from_secs(schedule.seconds.into()),
+                            false,
+                        ));
+                    }
+                })
+            };
+            self.routines.status.message = match result {
+                Ok(()) => format!("Scheduled action: {}", schedule.scene.name),
+                Err(e) => format!("Schedule skipped: {e}"),
+            };
+        }
+        if self
+            .fade
+            .is_some_and(|(start, length, _)| start.elapsed() >= length)
+        {
+            let (_, _, off) = self.fade.take().unwrap();
+            if off {
+                let _ = self.action(Action::Power { on: false });
+            }
+        }
+        self.sync_routines();
     }
     fn reconcile_capture(&mut self) {
         if self.state.capturing && self.source_check.elapsed() >= Duration::from_secs(2) {
@@ -1037,6 +1253,7 @@ impl Engine {
         self.update_lifecycle();
         let dt = self.last_tick.elapsed().as_secs_f32().min(1.0);
         self.last_tick = Instant::now();
+        self.tick_routines();
         if self.desired
             && self.life.pause_reason(&self.state.settings).is_empty()
             && !self.controller.status.connected
@@ -1085,8 +1302,19 @@ impl Engine {
                         })
                         .collect();
                 } else {
+                    self.routines.overlay(&mut colors);
+                    let mut output_settings = self.state.settings.clone();
+                    if let Some((start, length, off)) = self.fade {
+                        let fraction =
+                            (start.elapsed().as_secs_f32() / length.as_secs_f32()).clamp(0.0, 1.0);
+                        let gain = if off { 1.0 - fraction } else { fraction };
+                        output_settings.brightness =
+                            (f32::from(output_settings.brightness) * gain).round() as u8;
+                        output_settings.minimum_glow =
+                            (f32::from(output_settings.minimum_glow) * gain).round() as u8;
+                    }
                     self.previous =
-                        lighting::transform(&colors, &self.previous, &self.state.settings, dt);
+                        lighting::transform(&colors, &self.previous, &output_settings, dt);
                 }
                 self.state.colors = self
                     .previous
@@ -1254,6 +1482,101 @@ fn missed_slots(late: Duration, period: Duration) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn application_rules_restore_scene_but_never_overwrite_manual_changes_or_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let settings = Settings::default();
+        let original = settings.color.clone();
+        let mut e = simulated(settings.clone(), dir.path().join("settings.json"));
+        e.action(Action::Start).unwrap();
+        let mut target = settings;
+        target.color = "#ff0000".into();
+        let config = crate::routines::Config {
+            apps_enabled: true,
+            app_rules: vec![crate::routines::AppRule {
+                app: "Fixture".into(),
+                scene: crate::routines::Scene {
+                    name: "Red".into(),
+                    settings: SceneSettings::capture(&target),
+                    source: SourceBinding::default(),
+                },
+            }],
+            ..Default::default()
+        };
+        e.action(Action::RoutinesConfig {
+            config: Some(config),
+        })
+        .unwrap();
+        e.action(Action::Foreground {
+            result: Ok("Fixture".into()),
+        })
+        .unwrap();
+        assert_eq!(e.state.settings.color, "#ff0000");
+        e.action(Action::Foreground {
+            result: Ok("Other".into()),
+        })
+        .unwrap();
+        assert_eq!(e.state.settings.color, original);
+        e.action(Action::Foreground {
+            result: Ok("Fixture".into()),
+        })
+        .unwrap();
+        e.action(Action::Adjust {
+            brightness: Some(17),
+            color: Some("#00ff00".into()),
+        })
+        .unwrap();
+        e.action(Action::Foreground {
+            result: Ok("Fixture".into()),
+        })
+        .unwrap();
+        e.action(Action::Foreground {
+            result: Ok("Other".into()),
+        })
+        .unwrap();
+        assert_eq!(e.state.settings.color, "#00ff00");
+        assert_eq!(e.state.settings.brightness, 17);
+        e.action(Action::Power { on: false }).unwrap();
+        e.action(Action::Foreground {
+            result: Ok("Fixture".into()),
+        })
+        .unwrap();
+        assert!(!e.life.requested);
+        assert_eq!(e.state.settings.color, "#00ff00");
+    }
+    #[test]
+    fn temporary_cues_preserve_scene_and_comfort_and_stop_cancels_fades() {
+        let dir = tempfile::tempdir().unwrap();
+        let settings = Settings {
+            color: "#0000ff".into(),
+            brightness: 100,
+            max_brightness: 20,
+            smoothing: 0,
+            transition_limit: 0,
+            ..Default::default()
+        };
+        let mut e = simulated(settings.clone(), dir.path().join("settings.json"));
+        e.routines.config.manual_cue = crate::routines::Cue {
+            enabled: true,
+            color: "#ff0000".into(),
+            seconds: 1,
+        };
+        e.action(Action::Start).unwrap();
+        e.action(Action::Routine {
+            command: "cue".into(),
+        })
+        .unwrap();
+        e.tick();
+        assert!(e.state.colors.iter().all(|c| c[0] <= 51 && c[2] == 0));
+        assert!(e.state.colors[0][0] > 0);
+        assert_eq!(e.state.settings, settings);
+        e.fade = Some((Instant::now(), Duration::from_secs(10), false));
+        e.action(Action::Power { on: false }).unwrap();
+        e.tick();
+        assert!(e.fade.is_none());
+        assert!(!e.state.routines.cue_active);
+        assert!(e.state.colors.iter().all(|c| *c == [0; 3]));
+    }
     fn automated(action: Action, active: bool) -> Action {
         Action::Automation {
             action: Box::new(action),

@@ -1,11 +1,11 @@
 use dynamiclight_control::{
     http,
     session::{self, Connection},
-    Command, Power, Response,
+    Command, Power, Response, RoutineControl,
 };
 use std::path::PathBuf;
 
-const HELP: &str = "DynamicLight CLI\nUsage: dynamiclight [--json] [--connection FILE] COMMAND\n  status\n  power on|off|toggle [--allow-capture]\n  brightness 0..100\n  scenes list\n  scenes apply ID [--allow-capture]\n  profiles list\n  profiles apply ID [--allow-capture]\n\nEnable Local automation in the desktop app's Settings first.\nCapture needs both the Settings permission and --allow-capture.\n--json prints the versioned API response; errors exit 1, usage errors exit 2.";
+const HELP: &str = "DynamicLight CLI\nUsage: dynamiclight [--json] [--connection FILE] COMMAND\n  status\n  routines status|start|pause|skip|cancel|cue|resume-rules|pause-schedules|resume-schedules\n  power on|off|toggle [--allow-capture]\n  brightness 0..100\n  scenes list\n  scenes apply ID [--allow-capture]\n  profiles list\n  profiles apply ID [--allow-capture]\n\nEnable Local automation in the desktop app's Settings first.\nCapture needs both the Settings permission and --allow-capture.\n--json prints the versioned API response; errors exit 1, usage errors exit 2.";
 struct Options {
     command: Command,
     path: Option<PathBuf>,
@@ -34,6 +34,20 @@ fn parse(args: Vec<String>) -> Result<Options, String> {
     }
     let words: Vec<&str> = words.iter().map(String::as_str).collect();
     let command = match words.as_slice() {
+        ["routines", action] if !capture => Command::Routine {
+            action: match *action {
+                "status" => RoutineControl::Status,
+                "start" => RoutineControl::Start,
+                "pause" => RoutineControl::Pause,
+                "skip" => RoutineControl::Skip,
+                "cancel" => RoutineControl::Cancel,
+                "cue" => RoutineControl::Cue,
+                "resume-rules" => RoutineControl::ResumeRules,
+                "pause-schedules" => RoutineControl::PauseSchedules,
+                "resume-schedules" => RoutineControl::ResumeSchedules,
+                _ => return Err("Unknown routine action".into()),
+            },
+        },
         ["status"] if !capture => Command::Status {},
         ["power", state] => Command::Power {
             state: match *state {
@@ -108,6 +122,18 @@ mod tests {
     #[test]
     fn parses_commands_without_silent_capture_consent() {
         assert!(matches!(
+            parse(args("routines pause-schedules")).unwrap().command,
+            Command::Routine {
+                action: RoutineControl::PauseSchedules
+            }
+        ));
+        assert!(matches!(
+            parse(args("routines status --json")).unwrap().command,
+            Command::Routine {
+                action: RoutineControl::Status
+            }
+        ));
+        assert!(matches!(
             parse(args("power on")).unwrap().command,
             Command::Power {
                 allow_capture: false,
@@ -132,6 +158,8 @@ mod tests {
             "status extra",
             "status --json --json",
             "status --connection",
+            "routines configure",
+            "routines cue --allow-capture",
         ] {
             assert!(parse(args(s)).is_err(), "{s}");
         }

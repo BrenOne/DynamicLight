@@ -20,7 +20,8 @@ const delay = (ms) => new Promise((r) => setTimeout(r, ms));
   let browser,
     page,
     isolated = false,
-    original;
+    original,
+    originalRoutines;
   try {
     for (let i = 0; i < 60; i++) {
       if (child.exitCode !== null) throw Error("Test app exited");
@@ -59,6 +60,7 @@ const delay = (ms) => new Promise((r) => setTimeout(r, ms));
     isolated = true;
     const snapshot = await invoke("control", { action: { type: "snapshot" } });
     original = snapshot.settings;
+    originalRoutines = await invoke("routines_config", { config: null });
     assert(
       !snapshot.requested && !snapshot.capturing && !snapshot.status.connected,
     );
@@ -180,11 +182,64 @@ const delay = (ms) => new Promise((r) => setTimeout(r, ms));
         text: JSON.stringify({ format: "dynamiclight-rgb", version: 99 }),
       }),
     );
+    const routineDraft = structuredClone(originalRoutines);
+    routineDraft.paused = true;
+    routineDraft.appsEnabled = false;
+    routineDraft.focusMinutes = 1;
+    routineDraft.breakMinutes = 1;
+    routineDraft.manualCue.enabled = true;
+    await invoke("routines_config", { config: routineDraft });
+    await invoke("control", { action: { type: "routine", command: "start" } });
+    await page.waitForFunction(
+      async () =>
+        (
+          await window.__TAURI__.core.invoke("control", {
+            action: { type: "snapshot" },
+          })
+        ).routines.timerPhase === "Focus",
+    );
+    await invoke("control", { action: { type: "routine", command: "pause" } });
+    await page.waitForFunction(
+      async () =>
+        (
+          await window.__TAURI__.core.invoke("control", {
+            action: { type: "snapshot" },
+          })
+        ).routines.timerPaused,
+    );
+    await invoke("control", { action: { type: "routine", command: "skip" } });
+    await page.waitForFunction(
+      async () =>
+        (
+          await window.__TAURI__.core.invoke("control", {
+            action: { type: "snapshot" },
+          })
+        ).routines.timerPhase === "Break",
+    );
+    await invoke("control", { action: { type: "routine", command: "cue" } });
+    const routineState = await invoke("control", {
+      action: { type: "snapshot" },
+    });
+    assert(
+      !routineState.routines.cueActive &&
+        !routineState.requested &&
+        !routineState.status.connected &&
+        !routineState.capturing,
+    );
+    await invoke("control", { action: { type: "routine", command: "cancel" } });
     console.log(
       "Native studio passed: bounded frames, invalid effect rejection, editor Apply while off, native persistence, RGB recording/offline setup, cross-window appearance; no USB/capture.",
     );
   } finally {
     if (page && isolated) {
+      if (originalRoutines)
+        await page
+          .evaluate(
+            (config) =>
+              window.__TAURI__.core.invoke("routines_config", { config }),
+            originalRoutines,
+          )
+          .catch(() => {});
       if (original)
         await page
           .evaluate(

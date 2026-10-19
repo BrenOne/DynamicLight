@@ -1,10 +1,10 @@
 {
   "updated": "2026-10-19",
   "next": [
-    "AUT-03",
-    "AUT-04",
-    "AUT-06",
-    "AUT-02"
+    "HW-02",
+    "UI-07",
+    "REL-04",
+    "HW-03"
   ],
   "items": {
     "REL-01": {
@@ -266,6 +266,46 @@
       "status": "Implemented",
       "delivered": "0.12: bounded RGB-only recording, local persistence and import/export, offline replay with trim/loop/speed, explicit layout remapping and profile/CLI reuse by clip identity. Existing power and comfort limits retained.",
       "remaining": "Physical replay timing and strip remapping across devices.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
+    },
+    "AUT-03": {
+      "status": "Implemented",
+      "delivered": "0.13: Local weekday schedules with saved offline scene snapshots, immediate/fade-in/fade-out transitions, pause controls, next action, persistent local-date deduplication and explicit missed/sleep/timezone policies.",
+      "remaining": "Physical OS foreground, hardware transitions and accessibility validation; supported scope and policies in docs/routines.md.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
+    },
+    "AUT-04": {
+      "status": "Implemented",
+      "delivered": "0.13: Explicit manual/CLI and timer cue sources, bounded duration/colors, one pending coalesced event, underlying scene preservation, quiet hours, off and comfort guards; no notification content access.",
+      "remaining": "Physical OS foreground, hardware transitions and accessibility validation; supported scope and policies in docs/routines.md.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
+    },
+    "AUT-06": {
+      "status": "Implemented",
+      "delivered": "0.13: Monotonic focus/break timers, bounded repeated cycles, remaining time, pause/resume/skip/cancel and configurable cues. Sleep/interruption pauses without catch-up.",
+      "remaining": "Physical OS foreground, hardware transitions and accessibility validation; supported scope and policies in docs/routines.md.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
+    },
+    "AUT-02": {
+      "status": "Implemented",
+      "delivered": "0.13: Explicit offline-profile app rules with ordered precedence, local foreground matching, previous scene restore, atomic manual overrides and unavailable-platform/permission reporting.",
+      "remaining": "Physical OS foreground, hardware transitions and accessibility validation; supported scope and policies in docs/routines.md.",
       "validation": [
         "QA-01",
         "PLAT-01",

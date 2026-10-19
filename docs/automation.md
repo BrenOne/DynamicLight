@@ -24,6 +24,8 @@ Rerun the CLI installer to update it. Desktop in-app updates update the desktop 
 
 ## Commands and scripts
 
+Version 0.13 adds [routine controls](routines.md#cli--api-v1) for timers, cues and schedule overrides through this same authenticated API.
+
 ```sh
 dynamiclight status --json
 dynamiclight power on

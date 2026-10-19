@@ -16,4 +16,8 @@ Studio foundations: shipped in 0.11.0 via #56. All four platform builds passed; 
 
 Capture and playback (#13, #22): implemented on `codex/capture-playback` for 0.12.0. Local validation: 75 Rust tests, strict Clippy, browser source/sequence controls, isolated native persistence/playback setup, and real Windows capture of a generated fixture window (including resize and closure). No USB was used. Cross-platform CI/release verification pending.
 
-Next: scheduling, temporary cues, focus timers and application rules (#10, #15, #25, #9).
+Capture/playback merged via #57 after all four platform builds passed. Production release run 39232125424 is in progress for v0.12.0.
+
+Scheduling, temporary cues, focus timers and application rules (#10, #15, #25, #9): implemented on `codex/lighting-routines` for 0.13.0, with additive authenticated API/CLI controls. Local unit, strict lint, browser and isolated native Windows timer/off-state checks completed; final validation and cross-platform release pending. Details and deliberately supported platform/capture scope are in `docs/routines.md`.
+
+Next: multiple controllers, visual layout, handoff and ambient sensors (#8, #34, #26, #23).
