@@ -276,3 +276,113 @@ impl ModeSettings {
         s.effect_reverse = self.effect_reverse;
     }
 }
+
+/// Portable lighting choices. Device layout, display bindings, consent, lifecycle
+/// and comfort limits belong to this installation, never to a shared scene.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SceneSettings {
+    pub color: String,
+    pub brightness: u8,
+    pub mode: String,
+    pub smoothing: u8,
+    pub audio_source: String,
+    pub sensitivity: u8,
+    pub fps: u8,
+    pub effect: String,
+    pub palette: String,
+    pub speed: u8,
+    pub music_style: String,
+    pub noise_floor: u8,
+    pub release: u8,
+    pub exclude_bars: bool,
+    pub rgb_balance: [u8; 3],
+    pub saturation: u16,
+    pub gamma: u16,
+    pub input_gain: i8,
+    pub blend: u8,
+    pub effect_reverse: bool,
+}
+impl SceneSettings {
+    pub fn capture(s: &Settings) -> Self {
+        Self {
+            color: s.color.clone(),
+            brightness: s.brightness,
+            mode: s.mode.clone(),
+            smoothing: s.smoothing,
+            audio_source: s.audio_source.clone(),
+            sensitivity: s.sensitivity,
+            fps: s.fps,
+            effect: s.effect.clone(),
+            palette: s.palette.clone(),
+            speed: s.speed,
+            music_style: s.music_style.clone(),
+            noise_floor: s.noise_floor,
+            release: s.release,
+            exclude_bars: s.exclude_bars,
+            rgb_balance: s.rgb_balance,
+            saturation: s.saturation,
+            gamma: s.gamma,
+            input_gain: s.input_gain,
+            blend: s.blend,
+            effect_reverse: s.effect_reverse,
+        }
+    }
+    pub fn apply(&self, current: &Settings) -> Settings {
+        Settings {
+            color: self.color.clone(),
+            brightness: self.brightness,
+            mode: self.mode.clone(),
+            smoothing: self.smoothing,
+            audio_source: self.audio_source.clone(),
+            sensitivity: self.sensitivity,
+            fps: self.fps,
+            effect: self.effect.clone(),
+            palette: self.palette.clone(),
+            speed: self.speed,
+            music_style: self.music_style.clone(),
+            noise_floor: self.noise_floor,
+            release: self.release,
+            exclude_bars: self.exclude_bars,
+            rgb_balance: self.rgb_balance,
+            saturation: self.saturation,
+            gamma: self.gamma,
+            input_gain: self.input_gain,
+            blend: self.blend,
+            effect_reverse: self.effect_reverse,
+            ..current.clone()
+        }
+    }
+    pub fn validate(&self) -> Result<(), String> {
+        self.apply(&Settings::default()).validate()
+    }
+}
+
+/// A local profile may remember a display; it is separate from portable settings.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
+pub struct SourceBinding {
+    pub screen_id: String,
+}
+
+/// Atomic field edits resolved against the worker's current settings. Disjoint
+/// edits compose; for the same field the last processed command wins. An empty
+/// patch commits current state without replaying a renderer's stale snapshot.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(transparent)]
+pub struct SettingsPatch(pub serde_json::Map<String, serde_json::Value>);
+impl SettingsPatch {
+    pub fn apply(&self, current: &Settings) -> Result<Settings, String> {
+        let mut value = serde_json::to_value(current).map_err(|e| e.to_string())?;
+        let fields = value.as_object_mut().ok_or("Invalid settings")?;
+        for (key, value) in &self.0 {
+            if key == "modeSettings" || !fields.contains_key(key) {
+                return Err(format!("Settings field cannot be edited: {key}"));
+            }
+            fields.insert(key.clone(), value.clone());
+        }
+        let settings: Settings = serde_json::from_value(value).map_err(|e| e.to_string())?;
+        settings.validate()?;
+        Ok(settings)
+    }
+}

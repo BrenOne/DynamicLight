@@ -112,6 +112,10 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const profile = { id: 'native-test', name: 'Native test', favorite: true, shortcut: 'Control+Alt+Shift+F12', settings: original };
     const saved = await page.evaluate(p => window.__TAURI__.core.invoke('profile_library', { library: { profiles: [p] } }), profile);
     assert.equal(saved.profiles[0].name, 'Native test');
+    assert.equal(saved.profiles[0].source.screenId, original.screenId);
+    for (const key of ['screenId', 'count', 'resumeCapture', 'maxBrightness', 'modeSettings']) assert.equal(key in saved.profiles[0].settings, false);
+    const roundtrip = await page.evaluate(library => window.__TAURI__.core.invoke('profile_library', { library }), saved);
+    assert.deepEqual(roundtrip, saved, 'Separated scene and local source survive native persistence');
     await assert.rejects(page.evaluate(p => window.__TAURI__.core.invoke('profile_library', { library: { profiles: [p, { ...p, id: 'duplicate' }] } }), profile));
     assert.equal((await page.evaluate(() => window.__TAURI__.core.invoke('profile_library', { library: null }))).profiles.length, 1);
     await page.evaluate(library => window.__TAURI__.core.invoke('profile_library', { library }), originalProfiles);
@@ -160,6 +164,7 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         settings.effect = "aurora";
         settings.brightness = 80;
         settings.smoothing = 40;
+        markSettings(["mode", "effect", "brightness", "smoothing"]);
         await save();
         updateUI();
       });
@@ -210,6 +215,7 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         if (original)
           await page.evaluate(async (s) => {
             settings = s;
+            markSettings(Object.keys(s).filter(key => key !== "modeSettings"));
             await save();
           }, original);
         await page.evaluate(() => window.__TAURI__.core.invoke("quit"));

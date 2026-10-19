@@ -38,9 +38,10 @@ async function flushBrightness() {
   clearTimeout(brightnessTimer);
   if (!editingBrightness) return;
   await brightnessPreview;
-  const brightness = +$("quick-brightness").value;
   editingBrightness = false;
-  render(await serialized(() => invoke("compact_control", { brightness, toggle: false })));
+  // Preview already applied the edit. Persist current worker state so a later
+  // Studio/tray edit is not overwritten by this delayed commit.
+  render(await serialized(() => invoke("compact_control", { brightness: null, toggle: false })));
 }
 function previewBrightness() {
   brightnessDirty = true;

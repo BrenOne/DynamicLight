@@ -101,6 +101,12 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
       };
       const calls = [];
       const listeners = {}; let listener; let calibrationOriginal; let profileLibrary = { profiles: [] };
+      function portableProfile(p) {
+        const settings = structuredClone(p.settings);
+        const source = p.source || { screenId: settings.screenId || '' };
+        for (const key of ['count','sides','reverse','offset','screenId','offOnSleep','offOnDisplaySleep','offOnLock','offOnQuit','restoreOnStart','resumeCapture','maxBrightness','transitionLimit','minimumGlow','modeSettings']) delete settings[key];
+        return { ...p, settings, source };
+      }
       function colors() {
         state.colors = Array.from({ length: state.settings.count }, (_, i) =>
           state.powered
@@ -140,18 +146,18 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
                 ]),
               );
             }
-            if (cmd === "profile_library") { if (args.library) profileLibrary = structuredClone(args.library); return structuredClone(profileLibrary); }
+            if (cmd === "profile_library") { if (args.library) profileLibrary = { profiles: args.library.profiles.map(portableProfile) }; return structuredClone(profileLibrary); }
             if (cmd === "starter_scenes") return { profiles: [
               { id:'warm-desk',name:'Warm desk',favorite:false,shortcut:'',settings:{...initial,mode:'solid',brightness:28,color:'#ffbf80'} },
               { id:'cinema',name:'Cinema',favorite:false,shortcut:'',settings:{...initial,mode:'screen',brightness:35} },
               { id:'neon',name:'Neon',favorite:false,shortcut:'',settings:{...initial,mode:'rainbow',effect:'aurora',brightness:55} },
               { id:'ocean',name:'Ocean',favorite:false,shortcut:'',settings:{...initial,mode:'rainbow',effect:'aurora',palette:'ocean',brightness:40} }
-            ] };
+            ].map(portableProfile) };
             if (cmd === "scene_previews") { fixture.sceneCalls=(fixture.sceneCalls||0)+1; return args.settings.map(s=>Array.from({length:48},(_,i)=>[50+i*3,140,200])); }
             if (cmd === "apply_starter") { state.settings = {...initial,mode:'rainbow',palette:'ocean'}; state.powered=true; state.requested=true; return structuredClone(state); }
             if (cmd === "compact_window") { if(args.operation==='pin')fixture.pinned=args.pinned; return !!fixture.pinned; }
             if (cmd === "compact_control") { if(args.brightness!==null)state.settings.brightness=args.brightness; if(args.toggle)state.requested=state.powered=!state.requested; return structuredClone(state); }
-            if (cmd === "apply_profile") { state.settings = structuredClone(profileLibrary.profiles.find(p => p.id === args.id).settings); state.requested = true; state.powered = true; return structuredClone(state); }
+            if (cmd === "apply_profile") { const p=profileLibrary.profiles.find(p => p.id === args.id); state.settings = { ...state.settings, ...structuredClone(p.settings), screenId:p.source.screenId }; state.requested = true; state.powered = true; return structuredClone(state); }
             if (cmd === "diagnostic_report") return { text: "DynamicLight test report: no private data", enabled: !!args.enabled };
             if (cmd === "export_diagnostics") return "Downloads/DynamicLight-diagnostics-test.txt";
             if (cmd === "platform_name") return "windows";
@@ -170,6 +176,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
             if (a.type === "calibrationStart") { calibrationOriginal = structuredClone(state); state.calibrating = true; }
             if (a.type === "calibrationEnd") { const layout = state.settings; Object.assign(state, calibrationOriginal); if (a.apply) Object.assign(state.settings, { count: layout.count, sides: layout.sides, reverse: layout.reverse, offset: layout.offset }); state.calibrating = false; }
             if (a.type === "selectMode") { state.settings.mode = a.mode; state.capturing = false; }
+            if (a.type === "patchSettings") a.settings = { ...state.settings, ...structuredClone(a.patch) };
             if (a.settings) {
               if (
                 state.settings.mode !== a.settings.mode ||
@@ -260,15 +267,44 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
     );
     const edits = await page.evaluate(() => fixture.calls);
     assert(
-      edits.filter((a) => a.type === "previewSettings").length <= 3,
+      edits.filter((a) => a.type === "patchSettings" && !a.persist).length <= 3,
       "Drag updates coalesced",
     );
     assert.equal(
-      edits.filter((a) => a.type === "settings").length,
+      edits.filter((a) => a.type === "patchSettings" && a.persist).length,
       1,
       "One persistence write",
     );
-    assert.equal(edits.at(-1).settings.brightness, 100);
+    assert.deepEqual(edits.at(-1).patch, {});
+    assert.equal(await page.evaluate(() => fixture.state.settings.brightness), 100);
+    // A different window changes an unrelated field between preview and save.
+    // Studio must commit the worker's current state, not its earlier full draft.
+    await page.evaluate(() => {
+      const slider = document.getElementById('brightness');
+      slider.value = 63; slider.dispatchEvent(new Event('input'));
+    });
+    await page.waitForFunction(() => fixture.state.settings.brightness === 63 && !previewPending);
+    await page.evaluate(() => {
+      fixture.state.settings.color = '#123456';
+      fixture.emitEvent('external-settings', structuredClone(fixture.state));
+    });
+    await page.waitForFunction(() => document.getElementById('save-state').textContent === 'Saved');
+    assert.equal(await page.evaluate(() => fixture.state.settings.brightness), 63);
+    assert.equal(await page.evaluate(() => fixture.state.settings.color), '#123456');
+    // For the same field, a later external edit wins even if Studio's delayed
+    // persistence timer has not fired yet.
+    await page.evaluate(() => {
+      const slider = document.getElementById('brightness');
+      slider.value = 48; slider.dispatchEvent(new Event('input'));
+    });
+    await page.waitForFunction(() => fixture.state.settings.brightness === 48 && !previewPending);
+    await page.evaluate(() => {
+      fixture.state.settings.brightness = 81;
+      fixture.emitEvent('external-settings', structuredClone(fixture.state));
+    });
+    await page.waitForFunction(() => document.getElementById('save-state').textContent === 'Saved');
+    assert.equal(await page.evaluate(() => fixture.state.settings.brightness), 81);
+    assert.equal(await page.locator('#brightness').inputValue(), '81');
     await page.locator('[data-mode="rainbow"]').click();
     await page.waitForFunction(() => !busy);
     assert(
@@ -520,6 +556,9 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
     assert.equal(await page.locator('.profile-row').count(), 2);
     await page.locator('.profile-apply').first().click(); await page.waitForFunction(() => !busy);
     assert.equal(await page.evaluate(() => fixture.state.settings.mode), 'blend');
+    await page.waitForFunction(() => document.querySelector('.profile-apply').classList.contains('scene-current'));
+    assert.equal(await page.evaluate(() => 'screenId' in library.profiles[0].settings), false);
+    assert.equal(await page.evaluate(() => library.profiles[0].source.screenId), await page.evaluate(() => fixture.state.settings.screenId));
     await page.locator('.profiles > summary').click();
     await page.locator('#calibrate').click(); await page.waitForFunction(() => !busy);
     assert.equal(await page.locator('#calibration-dialog').isVisible(), true);
@@ -580,6 +619,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
     await page.setViewportSize({width:360,height:460});
     await page.locator('#quick-brightness').fill('32'); await page.locator('#quick-brightness').dispatchEvent('input');
     await page.waitForFunction(()=>fixture.state.settings.brightness===32);
+    await page.waitForFunction(()=>!brightnessPreview);
+    await page.evaluate(()=>{ fixture.state.settings.brightness=74; });
+    await page.waitForFunction(()=>!editingBrightness);
+    assert.equal(await page.evaluate(()=>fixture.state.settings.brightness),74,'Quick-controls idle save preserves later edits');
     await page.locator('#quick-power').click(); await page.waitForFunction(()=>fixture.state.requested);
     await page.locator('#quick-power').click(); await page.waitForFunction(()=>!fixture.state.requested);
     await page.evaluate(()=>{fixture.state.settings.brightness=57; fixture.state.recovering=true; fixture.state.requested=true;});

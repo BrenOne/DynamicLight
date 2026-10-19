@@ -3,7 +3,7 @@ use crate::{
     engine::{Action, Handle, Snapshot},
     profiles::{Library, Profile},
     protocol::Rgb,
-    settings::Settings,
+    settings::{SceneSettings, Settings, SourceBinding},
 };
 use tauri::{Emitter, Manager};
 #[tauri::command]
@@ -63,7 +63,8 @@ pub fn starter_scenes() -> Library {
                 name: name.into(),
                 favorite: false,
                 shortcut: String::new(),
-                settings,
+                settings: SceneSettings::capture(&settings),
+                source: SourceBinding::default(),
             })
             .collect(),
     }
@@ -77,7 +78,8 @@ pub async fn apply_starter(app: tauri::AppHandle, id: String) -> Result<Snapshot
             .find(|p| p.id == id)
             .ok_or("Unknown starter scene")?;
         let state = app.state::<Handle>().request(Action::ApplyProfile {
-            settings: preset.settings,
+            scene: preset.settings,
+            source: preset.source,
         })?;
         let _ = app.emit("external-settings", &state);
         Ok(state)

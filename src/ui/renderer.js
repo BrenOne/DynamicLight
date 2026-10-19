@@ -10,9 +10,16 @@ let settings,
   loginEnabled = false,
   loginAvailable = true;
 let previewPending,
-  previewDirty = false,
   revision = 0,
   lastError = "";
+// Only unacknowledged edits are overlaid on native snapshots.
+const pendingSettings = {};
+function markSettings(keys) {
+  for (const key of keys) pendingSettings[key] = structuredClone(settings[key]);
+}
+function acceptSettings(value) {
+  settings = { ...structuredClone(value.settings), ...structuredClone(pendingSettings) };
+}
 const labels = {
   solid: "Solid color",
   screen: "Screen sync",
@@ -233,35 +240,37 @@ function updateUI() {
 // Coalesce drag updates: at most one preview IPC in flight, then the newest value.
 // Disk writes happen after the user pauses, not on each animation frame.
 function previewSettings() {
-  previewDirty = true;
   if (!previewPending) {
     previewPending = (async () => {
-      while (previewDirty) {
-        previewDirty = false;
-        await request({ type: "previewSettings", settings: { ...settings } });
+      while (Object.keys(pendingSettings).length) {
+        const patch = structuredClone(pendingSettings);
+        const value = await request({ type: "patchSettings", patch, persist: false });
+        for (const [key, sent] of Object.entries(patch)) {
+          if (JSON.stringify(pendingSettings[key]) === JSON.stringify(sent)) delete pendingSettings[key];
+        }
+        acceptSettings(value);
       }
-    })()
-      .catch((error) => {
-        notice(String(error), true);
-        $("save-state").textContent = "Not saved";
-      })
-      .finally(() => {
-        previewPending = undefined;
-      });
+    })().catch((error) => {
+      notice(String(error), true);
+      $("save-state").textContent = "Not saved";
+      throw error;
+    }).finally(() => { previewPending = undefined; });
   }
   return previewPending;
 }
 async function save() {
   clearTimeout(saveTimer);
   saveTimer = null;
-  await previewPending;
+  await previewSettings();
   const savingRevision = revision;
   $("save-state").textContent = "Saving…";
   try {
     const result = await request({
-      type: "settings",
-      settings: { ...settings },
+      type: "patchSettings",
+      patch: {},
+      persist: true,
     });
+    acceptSettings(result);
     if (savingRevision === revision) $("save-state").textContent = "Saved";
     return result;
   } catch (error) {
@@ -269,11 +278,12 @@ async function save() {
     throw error;
   }
 }
-function changed() {
+function changed(keys) {
+  markSettings(keys);
   revision++;
   updateUI();
   $("save-state").textContent = "Applying…";
-  previewSettings();
+  previewSettings().catch(() => {});
   clearTimeout(saveTimer);
   saveTimer = setTimeout(
     () => save().catch((error) => notice(String(error), true)),
@@ -453,6 +463,7 @@ function changeSource(key, value) {
   const resume = runtime.requested;
   return run(async () => {
     settings[key] = value;
+    markSettings([key]);
     if (resume) await startLighting();
     else await save();
   });
@@ -566,9 +577,9 @@ async function init() {
   catch (error) { loginAvailable = false; notice(`Launch at login is unavailable: ${error}`, true); }
   await initProfiles();
   initCalibration();
-  $("exclude-bars").onchange = e => { settings.excludeBars = e.target.checked; changed(); };
-  ["red", "green", "blue"].forEach((c, i) => { $(c + "-balance").oninput = e => { settings.rgbBalance[i] = Number(e.target.value); changed(); }; });
-  $("reset-screen").onclick = () => { Object.assign(settings, { excludeBars: false, rgbBalance: [100,100,100], saturation: 100, gamma: 100 }); changed(); };
+  $("exclude-bars").onchange = e => { settings.excludeBars = e.target.checked; changed(["excludeBars"]); };
+  ["red", "green", "blue"].forEach((c, i) => { $(c + "-balance").oninput = e => { settings.rgbBalance[i] = Number(e.target.value); changed(["rgbBalance"]); }; });
+  $("reset-screen").onclick = () => { Object.assign(settings, { excludeBars: false, rgbBalance: [100,100,100], saturation: 100, gamma: 100 }); changed(["excludeBars", "rgbBalance", "saturation", "gamma"]); };
   updateUI();
   $("connect").onclick = () =>
     run(async () => {
@@ -592,7 +603,7 @@ async function init() {
       if (loginEnabled !== enabled) throw new Error("Login startup was not changed. Check your operating system's login-item settings.");
     });
   };
-  $("effect-direction").onchange = () => { settings.effectReverse = $("effect-direction").value === "reverse"; changed(); };
+  $("effect-direction").onchange = () => { settings.effectReverse = $("effect-direction").value === "reverse"; changed(["effectReverse"]); };
   document.querySelectorAll("[data-mode]").forEach((button) => {
     button.setAttribute(
       "aria-label",
@@ -615,6 +626,7 @@ async function init() {
       button.onclick = () =>
         run(async () => {
           settings[key] = button.dataset[dataset];
+          markSettings([key]);
           updateUI();
           await startLighting();
         });
@@ -622,28 +634,28 @@ async function init() {
   document.querySelectorAll("[data-color]").forEach((button) => {
     button.onclick = () => {
       settings.color = button.dataset.color;
-      changed();
+      changed(["color"]);
     };
   });
   $("color").oninput = (event) => {
     settings.color = event.target.value;
-    changed();
+    changed(["color"]);
   };
   for (const [id, key] of Object.entries(ranges))
     $(id).oninput = (event) => {
       settings[key] = Number(event.target.value);
-      changed();
+      changed([key]);
     };
   for (const name of ["count", "sides", "offset", "fps"])
     $(name).onchange = (event) => {
       if (event.target.checkValidity()) {
         settings[name] = Number(event.target.value);
-        changed();
+        changed([name]);
       }
     };
   $("palette").onchange = (event) => {
     settings.palette = event.target.value;
-    changed();
+    changed(["palette"]);
   };
   for (const [id, key] of [
     ["reverse", "reverse"],
@@ -653,7 +665,7 @@ async function init() {
   ])
     $(id).onchange = (event) => {
       settings[key] = event.target.checked;
-      changed();
+      changed([key]);
     };
   $("audio-source").onchange = (event) =>
     changeSource("audioSource", event.target.value);
@@ -733,12 +745,15 @@ async function initProfiles() {
   $("scene-search").oninput = renderProfiles;
   $("scene-filter").onchange = renderProfiles;
   document.querySelector(".profiles").addEventListener("toggle", refreshScenePreviews);
-  await window.__TAURI__.event.listen("external-settings", async ({ payload }) => {
-    clearTimeout(saveTimer); saveTimer = null; previewDirty = false;
-    await previewPending;
-    const latest = await request({ type: "snapshot" });
-    settings = latest.settings; renderRuntime(latest); updateUI();
-    if (["screen", "blend"].includes(settings.mode)) await refreshDisplays();
+  await window.__TAURI__.event.listen("external-settings", async () => {
+    try {
+      // Finish local field edits, then read the authoritative worker state.
+      // Do not replay a full draft over a tray/profile/Quick-controls change.
+      await previewPending?.catch(() => {});
+      const latest = await request({ type: "snapshot" });
+      acceptSettings(latest); renderRuntime(latest); updateUI();
+      if (["screen", "blend"].includes(settings.mode)) await refreshDisplays();
+    } catch (error) { notice(String(error), true); }
   });
   await window.__TAURI__.event.listen("control-error", ({ payload }) => notice(payload, true));
   $("profile-save").onclick = () => run(async () => {
@@ -782,7 +797,7 @@ function renderProfiles() {
     };
     button("Save name & shortcut", () => editLibrary(n => { n.profiles[i].name = name.value.trim(); n.profiles[i].shortcut = shortcut.value.trim(); }));
     button(p.favorite ? "★ Favorite" : "☆ Favorite", () => editLibrary(n => { n.profiles[i].favorite = !p.favorite; })).setAttribute("aria-pressed", String(p.favorite));
-    button("Update settings", async () => { await save(); await editLibrary(n => { n.profiles[i].settings = { ...settings, modeSettings: {} }; }); });
+    button("Update settings", async () => { await save(); await editLibrary(n => { n.profiles[i].settings = { ...settings, modeSettings: {} }; n.profiles[i].source = { screenId: settings.screenId }; }); });
     button("Duplicate", () => editLibrary(n => { n.profiles.splice(i + 1, 0, { ...structuredClone(p), id: crypto.randomUUID(), name: (p.name + " copy").slice(0, 50), shortcut: "" }); }));
     button("Move up", () => editLibrary(n => { [n.profiles[i-1], n.profiles[i]] = [n.profiles[i], n.profiles[i-1]]; })).disabled = i === 0;
     button("Move down", () => editLibrary(n => { [n.profiles[i+1], n.profiles[i]] = [n.profiles[i], n.profiles[i+1]]; })).disabled = i === library.profiles.length - 1;
@@ -870,7 +885,7 @@ function updateSceneSelection() {
   const common=["mode","brightness","smoothing"];
   const keys={solid:["color"],rainbow:["effect","palette","color","speed","effectReverse"],music:["musicStyle","palette","color","audioSource","inputGain","sensitivity","noiseFloor","release","speed"],screen:["screenId","excludeBars","rgbBalance","saturation","gamma"],blend:["screenId","audioSource","blend","inputGain","sensitivity","noiseFloor","release","excludeBars","rgbBalance","saturation","gamma"]};
   for(const b of document.querySelectorAll(".scene-card .profile-apply")) {
-    const s=b.scene.settings;
+    const s={...b.scene.settings, screenId:b.scene.source?.screenId ?? b.scene.settings.screenId ?? ""};
     const match=!runtime.calibrating && [...common,...keys[s.mode]].every(k=>JSON.stringify(s[k])===JSON.stringify(runtime.settings[k]));
     b.classList.toggle("scene-current",match);
     b.querySelector(".scene-tag").textContent = match ? "Current settings · example" : "Example preview";

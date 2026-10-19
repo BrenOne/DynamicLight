@@ -1,21 +1,22 @@
 //! Profile persistence and shortcuts. Hardware and lifecycle preferences stay local.
 use crate::{
     engine::{Action, Handle, Snapshot},
-    settings::{save_json, Settings},
+    settings::{save_json, SceneSettings, Settings, SourceBinding},
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, path::PathBuf, sync::Mutex};
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Profile {
     pub id: String,
     pub name: String,
     pub favorite: bool,
     pub shortcut: String,
-    pub settings: Settings,
+    pub settings: SceneSettings,
+    pub source: SourceBinding,
 }
 #[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -48,6 +49,9 @@ impl Library {
                 return Err("Use a profile name of 1–50 characters".into());
             }
             p.settings.validate()?;
+            if p.source.screen_id.len() > 200 {
+                return Err("Display binding is too long".into());
+            }
             if !p.shortcut.is_empty() {
                 if p.shortcut.len() > 80 {
                     return Err("Shortcut is too long".into());
@@ -67,23 +71,41 @@ impl Library {
         Ok(())
     }
 }
-pub fn scene(profile: &Settings, current: &Settings) -> Settings {
-    Settings {
-        count: current.count,
-        sides: current.sides,
-        reverse: current.reverse,
-        offset: current.offset,
-        off_on_sleep: current.off_on_sleep,
-        off_on_display_sleep: current.off_on_display_sleep,
-        off_on_lock: current.off_on_lock,
-        off_on_quit: current.off_on_quit,
-        restore_on_start: current.restore_on_start,
-        resume_capture: current.resume_capture,
-        max_brightness: current.max_brightness,
-        transition_limit: current.transition_limit,
-        minimum_glow: current.minimum_glow,
-        ..profile.clone()
+// Accept 0.6 profiles and current payloads through the validated legacy Settings
+// shape. Serialize only the portable subset and an explicit local binding.
+impl<'de> Deserialize<'de> for Profile {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct StoredProfile {
+            id: String,
+            name: String,
+            favorite: bool,
+            shortcut: String,
+            settings: Settings,
+            source: Option<SourceBinding>,
+        }
+        let stored = StoredProfile::deserialize(deserializer)?;
+        stored
+            .settings
+            .validate()
+            .map_err(serde::de::Error::custom)?;
+        Ok(Self {
+            id: stored.id,
+            name: stored.name,
+            favorite: stored.favorite,
+            shortcut: stored.shortcut,
+            source: stored.source.unwrap_or(SourceBinding {
+                screen_id: stored.settings.screen_id.clone(),
+            }),
+            settings: SceneSettings::capture(&stored.settings),
+        })
     }
+}
+pub fn scene(profile: &SceneSettings, source: &SourceBinding, current: &Settings) -> Settings {
+    let mut settings = profile.apply(current);
+    settings.screen_id = source.screen_id.clone();
+    settings
 }
 pub fn apply(app: &tauri::AppHandle, id: &str) -> Result<Snapshot, String> {
     let p = app
@@ -99,7 +121,8 @@ pub fn apply(app: &tauri::AppHandle, id: &str) -> Result<Snapshot, String> {
     let handle = app.state::<Handle>();
     // Deliberate profile selection is a Start; OS permission checks still apply.
     let state = handle.request(Action::ApplyProfile {
-        settings: p.settings,
+        scene: p.settings,
+        source: p.source,
     })?;
     let _ = app.emit("external-settings", &state);
     Ok(state)
@@ -238,7 +261,8 @@ mod tests {
             name: "Desk".into(),
             favorite: true,
             shortcut: "Control+Shift+D".into(),
-            settings: Settings::default(),
+            settings: SceneSettings::capture(&Settings::default()),
+            source: SourceBinding::default(),
         }
     }
     #[test]
@@ -255,6 +279,44 @@ mod tests {
         assert!(Library { profiles: vec![a] }.validate().is_err());
     }
     #[test]
+    fn legacy_profiles_migrate_without_exporting_local_preferences() {
+        let legacy = serde_json::json!({
+            "id": "old", "name": "Old scene", "favorite": true, "shortcut": "",
+            "settings": { "brightness": 72, "screenId": "local-display", "count": 100,
+                "restoreOnStart": true, "resumeCapture": true, "maxBrightness": 90 }
+        });
+        let profile: Profile = serde_json::from_value(legacy).unwrap();
+        assert_eq!(profile.source.screen_id, "local-display");
+        let saved = serde_json::to_value(&profile).unwrap();
+        for key in [
+            "screenId",
+            "count",
+            "resumeCapture",
+            "restoreOnStart",
+            "maxBrightness",
+            "modeSettings",
+        ] {
+            assert!(
+                saved["settings"].get(key).is_none(),
+                "Leaked local field: {key}"
+            );
+        }
+        let reloaded: Profile = serde_json::from_value(saved).unwrap();
+        let current = Settings {
+            count: 37,
+            max_brightness: 20,
+            ..Default::default()
+        };
+        let applied = scene(&reloaded.settings, &reloaded.source, &current);
+        assert_eq!(applied.brightness, 72);
+        assert_eq!(applied.screen_id, "local-display");
+        assert_eq!(applied.count, 37);
+        assert_eq!(applied.max_brightness, 20);
+        assert!(!applied.restore_on_start && !applied.resume_capture);
+        assert_eq!(reloaded.settings, profile.settings);
+        assert_eq!(reloaded.source, profile.source);
+    }
+    #[test]
     fn profile_keeps_hardware_and_privacy_choices() {
         let p = Settings {
             count: 2,
@@ -263,7 +325,11 @@ mod tests {
             ..Default::default()
         };
         let current = Settings::default();
-        let applied = scene(&p, &current);
+        let applied = scene(
+            &SceneSettings::capture(&p),
+            &SourceBinding::default(),
+            &current,
+        );
         assert_eq!(applied.count, current.count);
         assert!(!applied.restore_on_start);
         assert_eq!(applied.brightness, 80);

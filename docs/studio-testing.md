@@ -4,6 +4,8 @@ Physical checks are deferred at the user's request. Automated tests and successf
 
 Record results and defects in [Windows/Linux validation #45](https://github.com/mskutin/DynamicLight/issues/45), [macOS validation #38](https://github.com/mskutin/DynamicLight/issues/38), and [accessibility #37](https://github.com/mskutin/DynamicLight/issues/37). These trackers own remaining verification after implementation issues close. Include the tested build and environment; leave untested checks pending.
 
+After the settings refactor, also check interleaved Studio/tray/Quick-controls edits: changing color in Studio must preserve a newer Quick-controls brightness change, and idle saves must not undo the latest edit to the same field. Load existing profiles, update their display selection, restart, and confirm scene settings and local bindings survive while calibration, comfort limits and capture-resume preferences remain local.
+
 ## Automated coverage
 
 - Rust: profile persistence/validation, calibration apply/cancel/Stop and lock transitions using an isolated USB transport, symmetric black-bar detection with hysteresis, color adjustments, hard brightness cap, startup rate limiting, spectral-flux onsets, sustained tones/silence/refractory period, and blend behavior.

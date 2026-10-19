@@ -6,7 +6,7 @@ use crate::{
     lifecycle::{Lifecycle, SavedIntent, SystemEvent},
     lighting,
     protocol::Rgb,
-    settings::Settings,
+    settings::{SceneSettings, Settings, SettingsPatch, SourceBinding},
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -29,7 +29,8 @@ pub enum Action {
     },
     #[serde(skip)]
     ApplyProfile {
-        settings: Settings,
+        scene: SceneSettings,
+        source: SourceBinding,
     },
     #[serde(skip)]
     Adjust {
@@ -49,6 +50,10 @@ pub enum Action {
     },
     Connect,
     Disconnect,
+    PatchSettings {
+        patch: SettingsPatch,
+        persist: bool,
+    },
     Settings {
         settings: Settings,
     },
@@ -122,6 +127,12 @@ impl Handle {
         }
     }
 }
+struct CalibrationSession {
+    original: Settings,
+    requested: bool,
+    capture_allowed: bool,
+    started: Instant,
+}
 pub struct Engine {
     pub state: Snapshot,
     controller: Controller,
@@ -144,7 +155,7 @@ pub struct Engine {
     last_write: Option<Instant>,
     last_tick: Instant,
     beat: crate::beat::Detector,
-    calibration: Option<(Settings, bool, bool, Instant)>,
+    calibration: Option<CalibrationSession>,
 }
 impl Engine {
     pub fn new(settings: Settings, path: PathBuf, warning: String) -> Self {
@@ -220,8 +231,57 @@ impl Engine {
         self.state.beat_level = 0.0;
         self.beat = crate::beat::Detector::default();
     }
+    fn begin_calibration(&mut self) -> Result<(), String> {
+        if self.calibration.is_none() {
+            if !self.life.pause_reason(&self.state.settings).is_empty() {
+                return Err("Wake and unlock the display before calibrating".into());
+            }
+            if !self.controller.status.connected {
+                self.controller.connect()?;
+            }
+            self.calibration = Some(CalibrationSession {
+                original: self.state.settings.clone(),
+                requested: self.life.requested,
+                capture_allowed: self.life.capture_allowed,
+                started: Instant::now(),
+            });
+            self.stop();
+            self.state.calibrating = true;
+            self.state.calibration_led = Some(0);
+            self.state.settings.mode = "solid".into();
+            self.state.settings.brightness = 20;
+            self.life.requested = true;
+            self.life.capture_allowed = false;
+            self.desired = true;
+        }
+        Ok(())
+    }
+    fn step_calibration(&mut self, settings: Settings, led: Option<usize>) -> Result<(), String> {
+        if self.calibration.is_none() {
+            return Err("Start calibration first".into());
+        }
+        settings.validate()?;
+        if led.is_some_and(|i| i >= settings.count) {
+            return Err("LED is outside the selected count".into());
+        }
+        if settings.count != self.state.settings.count {
+            self.black();
+        }
+        self.state.settings.count = settings.count;
+        self.state.settings.sides = settings.sides;
+        self.state.settings.reverse = settings.reverse;
+        self.state.settings.offset = settings.offset;
+        self.state.calibration_led = led;
+        Ok(())
+    }
     fn end_calibration(&mut self, apply: bool, resume: bool) -> Result<(), String> {
-        if let Some((mut original, requested, consent, _)) = self.calibration.take() {
+        if let Some(CalibrationSession {
+            mut original,
+            requested,
+            capture_allowed: consent,
+            ..
+        }) = self.calibration.take()
+        {
             if apply {
                 let before = original.clone();
                 original.count = self.state.settings.count;
@@ -229,7 +289,12 @@ impl Engine {
                 original.offset = self.state.settings.offset;
                 original.reverse = self.state.settings.reverse;
                 if let Err(e) = original.save(&self.path) {
-                    self.calibration = Some((before, requested, consent, Instant::now()));
+                    self.calibration = Some(CalibrationSession {
+                        original: before,
+                        requested,
+                        capture_allowed: consent,
+                        started: Instant::now(),
+                    });
                     return Err(e);
                 }
             }
@@ -471,6 +536,47 @@ impl Engine {
         }
         Ok(())
     }
+    fn apply_settings(&mut self, mut settings: Settings, persist: bool) -> Result<(), String> {
+        settings.mode_settings = self.state.settings.mode_settings.clone();
+        // Do not create memory on a first same-mode edit; older settings remain valid.
+        if settings.mode != self.state.settings.mode {
+            settings.mode_settings.insert(
+                self.state.settings.mode.clone(),
+                crate::settings::ModeSettings::capture(&self.state.settings),
+            );
+        }
+        if settings.mode_settings.contains_key(&settings.mode) {
+            settings.mode_settings.insert(
+                settings.mode.clone(),
+                crate::settings::ModeSettings::capture(&settings),
+            );
+        }
+        settings.validate()?;
+        if persist {
+            settings.save(&self.path)?;
+        }
+        if settings.mode != self.state.settings.mode
+            || settings.audio_source != self.state.settings.audio_source
+            || settings.screen_id != self.state.settings.screen_id
+        {
+            self.stop();
+            self.life.capture_allowed = false;
+        }
+        if settings.count != self.state.settings.count {
+            self.black();
+        }
+        let was_paused = !self.life.pause_reason(&self.state.settings).is_empty();
+        if self.state.settings.resume_capture && !settings.resume_capture && !self.state.capturing {
+            self.life.capture_allowed = false;
+        }
+        self.state.settings = settings;
+        if !was_paused && !self.life.pause_reason(&self.state.settings).is_empty() {
+            self.interrupt_capture();
+        }
+        self.last_solid = None;
+        self.state.error.clear();
+        Ok(())
+    }
     pub fn action(&mut self, action: Action) -> Result<Snapshot, String> {
         if self.calibration.is_some()
             && matches!(
@@ -479,6 +585,7 @@ impl Engine {
                     | Action::SelectMode { .. }
                     | Action::Settings { .. }
                     | Action::PreviewSettings { .. }
+                    | Action::PatchSettings { .. }
             )
         {
             return Err("Finish or cancel strip calibration first".into());
@@ -486,12 +593,19 @@ impl Engine {
         let persist = matches!(action, Action::Settings { .. });
         match action {
             Action::Snapshot => {}
+            Action::PatchSettings { patch, persist } => {
+                let settings = patch.apply(&self.state.settings)?;
+                self.apply_settings(settings, persist)?;
+            }
             Action::PreviewBrightness { brightness } => {
-                let settings = Settings {
-                    brightness,
-                    ..self.state.settings.clone()
-                };
-                return self.action(Action::PreviewSettings { settings });
+                let patch = SettingsPatch(serde_json::Map::from_iter([(
+                    "brightness".into(),
+                    brightness.into(),
+                )]));
+                return self.action(Action::PatchSettings {
+                    patch,
+                    persist: false,
+                });
             }
             Action::SelectMode { mode } => {
                 let mut settings = self.state.settings.clone();
@@ -501,21 +615,24 @@ impl Engine {
                 settings.mode = mode;
                 return self.action(Action::Settings { settings });
             }
-            Action::ApplyProfile { settings } => {
-                let settings = crate::profiles::scene(&settings, &self.state.settings);
+            Action::ApplyProfile { scene, source } => {
+                let settings = crate::profiles::scene(&scene, &source, &self.state.settings);
                 self.action(Action::Settings { settings })?;
                 return self.action(Action::Start);
             }
             Action::Adjust { brightness, color } => {
-                let mut settings = self.state.settings.clone();
+                let mut patch = SettingsPatch::default();
                 if let Some(brightness) = brightness {
-                    settings.brightness = brightness;
+                    patch.0.insert("brightness".into(), brightness.into());
                 }
                 if let Some(color) = color {
-                    settings.mode = "solid".into();
-                    settings.color = color;
+                    patch.0.insert("mode".into(), "solid".into());
+                    patch.0.insert("color".into(), color.into());
                 }
-                return self.action(Action::Settings { settings });
+                return self.action(Action::PatchSettings {
+                    patch,
+                    persist: true,
+                });
             }
             Action::Toggle => {
                 return self.action(if self.life.requested {
@@ -525,45 +642,10 @@ impl Engine {
                 })
             }
             Action::CalibrationStart => {
-                if self.calibration.is_none() {
-                    if !self.life.pause_reason(&self.state.settings).is_empty() {
-                        return Err("Wake and unlock the display before calibrating".into());
-                    }
-                    if !self.controller.status.connected {
-                        self.controller.connect()?;
-                    }
-                    self.calibration = Some((
-                        self.state.settings.clone(),
-                        self.life.requested,
-                        self.life.capture_allowed,
-                        Instant::now(),
-                    ));
-                    self.stop();
-                    self.state.calibrating = true;
-                    self.state.calibration_led = Some(0);
-                    self.state.settings.mode = "solid".into();
-                    self.state.settings.brightness = 20;
-                    self.life.requested = true;
-                    self.life.capture_allowed = false;
-                    self.desired = true;
-                }
+                self.begin_calibration()?;
             }
             Action::CalibrationStep { settings, led } => {
-                if self.calibration.is_none() {
-                    return Err("Start calibration first".into());
-                }
-                settings.validate()?;
-                if led.is_some_and(|i| i >= settings.count) {
-                    return Err("LED is outside the selected count".into());
-                }
-                if settings.count != self.state.settings.count {
-                    self.black();
-                }
-                self.state.settings.count = settings.count;
-                self.state.settings.sides = settings.sides;
-                self.state.settings.reverse = settings.reverse;
-                self.state.settings.offset = settings.offset;
-                self.state.calibration_led = led;
+                self.step_calibration(settings, led)?;
             }
             Action::CalibrationEnd { apply } => self.end_calibration(apply, true)?,
             Action::Start => {
@@ -586,48 +668,8 @@ impl Engine {
                 self.controller.close("Disconnected");
                 self.remember()?;
             }
-            Action::Settings { mut settings } | Action::PreviewSettings { mut settings } => {
-                settings.mode_settings = self.state.settings.mode_settings.clone();
-                // Do not create memory on a first same-mode edit; older settings remain valid.
-                if settings.mode != self.state.settings.mode {
-                    settings.mode_settings.insert(
-                        self.state.settings.mode.clone(),
-                        crate::settings::ModeSettings::capture(&self.state.settings),
-                    );
-                }
-                if settings.mode_settings.contains_key(&settings.mode) {
-                    settings.mode_settings.insert(
-                        settings.mode.clone(),
-                        crate::settings::ModeSettings::capture(&settings),
-                    );
-                }
-                settings.validate()?;
-                if persist {
-                    settings.save(&self.path)?;
-                }
-                if settings.mode != self.state.settings.mode
-                    || settings.audio_source != self.state.settings.audio_source
-                    || settings.screen_id != self.state.settings.screen_id
-                {
-                    self.stop();
-                    self.life.capture_allowed = false;
-                }
-                if settings.count != self.state.settings.count {
-                    self.black();
-                }
-                let was_paused = !self.life.pause_reason(&self.state.settings).is_empty();
-                if self.state.settings.resume_capture
-                    && !settings.resume_capture
-                    && !self.state.capturing
-                {
-                    self.life.capture_allowed = false;
-                }
-                self.state.settings = settings;
-                if !was_paused && !self.life.pause_reason(&self.state.settings).is_empty() {
-                    self.interrupt_capture();
-                }
-                self.last_solid = None;
-                self.state.error.clear();
+            Action::Settings { settings } | Action::PreviewSettings { settings } => {
+                self.apply_settings(settings, persist)?;
             }
             Action::Power { on } => {
                 if !on {
@@ -678,30 +720,7 @@ impl Engine {
         self.state.status = self.controller.status.clone();
         Ok(self.state.clone())
     }
-    pub fn tick(&mut self) {
-        if self
-            .calibration
-            .as_ref()
-            .is_some_and(|(_, _, _, since)| since.elapsed() > Duration::from_secs(300))
-        {
-            let _ = self.end_calibration(false, false);
-            self.state.error = "Calibration timed out. Lighting stopped.".into();
-        }
-        self.update_lifecycle();
-        let dt = self.last_tick.elapsed().as_secs_f32().min(1.0);
-        self.last_tick = Instant::now();
-        if self.desired
-            && self.life.pause_reason(&self.state.settings).is_empty()
-            && !self.controller.status.connected
-            && self.retry.elapsed() >= Duration::from_secs(3)
-        {
-            self.retry = Instant::now();
-            match self.controller.connect() {
-                Ok(()) => self.state.error.clear(),
-                Err(e) => self.state.error = format!("Waiting for strip: {e}"),
-            }
-            self.last_solid = None;
-        }
+    fn reconcile_capture(&mut self) {
         if self.state.capturing && self.source_check.elapsed() >= Duration::from_secs(2) {
             self.source_check = Instant::now();
             if self.state.settings.mode == "blend" {
@@ -770,35 +789,100 @@ impl Engine {
                 self.state.error = format!("Waiting for capture: {e}");
             }
         }
+    }
+    fn generate_frame(&mut self, dt: f32) -> Result<Vec<Rgb>, String> {
         let s = &self.state.settings;
-        let generated: Result<Vec<Rgb>, String> = (|| {
-            if !self.life.active(s) {
-                return Ok(vec![[0; 3]; s.count]);
+
+        if !self.life.active(s) {
+            return Ok(vec![[0; 3]; s.count]);
+        }
+        if self.state.calibrating {
+            return Ok((0..s.count)
+                .map(|i| match self.state.calibration_led {
+                    Some(led) if led == i => [255; 3],
+                    Some(_) => [0; 3],
+                    None => {
+                        let (x, y) = lighting::positions(s.count, s.sides, 16.0 / 9.0)[i];
+                        if y == 0.0 {
+                            [0, 255, 0]
+                        } else if x == 0.0 {
+                            [255, 0, 0]
+                        } else if x == 1.0 {
+                            [0, 80, 255]
+                        } else {
+                            [255, 150, 0]
+                        }
+                    }
+                })
+                .collect());
+        }
+        match s.mode.as_str() {
+            "solid" => Ok(vec![lighting::hex(&s.color); s.count]),
+            "rainbow" => Ok(effects::animated(s, self.started.elapsed().as_secs_f32())),
+            "screen" => {
+                if let Some(screen) = self.screen.as_mut() {
+                    let colors = screen.colors(s)?;
+                    self.state.capture_size = screen.dimensions;
+                    Ok(colors)
+                } else {
+                    Ok(vec![[0; 3]; s.count])
+                }
             }
-            if self.state.calibrating {
-                return Ok((0..s.count)
-                    .map(|i| match self.state.calibration_led {
-                        Some(led) if led == i => [255; 3],
-                        Some(_) => [0; 3],
-                        None => {
-                            let (x, y) = lighting::positions(s.count, s.sides, 16.0 / 9.0)[i];
-                            if y == 0.0 {
-                                [0, 255, 0]
-                            } else if x == 0.0 {
-                                [255, 0, 0]
-                            } else if x == 1.0 {
-                                [0, 80, 255]
-                            } else {
-                                [255, 150, 0]
+            "music" | "blend" => {
+                if let Some(audio) = self.audio.as_ref() {
+                    let analysis = match audio.analyze(s.sensitivity, s.noise_floor, s.input_gain) {
+                        Ok(a) => a,
+                        Err(e) if s.mode == "blend" && self.screen.is_some() => {
+                            self.audio = None;
+                            self.state.audio_bands.fill(0.0);
+                            self.state.audio_level = 0.0;
+                            self.state.audio_samples = 0;
+                            self.state.beat_level = 0.0;
+                            self.state.error =
+                                format!("Audio unavailable; using screen colors. {e} Click Retry.");
+                            return self.screen.as_mut().unwrap().colors(s);
+                        }
+                        Err(e) => return Err(e),
+                    };
+                    self.state.beat_level = self.beat.update(&analysis.bands, dt, s.sensitivity);
+                    self.state.audio_samples = analysis.received;
+                    self.state.audio_level = analysis.rms;
+                    effects::envelope(&mut self.state.audio_bands, &analysis.bands, dt, s.release);
+                    if s.mode == "blend" {
+                        if let Some(screen) = self.screen.as_mut() {
+                            match screen.colors(s) {
+                                Ok(colors) => {
+                                    self.state.capture_size = screen.dimensions;
+                                    return Ok(effects::blend(
+                                        &colors,
+                                        &self.state.audio_bands,
+                                        s.blend,
+                                    ));
+                                }
+                                Err(e) => {
+                                    self.state.error = format!(
+                                        "Screen unavailable; using music. {e} Click Retry."
+                                    );
+                                    self.screen = None;
+                                    self.state.capture_size = (0, 0);
+                                }
                             }
                         }
+                    }
+                    Ok(if s.music_style == "beat" {
+                        effects::music(
+                            s,
+                            &[self.state.beat_level; 32],
+                            self.started.elapsed().as_secs_f32(),
+                        )
+                    } else {
+                        effects::music(
+                            s,
+                            &self.state.audio_bands,
+                            self.started.elapsed().as_secs_f32(),
+                        )
                     })
-                    .collect());
-            }
-            match s.mode.as_str() {
-                "solid" => Ok(vec![lighting::hex(&s.color); s.count]),
-                "rainbow" => Ok(effects::animated(s, self.started.elapsed().as_secs_f32())),
-                "screen" => {
+                } else if s.mode == "blend" {
                     if let Some(screen) = self.screen.as_mut() {
                         let colors = screen.colors(s)?;
                         self.state.capture_size = screen.dimensions;
@@ -806,84 +890,39 @@ impl Engine {
                     } else {
                         Ok(vec![[0; 3]; s.count])
                     }
+                } else {
+                    Ok(vec![[0; 3]; s.count])
                 }
-                "music" | "blend" => {
-                    if let Some(audio) = self.audio.as_ref() {
-                        let analysis =
-                            match audio.analyze(s.sensitivity, s.noise_floor, s.input_gain) {
-                                Ok(a) => a,
-                                Err(e) if s.mode == "blend" && self.screen.is_some() => {
-                                    self.audio = None;
-                                    self.state.audio_bands.fill(0.0);
-                                    self.state.audio_level = 0.0;
-                                    self.state.audio_samples = 0;
-                                    self.state.beat_level = 0.0;
-                                    self.state.error = format!(
-                                        "Audio unavailable; using screen colors. {e} Click Retry."
-                                    );
-                                    return self.screen.as_mut().unwrap().colors(s);
-                                }
-                                Err(e) => return Err(e),
-                            };
-                        self.state.beat_level =
-                            self.beat.update(&analysis.bands, dt, s.sensitivity);
-                        self.state.audio_samples = analysis.received;
-                        self.state.audio_level = analysis.rms;
-                        effects::envelope(
-                            &mut self.state.audio_bands,
-                            &analysis.bands,
-                            dt,
-                            s.release,
-                        );
-                        if s.mode == "blend" {
-                            if let Some(screen) = self.screen.as_mut() {
-                                match screen.colors(s) {
-                                    Ok(colors) => {
-                                        self.state.capture_size = screen.dimensions;
-                                        return Ok(effects::blend(
-                                            &colors,
-                                            &self.state.audio_bands,
-                                            s.blend,
-                                        ));
-                                    }
-                                    Err(e) => {
-                                        self.state.error = format!(
-                                            "Screen unavailable; using music. {e} Click Retry."
-                                        );
-                                        self.screen = None;
-                                        self.state.capture_size = (0, 0);
-                                    }
-                                }
-                            }
-                        }
-                        Ok(if s.music_style == "beat" {
-                            effects::music(
-                                s,
-                                &[self.state.beat_level; 32],
-                                self.started.elapsed().as_secs_f32(),
-                            )
-                        } else {
-                            effects::music(
-                                s,
-                                &self.state.audio_bands,
-                                self.started.elapsed().as_secs_f32(),
-                            )
-                        })
-                    } else if s.mode == "blend" {
-                        if let Some(screen) = self.screen.as_mut() {
-                            let colors = screen.colors(s)?;
-                            self.state.capture_size = screen.dimensions;
-                            Ok(colors)
-                        } else {
-                            Ok(vec![[0; 3]; s.count])
-                        }
-                    } else {
-                        Ok(vec![[0; 3]; s.count])
-                    }
-                }
-                _ => Ok(vec![[0; 3]; s.count]),
             }
-        })();
+            _ => Ok(vec![[0; 3]; s.count]),
+        }
+    }
+    pub fn tick(&mut self) {
+        if self
+            .calibration
+            .as_ref()
+            .is_some_and(|session| session.started.elapsed() > Duration::from_secs(300))
+        {
+            let _ = self.end_calibration(false, false);
+            self.state.error = "Calibration timed out. Lighting stopped.".into();
+        }
+        self.update_lifecycle();
+        let dt = self.last_tick.elapsed().as_secs_f32().min(1.0);
+        self.last_tick = Instant::now();
+        if self.desired
+            && self.life.pause_reason(&self.state.settings).is_empty()
+            && !self.controller.status.connected
+            && self.retry.elapsed() >= Duration::from_secs(3)
+        {
+            self.retry = Instant::now();
+            match self.controller.connect() {
+                Ok(()) => self.state.error.clear(),
+                Err(e) => self.state.error = format!("Waiting for strip: {e}"),
+            }
+            self.last_solid = None;
+        }
+        self.reconcile_capture();
+        let generated = self.generate_frame(dt);
         match generated {
             Ok(colors) => {
                 if !self.state.powered
@@ -1157,6 +1196,70 @@ mod tests {
         assert!(e.audio.is_none() && e.screen.is_none());
     }
     #[test]
+    fn interleaved_field_edits_and_delayed_commits_preserve_latest_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let mut e = simulated(Settings::default(), path.clone());
+        let patch = |value, persist| Action::PatchSettings {
+            patch: serde_json::from_value(value).unwrap(),
+            persist,
+        };
+        // Studio previews a color while Quick controls changes brightness.
+        e.action(patch(serde_json::json!({"color":"#123456"}), false))
+            .unwrap();
+        e.action(Action::PreviewBrightness { brightness: 72 })
+            .unwrap();
+        e.action(patch(serde_json::json!({}), true)).unwrap();
+        assert_eq!(Settings::load(&path).unwrap().brightness, 72);
+        assert_eq!(Settings::load(&path).unwrap().color, "#123456");
+        // Same-field edits have explicit command-order precedence; an idle save
+        // must never reapply the old preview after another window's change.
+        e.action(patch(serde_json::json!({"brightness":23}), false))
+            .unwrap();
+        e.action(Action::Adjust {
+            brightness: Some(41),
+            color: None,
+        })
+        .unwrap();
+        e.action(patch(serde_json::json!({}), true)).unwrap();
+        assert_eq!(Settings::load(&path).unwrap().brightness, 41);
+        let before = e.state.settings.clone();
+        for invalid in [
+            serde_json::json!({"brightness":101}),
+            serde_json::json!({"modeSettings":{}}),
+            serde_json::json!({"typo":1}),
+            serde_json::json!({"brightness":null}),
+        ] {
+            assert!(e.action(patch(invalid, true)).is_err());
+            assert_eq!(e.state.settings, before);
+            assert_eq!(Settings::load(&path).unwrap(), before);
+        }
+        e.action(Action::Power { on: false }).unwrap();
+        e.action(patch(serde_json::json!({"brightness":50}), true))
+            .unwrap();
+        assert!(!e.state.requested && !e.state.capturing);
+        e.action(Action::CalibrationStart).unwrap();
+        assert!(e
+            .action(patch(serde_json::json!({"count":100}), false))
+            .is_err());
+        e.action(Action::Power { on: false }).unwrap();
+        assert!(!e.state.calibrating && !e.state.requested);
+    }
+    #[test]
+    fn failed_patch_persistence_leaves_runtime_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut e = simulated(Settings::default(), dir.path().to_path_buf());
+        let before = e.state.settings.clone();
+        assert!(e
+            .action(Action::PatchSettings {
+                patch: serde_json::from_value(serde_json::json!({"brightness":70})).unwrap(),
+                persist: true,
+            })
+            .is_err());
+        assert_eq!(e.state.settings, before);
+        assert!(!e.state.requested);
+    }
+    #[test]
     fn tray_and_profile_actions_preserve_current_layout_and_stop_intent() {
         let dir = tempfile::tempdir().unwrap();
         let current = Settings {
@@ -1166,13 +1269,14 @@ mod tests {
         };
         let mut e = simulated(current.clone(), dir.path().join("settings.json"));
         e.action(Action::ApplyProfile {
-            settings: Settings {
+            scene: SceneSettings::capture(&Settings {
                 brightness: 90,
                 count: 100,
                 max_brightness: 100,
                 restore_on_start: true,
                 ..Default::default()
-            },
+            }),
+            source: SourceBinding::default(),
         })
         .unwrap();
         assert!(e.state.requested);
@@ -1196,7 +1300,10 @@ mod tests {
         assert!(!e.state.requested);
         e.action(Action::CalibrationStart).unwrap();
         assert!(e
-            .action(Action::ApplyProfile { settings: current })
+            .action(Action::ApplyProfile {
+                scene: SceneSettings::capture(&current),
+                source: SourceBinding::default()
+            })
             .is_err());
         e.action(Action::Toggle).unwrap();
         assert!(!e.state.calibrating && !e.state.requested);
