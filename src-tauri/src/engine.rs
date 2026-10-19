@@ -69,6 +69,8 @@ pub enum Action {
     StartCapture,
     StopCapture,
     #[serde(skip)]
+    PrepareUpdate,
+    #[serde(skip)]
     Shutdown,
 }
 #[derive(Clone, Serialize)]
@@ -713,8 +715,12 @@ impl Engine {
                 self.stop();
                 self.remember()?;
             }
-            Action::Shutdown => {
+            Action::PrepareUpdate | Action::Shutdown => {
                 self.end_calibration(false, true)?;
+                if matches!(action, Action::PrepareUpdate) {
+                    self.state.settings.save(&self.path)?;
+                }
+                self.life.stop();
                 self.desired = false;
                 if self.state.settings.off_on_quit {
                     self.black();
@@ -1110,6 +1116,33 @@ fn missed_slots(late: Duration, period: Duration) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn update_preparation_releases_device_preserves_saved_intent_and_allows_retry() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let mut e = simulated(Settings::default(), path);
+        e.action(Action::StartMode {
+            mode: "solid".into(),
+        })
+        .unwrap();
+        assert!(e.state.powered && e.controller.status.connected);
+        e.action(Action::PrepareUpdate).unwrap();
+        assert!(!e.state.powered && !e.state.capturing && !e.controller.status.connected);
+        assert!(!e.desired);
+        assert!(SavedIntent::load(&e.intent_path()).unwrap().running);
+        e.action(Action::StartMode {
+            mode: "solid".into(),
+        })
+        .unwrap();
+        assert!(e.state.powered && e.controller.status.connected);
+        let original = e.state.settings.clone();
+        e.action(Action::CalibrationStart).unwrap();
+        e.action(Action::PrepareUpdate).unwrap();
+        assert_eq!(Settings::load(&e.path).unwrap(), original);
+        assert!(!e.state.calibrating);
+        assert!(serde_json::from_str::<Action>(r#"{"type":"prepareUpdate"}"#).is_err());
+        assert!(serde_json::from_str::<Action>(r#"{"type":"shutdown"}"#).is_err());
+    }
     #[test]
     fn modes_survive_restart_without_restoring_hardware_or_capture_consent() {
         let dir = tempfile::tempdir().unwrap();

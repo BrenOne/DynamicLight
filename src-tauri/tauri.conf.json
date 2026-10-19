@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "DynamicLight",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "identifier": "com.dynamiclight.desktop",
   "build": {
     "frontendDist": "../src/ui"
@@ -27,7 +27,11 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["icons/icon.png", "icons/icon.ico", "icons/icon.icns"],
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.ico",
+      "icons/icon.icns"
+    ],
     "copyright": "Copyright 2026 mskutin",
     "licenseFile": "../LICENSE",
     "resources": {
@@ -51,7 +55,9 @@
           "libxcb-randr0",
           "pulseaudio-utils"
         ],
-        "recommends": ["libasound2-plugins"],
+        "recommends": [
+          "libasound2-plugins"
+        ],
         "files": {
           "/usr/lib/udev/rules.d/69-dynamiclight.rules": "linux/69-dynamiclight.rules"
         },
@@ -62,6 +68,19 @@
     "macOS": {
       "minimumSystemVersion": "13.0",
       "infoPlist": "Info.plist"
+    },
+    "createUpdaterArtifacts": false
+  },
+  "plugins": {
+    "updater": {
+      "requireSignedVersion": true,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU1RUQ5NzI5MDREMkM2MUYKUldRZnh0SUVLWmZ0NVlnUGM3QWNMR0FvSTNEczlFL2ZmMTJkRDY2MHlXUWVBcG5vcXROREZMR0wK",
+      "endpoints": [
+        "https://github.com/mskutin/DynamicLight/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

@@ -20,7 +20,7 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
       stdio: "ignore",
     },
   );
-  let browser, page, original, originalProfiles;
+  let browser, page, original, originalProfiles, originalUpdates;
   const errors = [];
   try {
     for (let i = 0; i < 60; i++) {
@@ -56,6 +56,11 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
       );
     original = (await control({ type: "snapshot" })).settings;
     const version = require("../package.json").version;
+    originalUpdates = await page.evaluate(() => window.__TAURI__.core.invoke("update_status"));
+    assert.equal(originalUpdates.currentVersion, version);
+    await page.evaluate(() => window.__TAURI__.core.invoke("update_automatic", { enabled: false }));
+    assert.equal((await page.evaluate(() => window.__TAURI__.core.invoke("update_status"))).automatic, false);
+    assert.equal((await control({ type: "snapshot" })).status.connected, false, "Changing updater preferences never opens USB");
     assert.equal(
       await page.locator("[data-app-version]").innerText(),
       "v" + version,
@@ -482,6 +487,8 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   } finally {
     if (page && !page.isClosed()) {
       try {
+        if (originalUpdates)
+          await page.evaluate((enabled) => window.__TAURI__.core.invoke("update_automatic", { enabled }), originalUpdates.automatic);
         if (originalProfiles)
           await page.evaluate(
             (library) =>

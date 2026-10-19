@@ -1,6 +1,6 @@
-DynamicLight 0.8.1 fixes the old icon still appearing in the title bar, taskbar, and tray. Desktop packages now use the same purple D artwork as the app.
+DynamicLight 0.9.0 adds signed in-app updates. Settings → App updates checks GitHub automatically (with an opt-out), shows release notes and download progress, and offers Install and restart after confirmation. Windows, macOS and Linux AppImage packages can update in place; Debian users keep using their terminal installer or package manager.
 
-Maximized windows keep the workspace and inspector together, with a bounded preview, a correctly proportioned monitor, and crisp audio bars at different display scales. Narrow windows still prioritize controls. Brightness and Start/Stop remain available while browsing.
+Downloads and their signed version are verified before lighting stops. Settings and existing startup/capture consent are preserved. Earlier versions do not contain an updater: install 0.9.0 manually once to receive future updates in the app.
 
 Download the desktop installer for your computer:
 

@@ -2,6 +2,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const os = require('node:os');
+const { spawnSync } = require('node:child_process');
 
 const bundles = {
   'x86_64-pc-windows-msvc': [['nsis', '.exe', 'dynamiclight-desktop-windows-x64-setup.exe']],
@@ -12,6 +14,25 @@ const bundles = {
     ['appimage', '.AppImage', 'dynamiclight-desktop-linux-x64.AppImage'],
   ],
 };
+const updates = {
+  'x86_64-pc-windows-msvc': ['windows-x86_64', 'nsis', '.exe', 'dynamiclight-desktop-windows-x64-setup.exe'],
+  'aarch64-apple-darwin': ['darwin-aarch64', 'macos', '.app.tar.gz', 'dynamiclight-desktop-macos-arm64.app.tar.gz'],
+  'x86_64-apple-darwin': ['darwin-x86_64', 'macos', '.app.tar.gz', 'dynamiclight-desktop-macos-x64.app.tar.gz'],
+  'x86_64-unknown-linux-gnu': ['linux-x86_64', 'appimage', '.AppImage', 'dynamiclight-desktop-linux-x64.AppImage'],
+};
+const minisign = process.env.MINISIGN || (process.platform === 'win32' ? path.resolve(__dirname, '../.local/minisign/minisign-win64/x86_64/minisign.exe') : 'minisign');
+function verifySignature(file, signature, publicKey, version) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dynamiclight-verify-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'key.pub'), Buffer.from(publicKey, 'base64'));
+    fs.writeFileSync(path.join(dir, 'signature'), Buffer.from(signature, 'base64'));
+    const result = spawnSync(minisign, ['-V', '-m', file, '-p', path.join(dir, 'key.pub'), '-x', path.join(dir, 'signature')], { encoding: 'utf8' });
+    if (result.error || result.status !== 0) throw new Error(`Invalid updater signature for ${path.basename(file)} (minisign must be installed)`);
+    const comment = Buffer.from(signature, 'base64').toString('utf8').split(/\r?\n/)[2];
+    const signedVersion = comment?.replace(/^trusted comment: /, '').split('\t').find(field => field.startsWith('version:'))?.slice(8);
+    if (signedVersion !== version) throw new Error(`Updater signature version must match ${version}`);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+}
 const versionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$/;
 
 function version(root, tag) {
@@ -37,14 +58,28 @@ function stage(root, target, output) {
     if (!fs.statSync(file).size) throw new Error(`Empty package: ${file}`);
     fs.copyFileSync(file, path.join(output, name));
   }
+  const [, directory, extension, name] = updates[target];
+  const source = path.join(root, 'src-tauri/target', target, 'release/bundle', directory);
+  const matches = fs.readdirSync(source).filter(file => file.endsWith(extension));
+  if (matches.length !== 1) throw new Error(`Expected one updater ${extension} in ${source}`);
+  fs.copyFileSync(path.join(source, matches[0]), path.join(output, name));
+  fs.copyFileSync(path.join(source, `${matches[0]}.sig`), path.join(output, `${name}.sig`));
 }
 
 function assemble(root, output, tag) {
   const value = version(root, tag);
-  const expected = Object.values(bundles).flat().map(bundle => bundle[2]).sort();
+  const expected = [...new Set([...Object.values(bundles).flat().map(bundle => bundle[2]), ...Object.values(updates).flatMap(u => [u[3], `${u[3]}.sig`])])].sort();
   const actual = fs.readdirSync(output).sort();
   if (JSON.stringify(expected) !== JSON.stringify(actual)) throw new Error('Release must contain exactly one package for every supported platform');
   for (const name of expected) if (!fs.statSync(path.join(output, name)).size) throw new Error(`Empty package: ${name}`);
+  const publicKey = JSON.parse(fs.readFileSync(path.join(root, 'src-tauri/tauri.conf.json'))).plugins.updater.pubkey;
+  const platforms = {};
+  for (const [platform, , , name] of Object.values(updates)) {
+    const signature = fs.readFileSync(path.join(output, `${name}.sig`), 'utf8').trim();
+    verifySignature(path.join(output, name), signature, publicKey, value);
+    platforms[platform] = { signature, url: `https://github.com/mskutin/DynamicLight/releases/download/v${value}/${name}` };
+  }
+  fs.writeFileSync(path.join(output, 'latest.json'), JSON.stringify({ version: value, notes: fs.readFileSync(path.join(root, 'docs/release-notes.md'), 'utf8'), platforms }, null, 2) + '\n');
   for (const [source, name] of [
     ['scripts/install.sh', 'install.sh'],
     ['scripts/install.ps1', 'install.ps1'],
@@ -58,7 +93,7 @@ function assemble(root, output, tag) {
   fs.writeFileSync(path.join(output, 'SHA256SUMS'), checksums);
 }
 
-module.exports = { bundles, version, stage, assemble };
+module.exports = { bundles, updates, version, stage, assemble, minisign, verifySignature };
 if (require.main === module) {
   const [command, argument, output] = process.argv.slice(2);
   const root = path.resolve(__dirname, '..');

@@ -1570,3 +1570,10 @@ dd {
     --error-bg: #382322;
   }
 }
+/* Updates use the same local settings surface on every platform. */
+.updates-card { margin-block: 20px; min-width: 0; }
+.updates-card .input-row { flex-wrap: wrap; }
+#update-notes { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 12px; }
+#update-status { overflow-wrap: anywhere; }
+#update-progress { width: 100%; accent-color: var(--accent); }
+.footer-end { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }

@@ -21,6 +21,7 @@ mod scenes;
 mod settings;
 mod sharing;
 mod tray;
+mod updates;
 
 use engine::{Action, Handle, Snapshot};
 use std::sync::{
@@ -149,6 +150,7 @@ fn show(app: &tauri::AppHandle) {
 }
 pub fn run() {
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, args, _| {
             if !args.iter().any(|arg| arg == "--autostart") {
                 show(app);
@@ -164,6 +166,10 @@ pub fn run() {
             quit,
             platform_name,
             app_version,
+            updates::update_status,
+            updates::update_check,
+            updates::update_install,
+            updates::update_automatic,
             effect_previews,
             launch_at_login,
             profiles::profile_library,
@@ -238,6 +244,7 @@ pub fn run() {
                 app.state::<Handle>().system_event(lifecycle::SystemEvent::Warning(format!("Global shortcuts unavailable: {e}. Profiles can still be selected in the app or tray.")), false);
             }
             app.manage(AtomicBool::new(false));
+            updates::init(app.handle()).map_err(std::io::Error::other)?;
             profiles::init(app.handle()).map_err(std::io::Error::other)?;
             tray::init(app.handle())?;
             if let Some(window) = app.get_webview_window("main") {

@@ -13,6 +13,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
         "index.html",
         "style.css",
         "renderer.js",
+        "updates.js",
         "library-tools.js",
         "ui-common.js",
         "icons.svg",
@@ -159,6 +160,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
         );
       }
       window.fixture = {
+        update: { phase: "idle", currentVersion: appVersion, version: null, notes: "", message: "", automatic: true, canInstall: true, progress: null },
+        updateInstalls: 0,
         state,
         calls,
         emitEvent: (name, payload) => listeners[name]?.({ payload }),
@@ -176,6 +179,22 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
         },
         core: {
           invoke: async (cmd, args) => {
+            if (cmd === "update_status") return structuredClone(fixture.update);
+            if (cmd === "update_check") {
+              fixture.update.phase = fixture.update.version ? "available" : "current";
+              return structuredClone(fixture.update);
+            }
+            if (cmd === "update_automatic") {
+              if (fixture.failUpdatePreference) throw Error("Update settings could not be saved");
+              fixture.update.automatic = args.enabled;
+              return structuredClone(fixture.update);
+            }
+            if (cmd === "update_install") {
+              fixture.updateInstalls++;
+              fixture.update.phase = "error";
+              fixture.update.message = "Download or signature verification failed. Lighting has not been stopped.";
+              return structuredClone(fixture.update);
+            }
             if (cmd === "effect_previews") {
               window.fixture.previewCalls =
                 (window.fixture.previewCalls || 0) + 1;
@@ -1345,6 +1364,46 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
       );
     }
     await page.locator("#close-color-editor").click();
+    await page.setViewportSize({ width: 1120, height: 780 });
+    await page.locator('.app-sidebar [data-view="settings"]').click();
+    await page.locator('#update-check').click();
+    await page.waitForFunction(() => document.querySelector('#update-status').textContent.includes('up to date'));
+    await page.locator('#update-automatic').uncheck();
+    await page.waitForFunction(() => !fixture.update.automatic);
+    await page.evaluate(() => { fixture.failUpdatePreference = true; });
+    await page.locator('#update-automatic').click();
+    await page.waitForFunction(() => !document.querySelector('#update-automatic').checked);
+    assert.match(await page.locator('#update-status').innerText(), /could not be saved/);
+    await page.evaluate(() => {
+      fixture.update.version = '99.0.0';
+      fixture.update.notes = '<script>window.injected = true</script>';
+    });
+    await page.locator('#update-check').click();
+    await page.locator('#update-install').click();
+    await page.locator('#update-cancel').click();
+    assert.equal(await page.evaluate(() => fixture.updateInstalls), 0);
+    await page.locator('#update-install').click();
+    await page.locator('#update-confirm').click();
+    await page.waitForFunction(() => fixture.updateInstalls === 1);
+    assert.match(await page.locator('#update-status').innerText(), /signature verification failed/);
+    assert.equal(await page.evaluate(() => window.injected), undefined);
+    await page.evaluate(() => {
+      fixture.update.phase = 'downloading'; fixture.update.progress = 42; fixture.update.message = '';
+      fixture.emitEvent('update-status', structuredClone(fixture.update));
+    });
+    assert.equal(await page.locator('#update-progress').getAttribute('value'), '42');
+    assert.equal(await page.locator('#update-install').isDisabled(), true);
+    await page.evaluate(() => {
+      fixture.update.phase = 'available'; fixture.update.canInstall = false;
+      fixture.emitEvent('update-status', structuredClone(fixture.update));
+    });
+    assert.equal(await page.locator('#update-install').isVisible(), false);
+    assert.equal(await page.locator('#update-manual').isVisible(), true);
+    for (const width of [540, 780, 1120]) {
+      await page.setViewportSize({ width, height: 780 });
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Update settings fit at ' + width);
+    }
+    await page.screenshot({ path: '.local/ui-updates.png' });
     await page.goto(`http://127.0.0.1:${server.address().port}/compact.html`);
     await page.waitForFunction(
       () => document.querySelector("#quick-power").disabled === false,

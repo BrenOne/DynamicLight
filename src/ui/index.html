@@ -765,6 +765,19 @@
               </p>
             </details>
             <p id="lifecycle-warning" class="help" role="status" hidden=""></p>
+            <fieldset class="updates-card">
+              <legend>App updates</legend>
+              <label class="checkbox"><input id="update-automatic" type="checkbox" /> Automatically check for updates</label>
+              <p class="help">Checks GitHub after startup and every six hours. Downloads and installation only start when you choose. No lighting, screen, audio or profile data is sent.</p>
+              <p id="update-status" role="status">Loading update settings…</p>
+              <progress id="update-progress" max="100" hidden="" aria-label="Update download progress"></progress>
+              <p id="update-manual" class="help" hidden="">In-app installation is available in Windows and macOS release builds and Linux AppImages. For a Debian package or development build, use the terminal installer or install the latest release package.</p>
+              <div class="input-row">
+                <button id="update-check" type="button" class="secondary">Check for updates</button>
+                <button id="update-install" type="button" class="power" hidden="">Install and restart…</button>
+              </div>
+              <details id="update-notes-details" hidden=""><summary>Release notes</summary><pre id="update-notes"></pre></details>
+            </fieldset>
             <section class="about-app">
               <img src="icon.svg" width="32" height="32" alt="" />
               <div>
@@ -783,7 +796,7 @@
           <span id="footer-status" role="status"
             ><span id="frame-rate" class="muted">Preview only</span></span
           ><span class="footer-end"
-            ><button id="connection-details" class="text-button" type="button">
+            ><button id="update-banner" class="text-button" type="button" hidden="">Update available</button><button id="connection-details" class="text-button" type="button">
               Connection details
               <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
                 <use href="icons.svg#chevron-up"></use>
@@ -1156,7 +1169,14 @@
         </p>
       </details>
     </dialog>
+    <dialog id="update-dialog" aria-labelledby="update-dialog-title">
+      <h2 id="update-dialog-title">Install update and restart?</h2>
+      <p>Your settings will be saved. Lighting continues during download, then stops while DynamicLight installs and restarts. Your existing startup and capture recovery settings still apply.</p>
+      <p id="update-dialog-error" class="help" role="status"></p>
+      <div class="input-row"><button id="update-cancel" type="button" class="secondary" autofocus>Cancel</button><button id="update-confirm" type="button" class="power">Install and restart</button></div>
+    </dialog>
     <script src="ui-common.js"></script>
+    <script src="updates.js"></script>
     <script src="library-tools.js"></script>
     <script src="renderer.js"></script>
   </body>

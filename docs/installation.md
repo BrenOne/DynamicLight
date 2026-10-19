@@ -48,6 +48,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Version 0.7.0
 
 The installers verify SHA-256 before installation and stop on download failure, unsupported architecture, missing checksum or checksum mismatch. Checksums detect corrupt or inconsistent downloads; they are not a substitute for publisher code signing. Manual downloads can be verified against the release's `SHA256SUMS` with `sha256sum`, `shasum -a 256` or `Get-FileHash -Algorithm SHA256`.
 
+## In-app updates
+
+Install 0.9.0 or newer once using the downloads or terminal commands above. Earlier versions have no updater. In **Settings → App updates**, automatic checks are enabled by default, run 30 seconds after startup and every six hours, and can be turned off. **Check for updates** also works manually. Checks contact GitHub; no lighting settings, profiles, screen content or audio are uploaded.
+
+When an update is available, choose **Install and restart** and confirm. The app saves pending settings, downloads the package, and verifies its signature and signed version before releasing USB and capture resources. It then installs and restarts. Your existing restore-on-start and capture consent preferences control whether lighting resumes. A failed download leaves lighting running; after an installer failure you can start lighting again and retry.
+
+Windows NSIS installations, writable macOS `.app` installations (copy out of the DMG first), and Linux AppImages support this flow. Debian packages and development builds show manual installation guidance. Rerunning the terminal installer remains supported on every platform. AppImage updates do not install system USB rules or dependencies.
+
+The updater uses a dedicated signing key embedded in the app. This verification is separate from Windows Authenticode and macOS Developer ID/notarization; the preview packages still lack those OS signatures. PR artifacts use disposable signing keys and cannot accept production updates; install a GitHub Release for normal use.
+
 ## Uninstall and future command-line controls
 
 Use Windows **Installed apps**, delete `~/Applications/DynamicLight.app` on Mac, or follow [Linux uninstall instructions](linux.md). Saved preferences are retained.

@@ -673,6 +673,7 @@ async function init() {
   }
   await initProfiles();
   window.LibraryTools.init();
+  window.Updates.init({ save, showSettings: () => showView("settings") });
   initCalibration();
   $("exclude-bars").onchange = (e) => {
     settings.excludeBars = e.target.checked;

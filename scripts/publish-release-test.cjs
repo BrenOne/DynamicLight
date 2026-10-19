@@ -3,7 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { bundles } = require('./release.cjs');
+const { bundles, updates } = require('./release.cjs');
+const signingFixture = require('./signing-fixture.cjs');
 const { publishRelease } = require('./publish-release.cjs');
 
 function harness(t, options = {}) {
@@ -26,6 +27,7 @@ function harness(t, options = {}) {
     fs.writeFileSync(path.join(root, name), content);
   }
   const calls = [];
+  const sign = signingFixture(root);
   const state = {
     tagCommit: options.tagCommit || null,
     release: options.release ? { id: 7, tag_name: tag, draft: options.release === 'draft' } : null,
@@ -41,7 +43,7 @@ function harness(t, options = {}) {
     if (args[0] === 'release' && args[1] === 'upload') {
       if (state.uploadFailure) return fail(503);
       const uploads = args.slice(3, args.indexOf('--clobber'));
-      assert.equal(uploads.length, 10);
+      assert.equal(uploads.length, 17);
       assert.ok(uploads.every(file => fs.existsSync(file)));
       return ok(null);
     }
@@ -83,6 +85,12 @@ function harness(t, options = {}) {
       fs.mkdirSync(directory);
       const names = Object.values(bundles).flat().map(b => b[2]);
       for (const name of options.incomplete ? names.slice(1) : names) fs.writeFileSync(path.join(directory, name), 'package');
+      if (!options.incomplete) for (const [, , , name] of Object.values(updates)) {
+        const file = path.join(directory, name);
+        fs.writeFileSync(file, 'package');
+        sign(file);
+        if (options.tampered) fs.appendFileSync(file, 'tampered');
+      }
       return publishRelease({ root, directory, repo: 'owner/repo', sha, ref: 'refs/heads/main', event: 'push', ...overrides }, execute);
     },
   };
@@ -98,6 +106,12 @@ test('main creates an exact-commit tag, uploads into a draft and publishes last'
   assert.equal(h.calls.at(-1).body.draft, false);
   assert.equal(h.run({ sha: 'c'.repeat(40) }), 'unchanged');
   assert.equal(h.state.tagCommit, h.sha, 'later commits of the same version must not retag');
+});
+
+test('tampered packages cannot create a tag or draft', t => {
+  const h = harness(t, { tampered: true });
+  assert.throws(() => h.run(), /Invalid updater signature/);
+  assert.ok(!h.calls.some(call => call.args.includes('--method') || call.args[0] === 'release'));
 });
 
 test('published release is a read-only no-op even from a newer main commit', t => {
