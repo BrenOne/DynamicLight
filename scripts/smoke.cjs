@@ -1,6 +1,6 @@
 // Native Windows UI/IPC test. Only --hardware may connect USB or capture.
 const assert = require("node:assert/strict");
-const { spawn } = require("node:child_process");
+const { spawn, execFileSync } = require("node:child_process");
 const { once } = require("node:events");
 const path = require("node:path");
 const fs = require("node:fs");
@@ -186,6 +186,31 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     await compactPage.waitForFunction(
       () => !document.querySelector("#quick-power").disabled,
     );
+    if (process.platform === "win32") {
+      console.log(
+        execFileSync(
+          "powershell.exe",
+          [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            path.resolve("scripts/windows-icons.ps1"),
+            "-ProcessId",
+            String(child.pid),
+          ],
+          { encoding: "utf8", timeout: 15000 },
+        ).trim(),
+      );
+      await page.waitForTimeout(200);
+      assert(
+        await page
+          .locator(".app-shell")
+          .evaluate((el) => el.getBoundingClientRect().width <= 1764),
+        "Native maximized window keeps controls within a usable work area",
+      );
+      await page.screenshot({ path: ".local/native-maximized.png" });
+    }
     assert.equal(
       await compactPage.locator("#quick-error").innerText(),
       "",

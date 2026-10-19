@@ -1,6 +1,6 @@
 {
   "name": "dynamiclight",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": true,
   "license": "MIT",
   "author": "mskutin",
@@ -10,6 +10,8 @@
     "url": "https://github.com/mskutin/DynamicLight.git"
   },
   "scripts": {
+    "icons": "node scripts/icons.cjs",
+    "icons:check": "node scripts/icons.cjs --check",
     "start": "tauri dev",
     "tauri": "tauri",
     "test": "cargo test --manifest-path src-tauri/Cargo.toml",

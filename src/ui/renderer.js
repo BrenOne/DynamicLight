@@ -390,14 +390,17 @@ function draw(colors) {
 
 function drawSpectrum(bands) {
   if ($("music-controls").hidden) return;
-  const ctx = $("spectrum").getContext("2d");
-  ctx.clearRect(0, 0, 800, 110);
+  const target = LightUI.surface($("spectrum"));
+  if (!target || !bands.length) return;
+  const { ctx, width, height } = target;
+  const step = width / bands.length;
+  const barWidth = Math.max(1, Math.min(16, step * 0.6));
   bands.forEach((v, i) => {
-    const h = Math.max(2, v * 100);
+    const h = Math.max(2, Math.min(1, Math.max(0, v)) * (height - 4));
     ctx.fillStyle = `hsl(${155 + i * 2.7} 65% ${50 + v * 16}%)`;
     ctx.globalAlpha = 0.25 + v * 0.75;
     ctx.beginPath();
-    ctx.roundRect(i * 25 + 3, 108 - h, 15, h, 3);
+    ctx.roundRect(i * step + (step - barWidth) / 2, height - h, barWidth, h, Math.min(3, h / 2));
     ctx.fill();
   });
   ctx.globalAlpha = 1;

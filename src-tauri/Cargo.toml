@@ -1,6 +1,6 @@
 [package]
 name = "dynamiclight"
-version = "0.8.0"
+version = "0.8.1"
 description = "Local USB monitor backlight controller"
 authors = ["mskutin"]
 license = "MIT"

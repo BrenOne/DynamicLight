@@ -257,6 +257,8 @@ canvas {
 .app-shell {
   display: grid;
   grid-template-columns: 164px minmax(0, 1fr);
+  max-width: 1764px;
+  margin-inline: auto;
   height: 100dvh;
   overflow: hidden;
 }
@@ -408,7 +410,10 @@ canvas {
 }
 .workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 272px;
+  grid-template-columns: minmax(0, 1fr) clamp(272px, 20vw, 320px);
+  width: 100%;
+  max-width: 1600px;
+  margin-inline: auto;
   height: 100%;
 }
 .stage-column {
@@ -417,6 +422,11 @@ canvas {
   padding: 24px 26px;
   overflow: auto;
   scrollbar-gutter: stable;
+}
+@media (min-width: 1765px) {
+  .app-shell {
+    border-inline: 1px solid var(--border);
+  }
 }
 .workspace-heading {
   display: flex;
@@ -480,8 +490,9 @@ canvas {
   font-size: 11px;
 }
 #preview {
+  display: block;
   width: 100%;
-  height: clamp(210px, 29vh, 310px);
+  height: clamp(210px, calc(100dvh - 540px), 600px);
 }
 .preview-caption {
   position: absolute;
@@ -756,8 +767,9 @@ details[open] > summary {
   margin-top: 24px;
 }
 #spectrum {
+  display: block;
   width: 100%;
-  height: 68px;
+  height: clamp(68px, 10vh, 120px);
 }
 .frequency-labels {
   display: flex;

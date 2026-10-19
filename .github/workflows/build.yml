@@ -74,6 +74,8 @@ jobs:
           cache-on-failure: true
       - run: npm install --global pnpm@11.25.0
       - run: pnpm install --frozen-lockfile
+      - name: Verify UI and native icons match the source artwork
+        run: pnpm icons:check
       - name: Verify backlog publishing preserves triage
         if: runner.os == 'Linux'
         run: node scripts/backlog-test.cjs

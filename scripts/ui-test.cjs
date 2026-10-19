@@ -619,6 +619,168 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
     await page.emulateMedia({ reducedMotion: "no-preference" });
     fs.mkdirSync(".local", { recursive: true });
     await page.screenshot({ path: ".local/ui-effects.png", fullPage: true });
+    await page.setViewportSize({ width: 1120, height: 780 });
+    await page.waitForTimeout(70);
+    assert(
+      await page
+        .locator(".effect-grid")
+        .evaluate(
+          (el) =>
+            el.getBoundingClientRect().bottom <=
+            document.querySelector(".stage-column").getBoundingClientRect()
+              .bottom,
+        ),
+      "All effect labels fit at the default window size",
+    );
+    // Check visual proportions, not just overflow: maximized and ultrawide
+    // displays previously flattened the monitor and stretched every audio bar.
+    await page.locator('[data-mode="blend"]').click();
+    await page.waitForFunction(() => !busy);
+    const cdp = await page.context().newCDPSession(page);
+    for (const [width, height, scale] of [
+      [1120, 780, 1],
+      [1920, 1080, 1],
+      [2560, 1440, 1],
+      [3832, 2092, 1],
+      [3440, 1440, 1],
+      [3066, 1674, 1.25],
+      [2555, 1395, 1.5],
+      [1916, 1046, 2],
+      [1180, 600, 1],
+    ]) {
+      await page.setViewportSize({ width, height });
+      await cdp.send("Emulation.setDeviceMetricsOverride", {
+        width,
+        height,
+        deviceScaleFactor: scale,
+        mobile: false,
+      });
+      await page.waitForTimeout(70);
+      const geometry = await page.evaluate(() => {
+        const box = (selector) => {
+          const r = document.querySelector(selector).getBoundingClientRect();
+          return {
+            left: r.left,
+            right: r.right,
+            top: r.top,
+            bottom: r.bottom,
+            width: r.width,
+            height: r.height,
+          };
+        };
+        const canvas = document.getElementById("preview");
+        // Observe the actual path sent to Canvas, including at wide/short sizes.
+        const ctx = canvas.getContext("2d"),
+          points = [];
+        const move = ctx.moveTo,
+          line = ctx.lineTo;
+        ctx.moveTo = ctx.lineTo = function (x, y) {
+          points.push([x, y]);
+        };
+        try {
+          draw(runtime.colors);
+        } finally {
+          ctx.moveTo = move;
+          ctx.lineTo = line;
+        }
+        const xs = points.map((p) => p[0]),
+          ys = points.map((p) => p[1]);
+        const monitorWidth = Math.max(...xs) - Math.min(...xs);
+        const monitorHeight = Math.max(...ys) - Math.min(...ys);
+        const spectrum = document.getElementById("spectrum");
+        const audio = spectrum.getContext("2d"),
+          bars = [],
+          round = audio.roundRect;
+        audio.roundRect = function (...rect) {
+          bars.push(rect);
+          return round.apply(this, rect);
+        };
+        try {
+          drawSpectrum(Array(32).fill(0.5));
+        } finally {
+          audio.roundRect = round;
+        }
+        return {
+          windowWidth: innerWidth,
+          windowHeight: innerHeight,
+          scale: devicePixelRatio,
+          workspace: box(".workspace"),
+          sidebar: box(".app-sidebar"),
+          inspector: box(".controls-column"),
+          preview: box("#preview"),
+          power: box("#power"),
+          modes: box(".stage-column .modes"),
+          monitorRatio: monitorWidth / monitorHeight,
+          inside:
+            Math.min(...xs) >= 0 &&
+            Math.max(...xs) <= canvas.clientWidth &&
+            Math.min(...ys) >= 0 &&
+            Math.max(...ys) <= canvas.clientHeight,
+          bars: bars.map(([x, y, w, h]) => ({ x, y, w, h })),
+          spectrumWidth: spectrum.clientWidth,
+          spectrumHeight: spectrum.clientHeight,
+          crisp:
+            spectrum.width ===
+            Math.round(spectrum.clientWidth * Math.min(devicePixelRatio, 2)),
+          overflow: document.documentElement.scrollWidth > innerWidth,
+        };
+      });
+      const label = `${width}×${height} at ${scale}x`;
+      assert(
+        geometry.windowWidth === width &&
+          geometry.windowHeight === height &&
+          geometry.scale === scale,
+        label + " uses the requested viewport",
+      );
+      assert(
+        !geometry.overflow && geometry.inside,
+        label + " stays within the window",
+      );
+      assert(
+        Math.abs(geometry.monitorRatio - 16 / 9) < 0.001,
+        label + " preserves monitor proportions",
+      );
+      assert(
+        geometry.workspace.width <= 1601 && geometry.preview.width <= 1229,
+        label + " bounds the work area",
+      );
+      assert(
+        Math.abs(geometry.workspace.left - geometry.sidebar.right) < 2,
+        label + " keeps navigation attached to the work area",
+      );
+      assert(
+        geometry.inspector.left - geometry.modes.right < 40,
+        label + " keeps the inspector beside the workspace",
+      );
+      assert(
+        geometry.inspector.width >= 272 && geometry.inspector.width <= 320,
+        label + " keeps settings readable",
+      );
+      assert(geometry.power.bottom < height, label + " keeps Stop accessible");
+      assert(
+        geometry.crisp && geometry.bars.length === 32,
+        label + " draws all frequency bands at display resolution",
+      );
+      assert(
+        geometry.bars.every(
+          (b) =>
+            b.w <= 16 &&
+            b.x >= 0 &&
+            b.x + b.w <= geometry.spectrumWidth &&
+            b.y + b.h <= geometry.spectrumHeight,
+        ),
+        label + " never stretches the audio bars",
+      );
+      if (width === 3832) {
+        await page.emulateMedia({ colorScheme: "dark" });
+        await page.waitForTimeout(150);
+        await page.screenshot({ path: ".local/ui-maximized.png" });
+      }
+    }
+    await cdp.send("Emulation.clearDeviceMetricsOverride");
+    await cdp.detach();
+    await page.locator('[data-mode="rainbow"]').click();
+    await page.waitForFunction(() => !busy);
     for (const width of [1440, 1180, 880, 650, 540, 390]) {
       await page.setViewportSize({ width, height: 900 });
       assert(

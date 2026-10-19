@@ -184,12 +184,15 @@ window.LightUI = (() => {
     if (!target) return;
     const { ctx, width: w, height: h } = target,
       c = theme();
-    const left = w * 0.18,
-      right = w * 0.82,
-      top = h * 0.18,
-      bottom = h * 0.76;
-    const vw = right - left,
-      vh = bottom - top;
+    // Fit the monitor and its stand together. Independent width/height fractions
+    // flattened the monitor when the window was maximized on a wide display.
+    const aspect = 16 / 9,
+      vh = Math.min(h * 0.68, (w * 0.82) / aspect),
+      vw = vh * aspect,
+      left = (w - vw) / 2,
+      right = left + vw,
+      top = (h - vh * 1.16) / 2,
+      bottom = top + vh;
     ctx.fillStyle = c.stage;
     ctx.fillRect(0, 0, w, h);
     ctx.strokeStyle = c.track;
@@ -202,8 +205,7 @@ window.LightUI = (() => {
     ctx.lineTo(right, bottom);
     if (s.sides === 4) ctx.closePath();
     ctx.stroke();
-    const aspect = 16 / 9,
-      perimeter = 2 + aspect * (s.sides === 4 ? 2 : 1);
+    const perimeter = 2 + aspect * (s.sides === 4 ? 2 : 1);
     colors.forEach((color, i) => {
       const p = ((i + 0.5) / colors.length) * perimeter;
       const [x, y] =
@@ -229,9 +231,9 @@ window.LightUI = (() => {
       ctx.shadowBlur = 0;
     });
     ctx.fillStyle = c.track;
-    ctx.fillRect(w * 0.489, bottom + 9, w * 0.022, h * 0.09);
+    ctx.fillRect(w / 2 - vw * 0.018, bottom + 6, vw * 0.036, vh * 0.1);
     ctx.beginPath();
-    ctx.roundRect(w * 0.43, bottom + h * 0.09 + 9, w * 0.14, 3, 1.5);
+    ctx.roundRect(w / 2 - vw * 0.11, bottom + vh * 0.1 + 6, vw * 0.22, 3, 1.5);
     ctx.fill();
   }
   return {

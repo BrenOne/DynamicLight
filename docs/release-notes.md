@@ -1,6 +1,6 @@
-DynamicLight 0.8.0 reorganizes the main window into a workspace with a mode-specific inspector, plus separate Scenes, Device setup, and Settings views. Quick controls adds one-click mode switching. Both windows share the app icon, local SVG controls, output rendering, and a subtle build-version label.
+DynamicLight 0.8.1 fixes the old icon still appearing in the title bar, taskbar, and tray. Desktop packages now use the same purple D artwork as the app.
 
-Scene editing uses a dialog, effect previews animate on hover or keyboard focus, and narrower windows prioritize controls. Brightness and Start/Stop remain available while browsing.
+Maximized windows keep the workspace and inspector together, with a bounded preview, a correctly proportioned monitor, and crisp audio bars at different display scales. Narrow windows still prioritize controls. Brightness and Start/Stop remain available while browsing.
 
 Download the desktop installer for your computer:
 
