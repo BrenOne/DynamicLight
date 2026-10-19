@@ -1,5 +1,9 @@
 # Developer guide
 
+The main UI separates Control, Scenes, Device setup, and Settings. `src/ui/ui-common.js` shares version display, runtime status, scene matching, and canvas rendering with Quick controls. The native `startMode` action restores mode memory and starts lighting in one worker message. Navigation and thumbnail previews never connect USB or start capture.
+
+The local SVG symbols come from Lucide 0.468.0, revision `f12b0de177fbc2a6795e99be065887e72b237123`. Keep the ISC/MIT notices in `src/ui/icons.LICENSE.txt` with the subset. The UI brand uses `assets/icon.svg`, the same artwork as the packaged app icon. No icon font, CDN, or runtime icon library is needed.
+
 ## Develop
 
 Install [Tauri's system prerequisites](https://v2.tauri.app/start/prerequisites/), current stable Rust (tested with 1.99.1), Node.js 24, and pnpm 11. Windows needs the Visual Studio C++ build tools and Windows SDK; macOS needs Xcode command-line tools. For Linux, use Ubuntu 24.04+ and the native packages listed in `.github/workflows/build.yml`, including WebKitGTK 4.1, ALSA, udev, XCB, PipeWire, and libclang development headers. `pulseaudio-utils` provides the system-audio monitor helper. See [Linux setup](linux.md) for runtime permissions.

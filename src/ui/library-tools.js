@@ -88,11 +88,11 @@ window.LibraryTools = (() => {
     el('palette-apply').onclick=()=>{settings.palette='custom';settings.customPalette=[...colors];changed(['palette','customPalette']);el('color-editor').close();};
     el('share-scenes').onclick=()=>{
       el('export-items').replaceChildren();el('export-status').textContent='';
-      for(const [kind,items] of [['profile',library.profiles],['palette',library.palettes||[]]])for(const item of items){const label=document.createElement('label');label.className='checkbox';const input=document.createElement('input');input.type='checkbox';input.checked=true;input.dataset.kind=kind;input.value=item.id;label.append(input,document.createTextNode(item.name+' · '+kind));el('export-items').append(label);}
-      if(!el('export-items').children.length)el('export-status').textContent='Save a profile or palette to export it.';el('export-dialog').showModal();
+      for(const [kind,items] of [['profile',library.profiles],['palette',library.palettes||[]]])for(const item of items){const label=document.createElement('label');label.className='checkbox';const input=document.createElement('input');input.type='checkbox';input.checked=true;input.dataset.kind=kind;input.value=item.id;label.append(input,document.createTextNode(item.name+' · '+(kind==='profile'?'scene':'palette')));el('export-items').append(label);}
+      if(!el('export-items').children.length)el('export-status').textContent='Save a scene or palette to export it.';el('export-dialog').showModal();
     };
     el('export-cancel').onclick=()=>el('export-dialog').close();
-    el('export-save').onclick=()=>dialogTask(el('export-save'),'export-status',async()=>{const checks=[...el('export-items').querySelectorAll('input:checked')];if(!checks.length)throw Error('Select at least one profile or palette.');const path=await invoke('export_profiles',{ids:checks.filter(c=>c.dataset.kind==='profile').map(c=>c.value),paletteIds:checks.filter(c=>c.dataset.kind==='palette').map(c=>c.value)});el('export-status').textContent='Saved to '+path;});
+    el('export-save').onclick=()=>dialogTask(el('export-save'),'export-status',async()=>{const checks=[...el('export-items').querySelectorAll('input:checked')];if(!checks.length)throw Error('Select at least one scene or palette.');const path=await invoke('export_profiles',{ids:checks.filter(c=>c.dataset.kind==='profile').map(c=>c.value),paletteIds:checks.filter(c=>c.dataset.kind==='palette').map(c=>c.value)});el('export-status').textContent='Saved to '+path;});
     el('import-scenes').onclick=()=>el('scene-file').click();
     el('scene-file').onchange=async e=>{
       const file=e.target.files[0];if(!file)return;

@@ -55,53 +55,194 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         action,
       );
     original = (await control({ type: "snapshot" })).settings;
+    const version = require("../package.json").version;
+    assert.equal(
+      await page.locator("[data-app-version]").innerText(),
+      "v" + version,
+    );
+    for (const view of ["scenes", "device", "settings", "control"]) {
+      await page.locator('.app-sidebar [data-view="' + view + '"]').click();
+      assert.equal(
+        (await control({ type: "snapshot" })).requested,
+        false,
+        "Browsing never starts native lighting",
+      );
+    }
     assert.equal((await control({ type: "snapshot" })).requested, false);
     assert.equal((await control({ type: "snapshot" })).powered, false);
-    assert.equal(typeof await page.evaluate(() => window.__TAURI__.core.invoke("launch_at_login", { enabled: null })), "boolean");
+    assert.equal(
+      typeof (await page.evaluate(() =>
+        window.__TAURI__.core.invoke("launch_at_login", { enabled: null }),
+      )),
+      "boolean",
+    );
     // Read the real Windows registration result without changing the user's login settings.
     await delay(300);
     assert.equal((await control({ type: "snapshot" })).lifecycleWarning, "");
-    for (let i = 0; i < 30 && !(await control({ type: "snapshot" })).lifecycleReady; i++) await delay(100);
-    assert.equal((await control({ type: "snapshot" })).lifecycleReady, true, "Native initial display/session state arrived");
+    for (
+      let i = 0;
+      i < 30 && !(await control({ type: "snapshot" })).lifecycleReady;
+      i++
+    )
+      await delay(100);
+    assert.equal(
+      (await control({ type: "snapshot" })).lifecycleReady,
+      true,
+      "Native initial display/session state arrived",
+    );
     assert.equal((await control({ type: "snapshot" })).capturing, false);
     assert.equal((await control({ type: "snapshot" })).status.connected, false);
-    const diagnostic = await page.evaluate(() => window.__TAURI__.core.invoke('diagnostic_report', { enabled: null, clear: false }));
-    assert(diagnostic.text.includes('Missed frame slots:'));
+    const diagnostic = await page.evaluate(() =>
+      window.__TAURI__.core.invoke("diagnostic_report", {
+        enabled: null,
+        clear: false,
+      }),
+    );
+    assert(diagnostic.text.includes("Missed frame slots:"));
     assert(!diagnostic.text.includes(process.env.USERPROFILE));
-    await control({ type: 'settings', settings: { ...original, mode: 'solid', brightness: 23 } });
-    await control({ type: 'selectMode', mode: 'rainbow' });
-    await control({ type: 'settings', settings: { ...(await control({ type: 'snapshot' })).settings, brightness: 71, effectReverse: true } });
-    assert.equal((await control({ type: 'selectMode', mode: 'solid' })).settings.brightness, 23);
-    assert.equal((await control({ type: 'snapshot' })).status.connected, false);
-    await control({ type: 'settings', settings: original });
-    const starters = await page.evaluate(() => window.__TAURI__.core.invoke('starter_scenes'));
+    await control({
+      type: "settings",
+      settings: { ...original, mode: "solid", brightness: 23 },
+    });
+    await control({ type: "selectMode", mode: "rainbow" });
+    await control({
+      type: "settings",
+      settings: {
+        ...(await control({ type: "snapshot" })).settings,
+        brightness: 71,
+        effectReverse: true,
+      },
+    });
+    assert.equal(
+      (await control({ type: "selectMode", mode: "solid" })).settings
+        .brightness,
+      23,
+    );
+    assert.equal((await control({ type: "snapshot" })).status.connected, false);
+    await control({ type: "settings", settings: original });
+    const starters = await page.evaluate(() =>
+      window.__TAURI__.core.invoke("starter_scenes"),
+    );
     assert.equal(starters.profiles.length, 4);
-    const previews = await page.evaluate(settings => window.__TAURI__.core.invoke('scene_previews', { settings, seconds: 2 }), starters.profiles.map(p => p.settings));
+    const previews = await page.evaluate(
+      (settings) =>
+        window.__TAURI__.core.invoke("scene_previews", {
+          settings,
+          seconds: 2,
+        }),
+      starters.profiles.map((p) => p.settings),
+    );
     assert.equal(previews.length, 4);
-    assert(previews.every(frame => frame.length === 48));
-    await page.evaluate(() => window.__TAURI__.core.invoke('compact_window', { operation:'open',pinned:null }));
+    assert(previews.every((frame) => frame.length === 48));
+    assert(
+      await page
+        .locator(".app-sidebar .icon")
+        .first()
+        .evaluate((svg) => svg.getBBox().width > 0),
+      "Local SVG symbols load under the native CSP",
+    );
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.evaluate(async () => {
+      settings = (
+        await window.__TAURI__.core.invoke("control", {
+          action: { type: "selectMode", mode: "rainbow" },
+        })
+      ).settings;
+      updateUI();
+    });
+    await page.waitForTimeout(350);
+    assert.equal(
+      (await control({ type: "snapshot" })).status.connected,
+      false,
+      "Native preview does not open USB",
+    );
+    await page.screenshot({ path: ".local/native-workspace.png" });
+    await page.evaluate(async (original) => {
+      settings = (
+        await window.__TAURI__.core.invoke("control", {
+          action: { type: "settings", settings: original },
+        })
+      ).settings;
+      updateUI();
+    }, original);
+    await page.evaluate(() =>
+      window.__TAURI__.core.invoke("compact_window", {
+        operation: "open",
+        pinned: null,
+      }),
+    );
     let compactPage;
-    for (let i=0; i<40; i++) { compactPage=browser.contexts()[0].pages().find(p=>p.url().includes('compact.html')); if(compactPage)break; await delay(100); }
-    assert(compactPage, 'Native compact webview opened');
-    compactPage.on('pageerror',e=>errors.push(e.message));
-    await compactPage.waitForFunction(()=>!document.querySelector('#quick-power').disabled);
-    assert.equal(await compactPage.locator('#quick-error').innerText(), '', 'Compact event subscriptions are permitted');
-    await compactPage.locator('#quick-brightness').fill('42');
-    await compactPage.locator('#quick-brightness').dispatchEvent('input');
-    await page.waitForFunction(()=>settings.brightness===42);
-    assert.equal((await control({ type:'snapshot' })).status.connected,false);
-    await compactPage.locator('#quick-pin').check();
-    await compactPage.waitForFunction(()=>!busy);
-    assert.equal(await compactPage.evaluate(()=>window.__TAURI__.core.invoke('compact_window',{operation:'get',pinned:null})),true);
-    await compactPage.locator('#quick-pin').uncheck(); await compactPage.waitForFunction(()=>!busy);
-    await compactPage.screenshot({path:'.local/native-compact.png'});
-    await compactPage.locator('#open-studio').click(); await compactPage.waitForFunction(()=>!busy);
-    await compactPage.evaluate(()=>window.__TAURI__.core.invoke('compact_window',{operation:'hide',pinned:null}));
-    await page.locator('.profiles > summary').click();
+    for (let i = 0; i < 40; i++) {
+      compactPage = browser
+        .contexts()[0]
+        .pages()
+        .find((p) => p.url().includes("compact.html"));
+      if (compactPage) break;
+      await delay(100);
+    }
+    assert(compactPage, "Native compact webview opened");
+    compactPage.on("pageerror", (e) => errors.push(e.message));
+    await compactPage.emulateMedia({ colorScheme: "dark" });
+    await compactPage.waitForFunction(
+      () => !document.querySelector("#quick-power").disabled,
+    );
+    assert.equal(
+      await compactPage.locator("#quick-error").innerText(),
+      "",
+      "Compact event subscriptions are permitted",
+    );
+    assert.equal(
+      await compactPage.locator("[data-app-version]").innerText(),
+      "v" + version,
+    );
+    await compactPage.locator("#quick-brightness").fill("42");
+    await compactPage.locator("#quick-brightness").dispatchEvent("input");
+    await page.waitForFunction(() => settings.brightness === 42);
+    assert.equal((await control({ type: "snapshot" })).status.connected, false);
+    await compactPage.locator("#quick-pin").check();
+    await compactPage.waitForFunction(() => !busy);
+    assert.equal(
+      await compactPage.evaluate(() =>
+        window.__TAURI__.core.invoke("compact_window", {
+          operation: "get",
+          pinned: null,
+        }),
+      ),
+      true,
+    );
+    await compactPage.locator("#quick-pin").uncheck();
+    await compactPage.waitForFunction(() => !busy);
+    await compactPage.screenshot({ path: ".local/native-compact.png" });
+    const quickGeometry = await compactPage.evaluate(() => ({
+      modes: document.querySelector(".quick-modes").getBoundingClientRect().top,
+      brightness: document
+        .querySelector(".quick-brightness")
+        .getBoundingClientRect().top,
+      footer: document.querySelector(".quick-footer").getBoundingClientRect()
+        .bottom,
+      height: innerHeight,
+    }));
+    assert(
+      quickGeometry.modes < quickGeometry.brightness,
+      "Native mode buttons precede brightness",
+    );
+    assert(
+      quickGeometry.footer <= quickGeometry.height + 1,
+      "Native Quick-controls footer fits",
+    );
+    await compactPage.locator("#open-studio").click();
+    await compactPage.waitForFunction(() => !busy);
+    await compactPage.evaluate(() =>
+      window.__TAURI__.core.invoke("compact_window", {
+        operation: "hide",
+        pinned: null,
+      }),
+    );
+    await page.locator('.app-sidebar [data-view="scenes"]').click();
     await page.waitForTimeout(500);
-    await page.screenshot({path:'.local/native-scenes.png',fullPage:true});
-    await page.locator('.profiles > summary').click();
-    await control({ type:'settings', settings:original });
+    await page.screenshot({ path: ".local/native-scenes.png", fullPage: true });
+    await page.locator('.app-sidebar [data-view="control"]').click();
+    await control({ type: "settings", settings: original });
     await assert.rejects(
       control({ type: "settings", settings: { ...original, count: 128 } }),
     );
@@ -109,27 +250,122 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const frames = await page.evaluate(() =>
       window.__TAURI__.core.invoke("effect_previews", { settings, seconds: 2 }),
     );
-    originalProfiles = await page.evaluate(() => window.__TAURI__.core.invoke('profile_library', { library: null }));
-    const profile = { id: 'native-test', name: 'Native test', favorite: true, shortcut: 'Control+Alt+Shift+F12', settings: original };
-    const saved = await page.evaluate(p => window.__TAURI__.core.invoke('profile_library', { library: { profiles: [p] } }), profile);
-    assert.equal(saved.profiles[0].name, 'Native test');
+    originalProfiles = await page.evaluate(() =>
+      window.__TAURI__.core.invoke("profile_library", { library: null }),
+    );
+    const profile = {
+      id: "native-test",
+      name: "Native test",
+      favorite: true,
+      shortcut: "Control+Alt+Shift+F12",
+      settings: original,
+    };
+    const saved = await page.evaluate(
+      (p) =>
+        window.__TAURI__.core.invoke("profile_library", {
+          library: { profiles: [p] },
+        }),
+      profile,
+    );
+    assert.equal(saved.profiles[0].name, "Native test");
     assert.equal(saved.profiles[0].source.screenId, original.screenId);
-    for (const key of ['screenId', 'count', 'resumeCapture', 'maxBrightness', 'modeSettings']) assert.equal(key in saved.profiles[0].settings, false);
-    const roundtrip = await page.evaluate(library => window.__TAURI__.core.invoke('profile_library', { library }), saved);
-    assert.deepEqual(roundtrip, saved, 'Separated scene and local source survive native persistence');
-    await compactPage.waitForFunction(()=>document.querySelectorAll('#quick-favorites button').length===1);
-    const importedBundle={format:'dynamiclight',version:1,profiles:[{id:'native-test',name:'Native test',settings:saved.profiles[0].settings}],palettes:[]};
-    const importPreview=await page.evaluate(text=>window.__TAURI__.core.invoke('preview_profile_import',{text}),JSON.stringify(importedBundle));
-    assert.equal(importPreview.conflicts[0],'Native test');
-    const imported=await page.evaluate(p=>window.__TAURI__.core.invoke('import_profiles',{bundle:p.bundle,expected:p.base,policy:'copy'}),importPreview);
-    assert.equal(imported.profiles.length,2);assert.equal(imported.profiles[1].shortcut,'');assert.equal(imported.profiles[1].source.screenId,'');
-    await assert.rejects(page.evaluate(p=>window.__TAURI__.core.invoke('import_profiles',{bundle:p.bundle,expected:p.base,policy:'replace'}),importPreview),/library changed/);
-    assert.equal((await control({type:'snapshot'})).status.connected,false,'Import never connects USB');
-    await page.evaluate(library=>window.__TAURI__.core.invoke('profile_library',{library}),saved);
-    await assert.rejects(page.evaluate(p => window.__TAURI__.core.invoke('profile_library', { library: { profiles: [p, { ...p, id: 'duplicate' }] } }), profile));
-    assert.equal((await page.evaluate(() => window.__TAURI__.core.invoke('profile_library', { library: null }))).profiles.length, 1);
-    await page.evaluate(library => window.__TAURI__.core.invoke('profile_library', { library }), originalProfiles);
-    assert.equal((await control({ type: 'snapshot' })).status.connected, false, 'Profile edits never connect USB');
+    for (const key of [
+      "screenId",
+      "count",
+      "resumeCapture",
+      "maxBrightness",
+      "modeSettings",
+    ])
+      assert.equal(key in saved.profiles[0].settings, false);
+    const roundtrip = await page.evaluate(
+      (library) => window.__TAURI__.core.invoke("profile_library", { library }),
+      saved,
+    );
+    assert.deepEqual(
+      roundtrip,
+      saved,
+      "Separated scene and local source survive native persistence",
+    );
+    await compactPage.waitForFunction(
+      () => document.querySelectorAll("#quick-favorites button").length === 1,
+    );
+    const importedBundle = {
+      format: "dynamiclight",
+      version: 1,
+      profiles: [
+        {
+          id: "native-test",
+          name: "Native test",
+          settings: saved.profiles[0].settings,
+        },
+      ],
+      palettes: [],
+    };
+    const importPreview = await page.evaluate(
+      (text) =>
+        window.__TAURI__.core.invoke("preview_profile_import", { text }),
+      JSON.stringify(importedBundle),
+    );
+    assert.equal(importPreview.conflicts[0], "Native test");
+    const imported = await page.evaluate(
+      (p) =>
+        window.__TAURI__.core.invoke("import_profiles", {
+          bundle: p.bundle,
+          expected: p.base,
+          policy: "copy",
+        }),
+      importPreview,
+    );
+    assert.equal(imported.profiles.length, 2);
+    assert.equal(imported.profiles[1].shortcut, "");
+    assert.equal(imported.profiles[1].source.screenId, "");
+    await assert.rejects(
+      page.evaluate(
+        (p) =>
+          window.__TAURI__.core.invoke("import_profiles", {
+            bundle: p.bundle,
+            expected: p.base,
+            policy: "replace",
+          }),
+        importPreview,
+      ),
+      /library changed/,
+    );
+    assert.equal(
+      (await control({ type: "snapshot" })).status.connected,
+      false,
+      "Import never connects USB",
+    );
+    await page.evaluate(
+      (library) => window.__TAURI__.core.invoke("profile_library", { library }),
+      saved,
+    );
+    await assert.rejects(
+      page.evaluate(
+        (p) =>
+          window.__TAURI__.core.invoke("profile_library", {
+            library: { profiles: [p, { ...p, id: "duplicate" }] },
+          }),
+        profile,
+      ),
+    );
+    assert.equal(
+      (
+        await page.evaluate(() =>
+          window.__TAURI__.core.invoke("profile_library", { library: null }),
+        )
+      ).profiles.length,
+      1,
+    );
+    await page.evaluate(
+      (library) => window.__TAURI__.core.invoke("profile_library", { library }),
+      originalProfiles,
+    );
+    assert.equal(
+      (await control({ type: "snapshot" })).status.connected,
+      false,
+      "Profile edits never connect USB",
+    );
     assert.equal(frames.length, 5);
     assert(frames.every((f) => f.length === 48));
     const later = await page.evaluate(() =>
@@ -221,11 +457,18 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   } finally {
     if (page && !page.isClosed()) {
       try {
-        if (originalProfiles) await page.evaluate(library => window.__TAURI__.core.invoke("profile_library", { library }), originalProfiles);
+        if (originalProfiles)
+          await page.evaluate(
+            (library) =>
+              window.__TAURI__.core.invoke("profile_library", { library }),
+            originalProfiles,
+          );
         if (original)
           await page.evaluate(async (s) => {
             settings = s;
-            markSettings(Object.keys(s).filter(key => key !== "modeSettings"));
+            markSettings(
+              Object.keys(s).filter((key) => key !== "modeSettings"),
+            );
             await save();
           }, original);
         await page.evaluate(() => window.__TAURI__.core.invoke("quit"));

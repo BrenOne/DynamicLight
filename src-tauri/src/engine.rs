@@ -23,6 +23,9 @@ pub enum Action {
     SelectMode {
         mode: String,
     },
+    StartMode {
+        mode: String,
+    },
     #[serde(skip)]
     PreviewBrightness {
         brightness: u8,
@@ -582,6 +585,7 @@ impl Engine {
             && matches!(
                 action,
                 Action::Start
+                    | Action::StartMode { .. }
                     | Action::SelectMode { .. }
                     | Action::Settings { .. }
                     | Action::PreviewSettings { .. }
@@ -614,6 +618,11 @@ impl Engine {
                 }
                 settings.mode = mode;
                 return self.action(Action::Settings { settings });
+            }
+            Action::StartMode { mode } => {
+                // Restore per-mode settings and start in one worker message.
+                self.action(Action::SelectMode { mode })?;
+                return self.action(Action::Start);
             }
             Action::ApplyProfile { scene, source } => {
                 let settings = crate::profiles::scene(&scene, &source, &self.state.settings);
@@ -1168,6 +1177,61 @@ mod tests {
             writes: 0,
         });
         e
+    }
+    #[test]
+    fn start_mode_restores_memory_and_respects_calibration_and_stop() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut e = simulated(
+            Settings {
+                count: 37,
+                brightness: 23,
+                max_brightness: 40,
+                ..Default::default()
+            },
+            dir.path().join("settings.json"),
+        );
+        e.action(Action::SelectMode {
+            mode: "rainbow".into(),
+        })
+        .unwrap();
+        e.action(Action::Adjust {
+            brightness: Some(61),
+            color: None,
+        })
+        .unwrap();
+        e.action(Action::StartMode {
+            mode: "solid".into(),
+        })
+        .unwrap();
+        assert!(e.state.requested && e.state.powered && e.state.status.connected);
+        assert!(!e.state.capturing);
+        assert_eq!(e.state.settings.brightness, 23);
+        assert_eq!(
+            (e.state.settings.count, e.state.settings.max_brightness),
+            (37, 40)
+        );
+        e.action(Action::StartMode {
+            mode: "rainbow".into(),
+        })
+        .unwrap();
+        assert_eq!(e.state.settings.brightness, 61);
+        let before = e.state.settings.clone();
+        assert!(e
+            .action(Action::StartMode {
+                mode: "invalid".into()
+            })
+            .is_err());
+        assert_eq!(e.state.settings, before);
+        e.action(Action::CalibrationStart).unwrap();
+        assert!(e
+            .action(Action::StartMode {
+                mode: "solid".into()
+            })
+            .is_err());
+        assert!(e.state.calibrating);
+        e.action(Action::Power { on: false }).unwrap();
+        e.tick();
+        assert!(!e.state.requested && !e.state.powered && !e.state.calibrating);
     }
     #[test]
     fn blend_display_changes_keep_audio_and_stop_prevents_source_recovery() {

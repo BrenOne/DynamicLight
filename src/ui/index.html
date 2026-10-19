@@ -7,493 +7,1157 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <main id="studio">
-      <header class="app-header">
+    <div id="studio" class="app-shell">
+      <aside class="app-sidebar">
         <div class="brand">
-          <img src="icon.svg" width="38" height="38" alt="" />
+          <img src="icon.svg" width="32" height="32" alt="" />
           <h1>DynamicLight</h1>
         </div>
-        <div class="header-actions">
-          <button id="open-compact" class="text-button">Quick controls ↗</button>
-          <div class="status">
-            <i id="status-dot"></i><span id="status-label">Not connected</span>
+        <nav aria-label="Main views">
+          <button
+            data-view="control"
+            aria-current="page"
+            aria-label="Control"
+            type="button"
+          >
+            <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+              <use href="icons.svg#sliders-horizontal"></use></svg
+            ><span>Control</span></button
+          ><button data-view="scenes" aria-label="Scenes" type="button">
+            <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+              <use href="icons.svg#layout-grid"></use></svg
+            ><span>Scenes</span>
+          </button>
+        </nav>
+        <nav class="sidebar-bottom" aria-label="App and device">
+          <button data-view="device" aria-label="Device setup" type="button">
+            <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+              <use href="icons.svg#usb"></use></svg
+            ><span>Device setup</span></button
+          ><button data-view="settings" aria-label="Settings" type="button">
+            <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+              <use href="icons.svg#settings-2"></use></svg
+            ><span>Settings</span>
+          </button>
+        </nav>
+        <div class="sidebar-version"><span data-app-version=""></span></div>
+      </aside>
+      <div class="app-content" role="main">
+        <header class="app-header">
+          <div class="header-context">
+            <span class="app-location" id="view-title">Control</span>
+            <div class="status">
+              <i id="status-dot"></i
+              ><span id="status-label" role="status">Not connected</span>
+            </div>
           </div>
-          <button id="power" class="power"><span>Start color</span></button>
+          <div class="header-actions">
+            <div class="master-brightness">
+              <label for="brightness"
+                >Brightness <output id="brightness-value">38%</output></label
+              ><input id="brightness" type="range" min="0" max="100" />
+            </div>
+            <button
+              id="open-compact"
+              class="icon-button"
+              aria-label="Open Quick controls"
+              title="Quick controls"
+              type="button"
+            >
+              <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+                <use href="icons.svg#panels-top-left"></use>
+              </svg></button
+            ><button id="power" class="power" type="button">
+              <span>Start color</span>
+            </button>
+          </div>
+        </header>
+        <div id="notice" class="notice" role="status" hidden="">
+          <span id="notice-text"></span
+          ><button id="retry" class="secondary" hidden="" type="button">
+            Retry
+          </button>
         </div>
-      </header>
-      <div id="notice" class="notice" role="status" hidden><span id="notice-text"></span><button id="retry" class="secondary" hidden>Retry</button></div>
-      <div class="modes" role="group" aria-label="Lighting mode">
-        <button data-mode="solid" aria-pressed="true" class="selected">
-          <span class="mode-icon"
-            ><svg viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="12" cy="12" r="8" />
-              <path d="M12 4v16" /></svg></span
-          ><span><strong>Color</strong><small>Fixed color</small></span>
-        </button>
-        <button data-mode="screen" aria-pressed="false">
-          <span class="mode-icon"
-            ><svg viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="3" y="4" width="18" height="13" rx="2" />
-              <path d="M8 21h8m-4-4v4" /></svg></span
-          ><span><strong>Screen</strong><small>Display edges</small></span>
-        </button>
-        <button data-mode="music" aria-pressed="false">
-          <span class="mode-icon"
-            ><svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 10v4m4-8v12m4-15v18m4-14v10m4-7v4" /></svg></span
-          ><span><strong>Music</strong><small>Audio reactive</small></span>
-        </button>
-        <button data-mode="blend" aria-pressed="false"><span class="mode-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 10v2m4-5v8m4-6v4"/></svg></span><span><strong>Blend</strong><small>Screen + audio</small></span></button>
-        <button data-mode="rainbow" aria-pressed="false">
-          <span class="mode-icon"
-            ><svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M3 14c4-14 5 10 9-4s5 10 9-4" /></svg></span
-          ><span><strong>Effects</strong><small>Animated patterns</small></span>
-        </button>
-      </div>
-      <details class="panel profiles">
-        <summary>Profiles & scenes <span class="muted">Saved settings and starter scenes</span></summary>
-        <div class="profile-create">
-          <label for="profile-name">Name</label><input id="profile-name" maxlength="50" placeholder="Movies" />
-          <button id="profile-save" class="secondary">Save current settings</button>
-        </div>
-        <p class="help">Selecting a profile starts lighting. Screen and audio profiles may request capture permission. Strip layout and startup preferences stay unchanged.</p>
-        <div class="library-actions"><button id="share-scenes" class="secondary">Export…</button><button id="import-scenes" class="secondary">Import…</button><input id="scene-file" type="file" accept=".json,application/json" hidden /><span id="sharing-status" class="help" role="status"></span></div>
-        <div class="scene-toolbar"><label for="scene-search">Find a scene<input id="scene-search" type="search" placeholder="Name or mode" /></label><label for="scene-filter">Show<select id="scene-filter"><option value="all">All scenes</option><option value="favorites">Favorites</option><option value="saved">Saved profiles</option><option value="starters">Starter scenes</option></select></label></div>
-        <p class="help">Thumbnails are examples, not captured content. The main LED preview shows current output.</p>
-        <div id="profile-list" class="scene-grid"></div><div id="starter-list" class="scene-grid"></div><p id="scene-empty" class="help" hidden>No matching scenes.</p>
-        <p id="profile-message" class="help" role="status"></p>
-      </details>
-      <div class="workspace">
-        <div class="stage-column">
-          <section class="preview-card" aria-label="Live lighting preview">
-            <div class="preview-top">
-              <span class="eyebrow"
-                ><i class="live-dot" id="live-dot"></i> LED PREVIEW</span
-              ><span id="mode-badge" class="badge">Solid color</span>
-            </div>
-            <canvas
-              id="preview"
-              width="1000"
-              height="420"
-              aria-label="Generated LED colors around your monitor"
-            ></canvas>
-            <div class="preview-bottom">
-              <span id="frame-rate" class="badge">Preview only</span
-              ><span id="device-detail" class="muted">65 LEDs</span>
-            </div>
-            <canvas
-              id="strip-preview"
-              width="1000"
-              height="18"
-              aria-label="Outgoing colors in physical LED order"
-            ></canvas>
-            <div class="preview-foot">
-              <span>LED 01 <span id="led-total">→ 65</span></span
-              ><span>Generated output</span>
-            </div>
-          </section>
-          <section id="effect-controls" class="panel" hidden>
-            <div class="section-title">
-              <div>
-                <h2>Effects</h2>
-              </div>
-              <span class="muted">Live previews</span>
-            </div>
-            <div class="effect-grid">
-              <button data-effect="rainbow">
-                <canvas
-                  class="effect-art"
-                  width="240"
-                  height="150"
-                  aria-hidden="true"
-                ></canvas
-                ><strong>Color flow</strong
-                ><small>Continuous hue rotation</small>
-              </button>
-              <button data-effect="aurora">
-                <canvas
-                  class="effect-art"
-                  width="240"
-                  height="150"
-                  aria-hidden="true"
-                ></canvas
-                ><strong>Aurora</strong><small>Layered color waves</small>
-              </button>
-              <button data-effect="breath">
-                <canvas
-                  class="effect-art"
-                  width="240"
-                  height="150"
-                  aria-hidden="true"
-                ></canvas
-                ><strong>Breathe</strong><small>Slow brightness cycle</small>
-              </button>
-              <button data-effect="comet">
-                <canvas
-                  class="effect-art"
-                  width="240"
-                  height="150"
-                  aria-hidden="true"
-                ></canvas
-                ><strong>Comet</strong><small>Moving light trail</small>
-              </button>
-              <button data-effect="ember">
-                <canvas
-                  class="effect-art"
-                  width="240"
-                  height="150"
-                  aria-hidden="true"
-                ></canvas
-                ><strong>Ember</strong><small>Warm flicker</small>
-              </button>
-            </div>
-          </section>
-          <section id="music-controls" class="panel" hidden>
-            <div class="section-title">
-              <div>
-                <h2>Audio</h2>
-              </div>
-              <span id="audio-status" class="badge">Capture stopped</span>
-            </div>
-            <canvas
-              id="spectrum"
-              width="800"
-              height="110"
-              aria-label="Live audio frequency bands, low to high"
-            ></canvas>
-            <div class="frequency-labels">
-              <span>40 Hz</span><span>Analyzed audio · low → high</span
-              ><span>16 kHz</span>
-            </div>
-            <div class="music-styles" role="group" aria-label="Music style">
-              <button data-music="spectrum">Spectrum</button
-              ><button data-music="bass">Bass pulse</button
-              ><button data-music="vu">Level meter</button
-              ><button data-music="wave">Color wave</button><button data-music="beat">Beat pulse</button>
-            </div>
-            <div class="settings-grid">
-              <label>Input gain <output id="input-gain-value">0 dB</output><input id="input-gain" type="range" min="-24" max="24" value="0" /></label>
-              <label id="blend-control">Audio blend <output id="blend-value">60%</output><input id="blend" type="range" min="0" max="100" value="60" /><small>Silence keeps normal screen brightness.</small></label>
-              <label for="audio-source"
-                >Audio source<select id="audio-source">
-                  <option value="system">Computer audio</option>
-                  <option value="microphone">Microphone</option>
-                </select></label
-              ><label for="sensitivity"
-                >Sensitivity <output id="sensitivity-value">50%</output
-                ><input
-                  type="range"
-                  id="sensitivity"
-                  min="1"
-                  max="100" /></label
-              ><label for="noise-floor"
-                >Noise gate <output id="noise-floor-value">0%</output
-                ><input id="noise-floor" type="range" min="0" max="20" /><small
-                  >Ignore input below this level.</small
-                ></label
-              ><label for="release"
-                >Release <output id="release-value">40%</output
-                ><input id="release" type="range" min="0" max="100" /><small
-                  >Fade duration after audio peaks.</small
-                ></label
-              >
-            </div>
-          </section>
-          <section id="capture-controls" class="panel" hidden>
-            <div class="capture-row">
-              <div id="display-controls">
-                <label for="screen">Display</label>
-                <div class="input-row">
-                  <select id="screen">
-                    <option value="">Primary display</option></select
-                  ><button
-                    id="refresh-screens"
-                    class="secondary"
-                    aria-label="Refresh displays"
-                  >
-                    ↻
+        <div class="app-views">
+          <section
+            id="view-control"
+            class="app-view control-view"
+            aria-label="Control"
+          >
+            <div class="workspace">
+              <div class="stage-column">
+                <div class="workspace-heading">
+                  <div>
+                    <h2 id="workspace-title" tabindex="-1">Color</h2>
+                    <p id="workspace-subtitle" class="help">Fixed color</p>
+                  </div>
+                  <button class="text-button" data-save-scene="" type="button">
+                    <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+                      <use href="icons.svg#bookmark-plus"></use></svg
+                    ><span>Save scene</span>
                   </button>
                 </div>
+                <div class="modes" role="group" aria-label="Lighting mode">
+                  <button
+                    data-mode="solid"
+                    aria-pressed="true"
+                    class="selected"
+                    type="button"
+                  >
+                    <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+                      <use href="icons.svg#palette"></use></svg
+                    ><span>Color</span>
+                  </button>
+                  <button data-mode="screen" aria-pressed="false" type="button">
+                    <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+                      <use href="icons.svg#monitor"></use></svg
+                    ><span>Screen</span>
+                  </button>
+                  <button data-mode="music" aria-pressed="false" type="button">
+                    <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+                      <use href="icons.svg#audio-lines"></use></svg
+                    ><span>Music</span>
+                  </button>
+                  <button data-mode="blend" aria-pressed="false" type="button">
+                    <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+                      <use href="icons.svg#blend"></use></svg
+                    ><span>Blend</span>
+                  </button>
+                  <button
+                    data-mode="rainbow"
+                    aria-pressed="false"
+                    type="button"
+                  >
+                    <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+                      <use href="icons.svg#waves"></use></svg
+                    ><span>Effects</span>
+                  </button>
+                </div>
+                <button
+                  id="preview-toggle"
+                  class="text-button"
+                  aria-expanded="false"
+                  aria-controls="preview-area"
+                  type="button"
+                >
+                  <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+                    <use href="icons.svg#monitor"></use></svg
+                  ><span>Show output preview</span>
+                </button>
+                <div id="preview-area" class="preview-area">
+                  <section
+                    class="preview-card"
+                    aria-label="Live lighting preview"
+                  >
+                    <div class="preview-top">
+                      <span class="eyebrow"
+                        ><i class="live-dot" id="live-dot"></i>Output
+                        preview</span
+                      ><span id="mode-badge" class="badge">Solid color</span>
+                    </div>
+                    <canvas
+                      id="preview"
+                      width="1000"
+                      height="420"
+                      aria-label="Generated LED colors around your monitor"
+                    ></canvas>
+
+                    <div class="preview-caption">
+                      <strong id="preview-title">Color</strong
+                      ><span id="preview-state">Select a mode to start</span>
+                    </div>
+                  </section>
+                  <div class="output-strip">
+                    <canvas
+                      id="strip-preview"
+                      width="1000"
+                      height="18"
+                      aria-label="Outgoing colors in physical LED order"
+                    ></canvas>
+                    <div class="preview-foot">
+                      <span>LED 01 <span id="led-total">→ 65</span></span
+                      ><span>Generated output</span>
+                    </div>
+                  </div>
+                </div>
+                <section
+                  id="audio-monitor"
+                  class="audio-monitor"
+                  aria-label="Audio input"
+                  hidden=""
+                >
+                  <div class="section-title">
+                    <div>
+                      <h2 tabindex="-1">Audio input</h2>
+                    </div>
+                    <span id="audio-status" class="badge">Capture stopped</span>
+                  </div>
+                  <canvas
+                    id="spectrum"
+                    width="800"
+                    height="110"
+                    aria-label="Live audio frequency bands, low to high"
+                  ></canvas>
+                  <div class="frequency-labels">
+                    <span>40 Hz</span><span>Analyzed audio · low → high</span
+                    ><span>16 kHz</span>
+                  </div>
+                </section>
+                <section id="effect-controls" class="panel" hidden="">
+                  <div class="section-title">
+                    <div>
+                      <h2 tabindex="-1">Effects</h2>
+                    </div>
+                    <span class="muted">Preview on hover</span>
+                  </div>
+                  <div class="effect-grid">
+                    <button data-effect="rainbow" type="button">
+                      <canvas
+                        class="effect-art"
+                        width="240"
+                        height="150"
+                        aria-hidden="true"
+                      ></canvas
+                      ><strong>Color flow</strong>
+                    </button>
+                    <button data-effect="aurora" type="button">
+                      <canvas
+                        class="effect-art"
+                        width="240"
+                        height="150"
+                        aria-hidden="true"
+                      ></canvas
+                      ><strong>Aurora</strong>
+                    </button>
+                    <button data-effect="breath" type="button">
+                      <canvas
+                        class="effect-art"
+                        width="240"
+                        height="150"
+                        aria-hidden="true"
+                      ></canvas
+                      ><strong>Breathe</strong>
+                    </button>
+                    <button data-effect="comet" type="button">
+                      <canvas
+                        class="effect-art"
+                        width="240"
+                        height="150"
+                        aria-hidden="true"
+                      ></canvas
+                      ><strong>Comet</strong>
+                    </button>
+                    <button data-effect="ember" type="button">
+                      <canvas
+                        class="effect-art"
+                        width="240"
+                        height="150"
+                        aria-hidden="true"
+                      ></canvas
+                      ><strong>Ember</strong>
+                    </button>
+                  </div>
+                </section>
+                <section
+                  class="control-favorites"
+                  aria-labelledby="control-favorites-title"
+                >
+                  <div class="section-title">
+                    <h2 id="control-favorites-title" tabindex="-1">
+                      Favorites
+                    </h2>
+                    <button
+                      class="text-button"
+                      data-view="scenes"
+                      type="button"
+                    >
+                      All scenes
+                      <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+                        <use href="icons.svg#chevron-right"></use>
+                      </svg>
+                    </button>
+                  </div>
+                  <div id="control-favorites" class="favorite-grid"></div>
+                  <p id="control-favorites-empty" class="help">
+                    Save a scene and mark it as a favorite to keep it here.
+                  </p>
+                </section>
+              </div>
+              <aside class="controls-column" aria-label="Current mode settings">
+                <div class="inspector-heading">
+                  <h2 id="inspector-title" tabindex="-1">Color</h2>
+                  <span class="muted" id="save-state" role="status">Saved</span>
+                </div>
+                <section
+                  id="capture-controls"
+                  class="inspector-section"
+                  hidden=""
+                >
+                  <div class="capture-row">
+                    <div id="display-controls">
+                      <label for="screen">Display</label>
+                      <div class="input-row">
+                        <select id="screen">
+                          <option value="">Primary display</option></select
+                        ><button
+                          id="refresh-screens"
+                          class="icon-button"
+                          aria-label="Refresh displays"
+                          type="button"
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            class="icon"
+                            aria-hidden="true"
+                          >
+                            <use href="icons.svg#refresh-cw"></use>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <p id="capture-help" class="help"></p>
+                  <label class="checkbox"
+                    ><input id="exclude-bars" type="checkbox" /> Exclude black
+                    bars</label
+                  >
+                  <details id="screen-tuning">
+                    <summary>Color adjustments</summary>
+
+                    <div class="settings-grid">
+                      <label
+                        >Red <output id="red-balance-value">100%</output
+                        ><input id="red-balance" type="range" min="0" max="200"
+                      /></label>
+                      <label
+                        >Green <output id="green-balance-value">100%</output
+                        ><input
+                          id="green-balance"
+                          type="range"
+                          min="0"
+                          max="200"
+                      /></label>
+                      <label
+                        >Blue <output id="blue-balance-value">100%</output
+                        ><input
+                          id="blue-balance"
+                          type="range"
+                          min="0"
+                          max="200"
+                      /></label>
+                      <label
+                        >Saturation <output id="saturation-value">100%</output
+                        ><input id="saturation" type="range" min="0" max="200"
+                      /></label>
+                      <label
+                        >Gamma <output id="gamma-value">1.00</output
+                        ><input id="gamma" type="range" min="50" max="250"
+                      /></label>
+                    </div>
+                    <button id="reset-screen" class="secondary" type="button">
+                      Reset screen adjustments
+                    </button>
+                    <p class="help">
+                      Bar detection waits for a stable border. Dark scenes
+                      retain the previous crop. HDR and protected video may not
+                      match the displayed picture.
+                    </p>
+                  </details>
+                </section>
+                <section
+                  id="music-controls"
+                  class="inspector-section"
+                  hidden=""
+                >
+                  <div
+                    class="music-styles"
+                    role="group"
+                    aria-label="Music style"
+                  >
+                    <button data-music="spectrum" type="button">Spectrum</button
+                    ><button data-music="bass" type="button">Bass pulse</button
+                    ><button data-music="vu" type="button">Level meter</button
+                    ><button data-music="wave" type="button">Color wave</button
+                    ><button data-music="beat" type="button">Beat pulse</button>
+                  </div>
+                  <div class="audio-fields">
+                    <label for="audio-source"
+                      >Audio source<select id="audio-source">
+                        <option value="system">Computer audio</option>
+                        <option value="microphone">Microphone</option>
+                      </select></label
+                    >
+
+                    <label id="blend-control"
+                      >Audio blend <output id="blend-value">60%</output
+                      ><input
+                        id="blend"
+                        type="range"
+                        min="0"
+                        max="100"
+                        value="60"
+                      /><small
+                        >Silence keeps normal screen brightness.</small
+                      ></label
+                    >
+                    <label for="sensitivity"
+                      >Sensitivity <output id="sensitivity-value">50%</output
+                      ><input type="range" id="sensitivity" min="1" max="100"
+                    /></label>
+                    <details class="advanced-audio">
+                      <summary>Audio tuning</summary>
+                      <label
+                        >Input gain <output id="input-gain-value">0 dB</output
+                        ><input
+                          id="input-gain"
+                          type="range"
+                          min="-24"
+                          max="24"
+                          value="0" /></label
+                      ><label for="noise-floor"
+                        >Noise gate <output id="noise-floor-value">0%</output
+                        ><input
+                          id="noise-floor"
+                          type="range"
+                          min="0"
+                          max="20"
+                        /><small>Ignore input below this level.</small></label
+                      ><label for="release"
+                        >Release <output id="release-value">40%</output
+                        ><input
+                          id="release"
+                          type="range"
+                          min="0"
+                          max="100"
+                        /><small>Fade duration after audio peaks.</small></label
+                      >
+                    </details>
+                  </div>
+                </section>
+                <section class="inspector-section tuning">
+                  <div id="color-control">
+                    <label for="color"
+                      >Color <output id="hex-value">#9B72FF</output></label
+                    >
+                    <div class="swatches">
+                      <input
+                        type="color"
+                        id="color"
+                        value="#9b72ff"
+                        aria-label="Custom light color"
+                      /><button
+                        data-color="#9b72ff"
+                        class="swatch violet"
+                        aria-label="Violet"
+                        type="button"
+                      ></button
+                      ><button
+                        data-color="#568cff"
+                        class="swatch blue"
+                        aria-label="Blue"
+                        type="button"
+                      ></button
+                      ><button
+                        data-color="#4eddb6"
+                        class="swatch mint"
+                        aria-label="Mint"
+                        type="button"
+                      ></button
+                      ><button
+                        data-color="#ffbb74"
+                        class="swatch warm"
+                        aria-label="Warm white"
+                        type="button"
+                      ></button
+                      ><button
+                        data-color="#ff627d"
+                        class="swatch rose"
+                        aria-label="Rose"
+                        type="button"
+                      ></button
+                      ><button
+                        data-color="#ffffff"
+                        class="swatch white"
+                        aria-label="White"
+                        type="button"
+                      ></button>
+                    </div>
+                    <p id="color-help" class="help"></p>
+                    <button
+                      id="open-color-editor"
+                      class="secondary"
+                      type="button"
+                    >
+                      Color &amp; palettes…
+                    </button>
+                    <div
+                      id="recent-colors"
+                      class="color-chips"
+                      aria-label="Recent colors"
+                    ></div>
+                  </div>
+                  <div id="palette-controls" hidden="">
+                    <label for="palette">Color palette</label
+                    ><select id="palette">
+                      <option value="aurora">Aurora · mint / violet</option>
+                      <option value="ocean">Ocean · blue / cyan</option>
+                      <option value="sunset">Sunset · coral / gold</option>
+                      <option value="mono">Custom color</option>
+                      <option value="custom">Custom palette</option>
+                    </select>
+                    <p id="palette-help" class="help"></p>
+                    <button
+                      id="open-palette-editor"
+                      class="secondary"
+                      type="button"
+                    >
+                      Edit palettes…
+                    </button>
+                  </div>
+                  <div id="speed-controls" hidden="">
+                    <label for="speed"
+                      >Motion speed <output id="speed-value">35%</output></label
+                    ><input id="speed" type="range" min="1" max="100" />
+                  </div>
+                  <label id="effect-direction-control" hidden=""
+                    >Effect direction<select id="effect-direction">
+                      <option value="forward">Forward</option>
+                      <option value="reverse">Reverse</option>
+                    </select></label
+                  >
+
+                  <div id="smoothing-control">
+                    <label for="smoothing"
+                      >Color smoothing
+                      <output id="smoothing-value">65%</output></label
+                    ><input id="smoothing" type="range" min="0" max="95" />
+                    <p class="help">Softens transitions between colors.</p>
+                  </div>
+                </section>
+              </aside>
+            </div>
+          </section>
+          <section
+            id="view-scenes"
+            class="app-view page-view profiles"
+            aria-label="Scenes"
+            hidden=""
+          >
+            <div class="page-heading">
+              <div>
+                <h2 tabindex="-1">Scenes</h2>
+                <p class="help">Select a scene to start lighting.</p>
+              </div>
+              <button class="secondary" data-save-scene="" type="button">
+                <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+                  <use href="icons.svg#plus"></use></svg
+                >Save scene
+              </button>
+            </div>
+            <div class="scene-toolbar">
+              <label for="scene-search"
+                >Find a scene<input
+                  id="scene-search"
+                  type="search"
+                  placeholder="Name or mode" /></label
+              ><label for="scene-filter"
+                >Show<select id="scene-filter">
+                  <option value="all">All scenes</option>
+                  <option value="favorites">Favorites</option>
+                  <option value="saved">Saved scenes</option>
+                  <option value="starters">Starter scenes</option>
+                </select></label
+              >
+            </div>
+            <div class="library-actions">
+              <button id="share-scenes" class="secondary" type="button">
+                Export…</button
+              ><button id="import-scenes" class="secondary" type="button">
+                Import…</button
+              ><input
+                id="scene-file"
+                type="file"
+                accept=".json,application/json"
+                hidden=""
+              /><span id="sharing-status" class="help" role="status"></span>
+            </div>
+            <p class="help scene-preview-note">
+              Thumbnails show examples. Browsing does not start screen or audio
+              capture.
+            </p>
+            <h3 class="library-heading" id="saved-scenes-heading">Saved</h3>
+            <div id="profile-list" class="scene-grid"></div>
+            <h3 class="library-heading" id="starter-scenes-heading">
+              Starter scenes
+            </h3>
+            <div id="starter-list" class="scene-grid"></div>
+            <p id="scene-empty" class="help" hidden="">No matching scenes.</p>
+            <p id="profile-message" class="help" role="status"></p>
+          </section>
+          <section
+            id="view-device"
+            class="app-view page-view"
+            aria-label="Device setup"
+            hidden=""
+          >
+            <div class="page-heading">
+              <div>
+                <h2 tabindex="-1">Device setup</h2>
+                <p class="help">Match the LED count and route to your strip.</p>
               </div>
             </div>
-            <p id="capture-help" class="help"></p>
-            <details id="screen-tuning"><summary>Screen color adjustments</summary>
-              <label class="checkbox"><input id="exclude-bars" type="checkbox" /> Exclude black bars</label>
-              <div class="settings-grid">
-                <label>Red <output id="red-balance-value">100%</output><input id="red-balance" type="range" min="0" max="200" /></label>
-                <label>Green <output id="green-balance-value">100%</output><input id="green-balance" type="range" min="0" max="200" /></label>
-                <label>Blue <output id="blue-balance-value">100%</output><input id="blue-balance" type="range" min="0" max="200" /></label>
-                <label>Saturation <output id="saturation-value">100%</output><input id="saturation" type="range" min="0" max="200" /></label>
-                <label>Gamma <output id="gamma-value">1.00</output><input id="gamma" type="range" min="50" max="250" /></label>
+            <details id="setup" class="setup" open="">
+              <span id="connection-message">Choose a mode to start.</span>
+
+              <div class="device-settings">
+                <span>USB controller · 1A86:FE07</span
+                ><button id="connect" class="secondary" type="button">
+                  Reconnect
+                </button>
               </div>
-              <button id="reset-screen" class="secondary">Reset screen adjustments</button>
-              <p class="help">Bar detection waits for a stable border. Dark scenes retain the previous crop. HDR and protected video may not match the displayed picture.</p>
+              <div id="device-detail" class="help"></div>
+              <div class="settings-grid">
+                <label
+                  >LED count<input
+                    id="count"
+                    type="number"
+                    min="1"
+                    max="127"
+                    value="65" /></label
+                ><label
+                  >Monitor coverage<select id="sides">
+                    <option value="3">Three sides (no bottom)</option>
+                    <option value="4">Four sides</option>
+                  </select></label
+                ><label
+                  >Starting offset<input
+                    id="offset"
+                    type="number"
+                    min="0"
+                    max="126"
+                    value="0" /></label
+                ><label
+                  >Frame rate<select id="fps">
+                    <option value="30">30 FPS</option>
+                    <option value="20">20 FPS</option>
+                    <option value="10">10 FPS</option>
+                  </select></label
+                >
+                <label class="checkbox"
+                  ><input id="reverse" type="checkbox" /> Reverse LED
+                  direction</label
+                >
+              </div>
+              <p class="help">
+                Layout starts at the bottom-left, travels up, then across the
+                top. Match your strip with direction and offset.
+                <span id="close-behavior"
+                  >Closing the window keeps lighting running in the tray.</span
+                >
+              </p>
+              <button id="calibrate" class="secondary" type="button">
+                Calibrate strip…
+              </button>
             </details>
           </section>
-        </div>
-        <div class="controls-column">
-          <section class="panel tuning">
-            <div class="section-title">
-              <h2>Light settings</h2>
-              <span id="save-state" class="muted" role="status">Saved</span>
+          <section
+            id="view-settings"
+            class="app-view page-view"
+            aria-label="Settings"
+            hidden=""
+          >
+            <div class="page-heading">
+              <div><h2 tabindex="-1">Settings</h2></div>
             </div>
-            <label for="brightness"
-              >Brightness <output id="brightness-value">38%</output></label
-            ><input id="brightness" type="range" min="0" max="100" />
-            <div class="range-endpoints"><span>0%</span><span>100%</span></div>
-            <div class="divider"></div>
-            <div id="color-control">
-              <label for="color"
-                >Color <output id="hex-value">#9B72FF</output></label
-              >
-              <div class="swatches">
-                <input
-                  type="color"
-                  id="color"
-                  value="#9b72ff"
-                  aria-label="Custom light color"
-                /><button
-                  data-color="#9b72ff"
-                  class="swatch violet"
-                  aria-label="Violet"
-                ></button
-                ><button
-                  data-color="#568cff"
-                  class="swatch blue"
-                  aria-label="Blue"
-                ></button
-                ><button
-                  data-color="#4eddb6"
-                  class="swatch mint"
-                  aria-label="Mint"
-                ></button
-                ><button
-                  data-color="#ffbb74"
-                  class="swatch warm"
-                  aria-label="Warm white"
-                ></button
-                ><button
-                  data-color="#ff627d"
-                  class="swatch rose"
-                  aria-label="Rose"
-                ></button
-                ><button
-                  data-color="#ffffff"
-                  class="swatch white"
-                  aria-label="White"
-                ></button>
+            <div class="behavior-grid">
+              <fieldset>
+                <legend>Startup</legend>
+                <label class="checkbox"
+                  ><input id="launch-at-login" type="checkbox" /> Launch at
+                  login</label
+                >
+                <label class="checkbox"
+                  ><input id="restore-on-start" type="checkbox" /> Restore
+                  lighting when the app opens</label
+                >
+                <p class="help">
+                  Restores your last mode only if lighting was running. Stop
+                  keeps it off next time.
+                </p>
+              </fieldset>
+              <fieldset>
+                <legend>Pause lighting</legend>
+                <label class="checkbox"
+                  ><input
+                    id="off-on-display-sleep"
+                    type="checkbox"
+                    checked=""
+                  />
+                  When displays turn off</label
+                >
+                <label class="checkbox"
+                  ><input id="off-on-lock" type="checkbox" checked="" /> When
+                  the computer locks</label
+                >
+                <label class="checkbox"
+                  ><input id="off-on-sleep" type="checkbox" checked="" /> Turn
+                  lights off during system sleep</label
+                >
+                <label class="checkbox"
+                  ><input id="off-on-quit" type="checkbox" checked="" /> Turn
+                  lights off when quitting</label
+                >
+              </fieldset>
+              <fieldset>
+                <legend>Capture recovery</legend>
+                <label class="checkbox"
+                  ><input id="resume-capture" type="checkbox" /> Automatically
+                  resume screen and audio capture</label
+                >
+                <p class="help">
+                  Resume after wake, USB reconnect, or source changes. Also
+                  allows capture on app startup when restore is enabled.
+                  Requires OS permission.
+                </p>
+                <p class="help">
+                  Color and effects resume automatically. Stop cancels pending
+                  recovery.
+                </p>
+              </fieldset>
+            </div>
+            <details class="comfort">
+              <summary>Brightness limits</summary>
+              <div class="settings-grid">
+                <label
+                  >Maximum brightness
+                  <output id="max-brightness-value">100%</output
+                  ><input id="max-brightness" type="range" min="0" max="100"
+                /></label>
+                <label
+                  >Change limit <output id="transition-limit-value">Off</output
+                  ><input
+                    id="transition-limit"
+                    type="range"
+                    min="0"
+                    max="500"
+                    step="10"
+                  /><small
+                    >Percentage points per second. Zero disables the limit.
+                    Lower values soften flashes.</small
+                  ></label
+                >
+                <label
+                  >Minimum glow <output id="minimum-glow-value">0%</output
+                  ><input
+                    id="minimum-glow"
+                    type="range"
+                    min="0"
+                    max="20"
+                  /><small
+                    >Only while lighting is running. Stop always turns it
+                    off.</small
+                  ></label
+                >
               </div>
-              <p id="color-help" class="help"></p><button id="open-color-editor" class="secondary">Color & palettes…</button><div id="recent-colors" class="color-chips" aria-label="Recent colors"></div>
-            </div>
-            <div id="palette-controls" hidden>
-              <label for="palette">Color palette</label
-              ><select id="palette">
-                <option value="aurora">Aurora · mint / violet</option>
-                <option value="ocean">Ocean · blue / cyan</option>
-                <option value="sunset">Sunset · coral / gold</option>
-                <option value="mono">Custom color</option><option value="custom">Custom palette</option>
-              </select>
-              <p id="palette-help" class="help"></p><button id="open-palette-editor" class="secondary">Edit palettes…</button>
-            </div>
-            <div id="speed-controls" hidden>
-              <label for="speed"
-                >Motion speed <output id="speed-value">35%</output></label
-              ><input id="speed" type="range" min="1" max="100" />
-            </div>
-            <label id="effect-direction-control" hidden>Effect direction<select id="effect-direction"><option value="forward">Forward</option><option value="reverse">Reverse</option></select></label>
-            <label for="smoothing"
-              >Color smoothing <output id="smoothing-value">65%</output></label
-            ><input id="smoothing" type="range" min="0" max="95" />
-            <p class="help">Higher values smooth color changes.</p>
+              <p class="help">
+                These settings apply to all modes. They cannot guarantee
+                protection from photosensitive reactions.
+              </p>
+            </details>
+            <p id="lifecycle-warning" class="help" role="status" hidden=""></p>
+            <section class="about-app">
+              <img src="icon.svg" width="32" height="32" alt="" />
+              <div>
+                <h3>DynamicLight</h3>
+                <p class="help">Local USB lighting control</p>
+              </div>
+            </section>
+            <button id="quit" class="text-button" type="button">
+              <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+                <use href="icons.svg#log-out"></use></svg
+              >Quit DynamicLight
+            </button>
           </section>
-          <details class="panel telemetry">
-            <summary>
-              Diagnostics <span id="activity-label" class="badge">Idle</span>
-            </summary>
-
-            <div class="metric-grid">
-              <div>
-                <strong id="usb-fps">—</strong><span>USB frames / sec</span>
-              </div>
-              <div>
-                <strong id="write-time">—</strong><span>Last write · ms</span>
-              </div>
-            </div>
-            <dl>
-              <div>
-                <dt>Last successful write</dt>
-                <dd id="last-write">Never</dd>
-              </div>
-              <div>
-                <dt>Frames sent</dt>
-                <dd id="frames-written">0</dd>
-              </div>
-              <div>
-                <dt>Write failures</dt>
-                <dd id="write-errors">0</dd>
-              </div>
-              <div>
-                <dt>Capture resolution</dt>
-                <dd id="capture-size">—</dd>
-              </div>
-              <div>
-                <dt>Audio input</dt>
-                <dd id="audio-level">—</dd>
-              </div>
-            </dl>
-            <dl><div><dt>Missed frame slots</dt><dd id="dropped-frames">0</dd></div></dl>
-            <p class="help">Missed engine deadlines while animation or capture is active. Video-source drops are not measured.</p>
-            <button id="diagnostic-preview" class="secondary">Troubleshooting report…</button>
-            <p class="help">
-              USB delivery is measured. Physical LED state is not available.
-            </p>
-          </details>
         </div>
+        <footer class="app-footer">
+          <span id="footer-status" role="status"
+            ><span id="frame-rate" class="muted">Preview only</span></span
+          ><span class="footer-end"
+            ><button id="connection-details" class="text-button" type="button">
+              Connection details
+              <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+                <use href="icons.svg#chevron-up"></use>
+              </svg></button
+          ></span>
+        </footer>
       </div>
-      <details id="setup" class="setup">
-        <summary>
-          <span>Strip setup & behavior</span><span class="muted">＋</span>
-        </summary>
-        <div class="device-settings">
-          <span>USB controller · 1A86:FE07</span
-          ><button id="connect" class="secondary">Reconnect</button>
-        </div>
-        <div class="settings-grid">
-          <label
-            >LED count<input
-              id="count"
-              type="number"
-              min="1"
-              max="127"
-              value="65" /></label
-          ><label
-            >Monitor coverage<select id="sides">
-              <option value="3">Three sides (no bottom)</option>
-              <option value="4">Four sides</option>
-            </select></label
-          ><label
-            >Starting offset<input
-              id="offset"
-              type="number"
-              min="0"
-              max="126"
-              value="0" /></label
-          ><label
-            >Frame rate<select id="fps">
-              <option value="30">30 FPS</option>
-              <option value="20">20 FPS</option>
-              <option value="10">10 FPS</option>
-            </select></label
-          >
-          <label class="checkbox"
-            ><input id="reverse" type="checkbox" /> Reverse LED direction</label
-          >
-        </div>
-        <p class="help">
-          Layout starts at the bottom-left, travels up, then across the top.
-          Match your strip with direction and offset.
-          <span id="close-behavior"
-            >Closing the window keeps lighting running in the tray.</span
-          >
-        </p>
-        <button id="calibrate" class="secondary">Calibrate strip…</button>
-        <details class="comfort"><summary>Brightness limits</summary><div class="settings-grid">
-          <label>Maximum brightness <output id="max-brightness-value">100%</output><input id="max-brightness" type="range" min="0" max="100" /></label>
-          <label>Change limit <output id="transition-limit-value">Off</output><input id="transition-limit" type="range" min="0" max="500" step="10" /><small>Percentage points per second. Zero disables the limit. Lower values soften flashes.</small></label>
-          <label>Minimum glow <output id="minimum-glow-value">0%</output><input id="minimum-glow" type="range" min="0" max="20" /><small>Only while lighting is running. Stop always turns it off.</small></label>
-        </div><p class="help">These settings apply to all modes. They cannot guarantee protection from photosensitive reactions.</p></details>
-        <div class="behavior-grid">
-          <fieldset><legend>Startup</legend>
-            <label class="checkbox"><input id="launch-at-login" type="checkbox" /> Launch at login</label>
-            <label class="checkbox"><input id="restore-on-start" type="checkbox" /> Restore lighting when the app opens</label>
-            <p class="help">Restores your last mode only if lighting was running. Stop keeps it off next time.</p>
-          </fieldset>
-          <fieldset><legend>Pause lighting</legend>
-            <label class="checkbox"><input id="off-on-display-sleep" type="checkbox" checked /> When displays turn off</label>
-            <label class="checkbox"><input id="off-on-lock" type="checkbox" checked /> When the computer locks</label>
-            <label class="checkbox"><input id="off-on-sleep" type="checkbox" checked /> Turn lights off during system sleep</label>
-            <label class="checkbox"><input id="off-on-quit" type="checkbox" checked /> Turn lights off when quitting</label>
-          </fieldset>
-          <fieldset><legend>Capture recovery</legend>
-            <label class="checkbox"><input id="resume-capture" type="checkbox" /> Automatically resume screen and audio capture</label>
-            <p class="help">Resume after wake, USB reconnect, or source changes. Also allows capture on app startup when restore is enabled. Requires OS permission.</p>
-            <p class="help">Color and effects resume automatically. Stop cancels pending recovery.</p>
-          </fieldset>
-        </div>
-        <p id="lifecycle-warning" class="help" role="status" hidden></p>
-      </details>
-      <footer>
-        <span id="connection-message">Choose a mode to start.</span
-        ><button id="quit" class="text-button">Quit</button>
-      </footer>
-    </main>
+    </div>
     <dialog id="diagnostic-dialog" aria-labelledby="diagnostic-title">
-      <h2 id="diagnostic-title">Troubleshooting report</h2>
-      <p class="help">Only app state and counters are included. No paths, source names, profile names, screen content or audio.</p>
-      <label class="checkbox"><input id="diagnostic-enabled" type="checkbox" /> Keep local state history</label>
-      <p class="help">Off by default. Keeps up to 200 changes for 7 days. Turning it off clears saved history.</p>
-      <label for="diagnostic-text">Report preview</label><textarea id="diagnostic-text" readonly spellcheck="false" rows="12"></textarea>
-      <div class="input-row"><button id="diagnostic-copy" class="power">Copy report</button><button id="diagnostic-export" class="secondary">Save to Downloads</button><button id="diagnostic-clear" class="secondary">Clear history</button><button id="diagnostic-close" class="secondary">Close</button></div>
+      <h2 id="diagnostic-title" tabindex="-1">Troubleshooting report</h2>
+      <p class="help">
+        Only app state and counters are included. No paths, source names,
+        profile names, screen content or audio.
+      </p>
+      <label class="checkbox"
+        ><input id="diagnostic-enabled" type="checkbox" /> Keep local state
+        history</label
+      >
+      <p class="help">
+        Off by default. Keeps up to 200 changes for 7 days. Turning it off
+        clears saved history.
+      </p>
+      <label for="diagnostic-text">Report preview</label
+      ><textarea
+        id="diagnostic-text"
+        readonly=""
+        spellcheck="false"
+        rows="12"
+      ></textarea>
+      <div class="input-row">
+        <button id="diagnostic-copy" class="power" type="button">
+          Copy report</button
+        ><button id="diagnostic-export" class="secondary" type="button">
+          Save to Downloads</button
+        ><button id="diagnostic-clear" class="secondary" type="button">
+          Clear history</button
+        ><button id="diagnostic-close" class="secondary" type="button">
+          Close
+        </button>
+      </div>
       <p id="diagnostic-status" class="help" role="status"></p>
     </dialog>
-        <dialog id="color-editor" aria-labelledby="color-editor-title">
-      <div class="section-title"><h2 id="color-editor-title">Color & palettes</h2><button id="close-color-editor" class="text-button">Cancel</button></div>
+    <dialog id="color-editor" aria-labelledby="color-editor-title">
+      <div class="section-title">
+        <h2 id="color-editor-title" tabindex="-1">Color &amp; palettes</h2>
+        <button id="close-color-editor" class="text-button" type="button">
+          Cancel
+        </button>
+      </div>
       <p class="help">Preview here. Apply when ready.</p>
       <div class="color-editor-grid">
-        <canvas id="color-wheel" width="240" height="240" aria-label="Color wheel; use the hue and saturation sliders for keyboard control" role="img"></canvas>
+        <canvas
+          id="color-wheel"
+          width="240"
+          height="240"
+          aria-label="Color wheel; use the hue and saturation sliders for keyboard control"
+          role="img"
+        ></canvas>
         <div class="color-fields">
-          <label>Hex<input id="color-hex" required maxlength="7" pattern="#[0-9a-fA-F]{6}" spellcheck="false" /></label>
-          <div class="rgb-fields"><label>Red<input id="color-red" required type="number" min="0" max="255" /></label><label>Green<input id="color-green" required type="number" min="0" max="255" /></label><label>Blue<input id="color-blue" required type="number" min="0" max="255" /></label></div>
-          <label>Hue <output id="color-hue-value"></output><input id="color-hue" type="range" min="0" max="359" /></label>
-          <label>Saturation <output id="color-sat-value"></output><input id="color-sat" type="range" min="0" max="100" /></label>
-          <label>Lightness <output id="color-light-value"></output><input id="color-light" type="range" min="0" max="100" /></label>
+          <label
+            >Hex<input
+              id="color-hex"
+              required=""
+              maxlength="7"
+              pattern="#[0-9a-fA-F]{6}"
+              spellcheck="false"
+          /></label>
+          <div class="rgb-fields">
+            <label
+              >Red<input
+                id="color-red"
+                required=""
+                type="number"
+                min="0"
+                max="255" /></label
+            ><label
+              >Green<input
+                id="color-green"
+                required=""
+                type="number"
+                min="0"
+                max="255" /></label
+            ><label
+              >Blue<input
+                id="color-blue"
+                required=""
+                type="number"
+                min="0"
+                max="255"
+            /></label>
+          </div>
+          <label
+            >Hue <output id="color-hue-value"></output
+            ><input id="color-hue" type="range" min="0" max="359"
+          /></label>
+          <label
+            >Saturation <output id="color-sat-value"></output
+            ><input id="color-sat" type="range" min="0" max="100"
+          /></label>
+          <label
+            >Lightness <output id="color-light-value"></output
+            ><input id="color-light" type="range" min="0" max="100"
+          /></label>
         </div>
       </div>
-      <label>White temperature <output id="color-temperature-value">6500 K</output><input id="color-temperature" type="range" min="1800" max="10000" step="100" value="6500" /></label>
-      <p class="help">Temperature is an RGB approximation. It does not calibrate your strip to a measured white point.</p>
-      <canvas id="color-preview" width="560" height="36" aria-label="Draft color preview" role="img"></canvas>
-      <div class="library-actions"><button id="reset-color" class="secondary">Reset color</button><button id="apply-color">Apply color</button></div>
-      <details id="saved-palettes"><summary>Saved palettes</summary>
-        <div class="input-row"><label>Palette<select id="saved-palette"><option value="">New palette</option></select></label><label>Name<input id="palette-name" maxlength="50" placeholder="Palette name" /></label></div>
-        <div id="palette-colors" class="color-chips" aria-label="Palette colors"></div>
-        <div class="library-actions"><button id="palette-add" class="secondary">Add draft color</button><button id="palette-replace" class="secondary">Replace selected color</button><button id="palette-left" class="secondary">Move left</button><button id="palette-right" class="secondary">Move right</button><button id="palette-remove" class="secondary">Remove color</button></div>
-        <div class="library-actions"><button id="palette-save" class="secondary">Save palette</button><button id="palette-delete" class="text-button">Delete palette</button><button id="palette-apply">Use palette</button></div>
+      <label
+        >White temperature <output id="color-temperature-value">6500 K</output
+        ><input
+          id="color-temperature"
+          type="range"
+          min="1800"
+          max="10000"
+          step="100"
+          value="6500"
+      /></label>
+      <p class="help">
+        Temperature is an RGB approximation. It does not calibrate your strip to
+        a measured white point.
+      </p>
+      <canvas
+        id="color-preview"
+        width="560"
+        height="36"
+        aria-label="Draft color preview"
+        role="img"
+      ></canvas>
+      <div class="library-actions">
+        <button id="reset-color" class="secondary" type="button">
+          Reset color</button
+        ><button id="apply-color" type="button">Apply color</button>
+      </div>
+      <details id="saved-palettes">
+        <summary>Saved palettes</summary>
+        <div class="input-row">
+          <label
+            >Palette<select id="saved-palette">
+              <option value="">New palette</option>
+            </select></label
+          ><label
+            >Name<input
+              id="palette-name"
+              maxlength="50"
+              placeholder="Palette name"
+          /></label>
+        </div>
+        <div
+          id="palette-colors"
+          class="color-chips"
+          aria-label="Palette colors"
+        ></div>
+        <div class="library-actions">
+          <button id="palette-add" class="secondary" type="button">
+            Add draft color</button
+          ><button id="palette-replace" class="secondary" type="button">
+            Replace selected color</button
+          ><button id="palette-left" class="secondary" type="button">
+            Move left</button
+          ><button id="palette-right" class="secondary" type="button">
+            Move right</button
+          ><button id="palette-remove" class="secondary" type="button">
+            Remove color
+          </button>
+        </div>
+        <div class="library-actions">
+          <button id="palette-save" class="secondary" type="button">
+            Save palette</button
+          ><button id="palette-delete" class="text-button" type="button">
+            Delete palette</button
+          ><button id="palette-apply" type="button">Use palette</button>
+        </div>
         <p id="palette-status" class="help" role="status"></p>
       </details>
     </dialog>
     <dialog id="export-dialog" aria-labelledby="export-title">
-      <h2 id="export-title">Export scenes & palettes</h2><p class="help">Choose what to share. Device bindings, shortcuts and startup preferences stay on this computer.</p>
-      <div id="export-items" class="transfer-list"></div><p id="export-status" class="help" role="status"></p>
-      <div class="library-actions"><button id="export-cancel" class="secondary">Close</button><button id="export-save">Save to Downloads</button></div>
+      <h2 id="export-title" tabindex="-1">Export scenes &amp; palettes</h2>
+      <p class="help">
+        Choose what to share. Device bindings, shortcuts and startup preferences
+        stay on this computer.
+      </p>
+      <div id="export-items" class="transfer-list"></div>
+      <p id="export-status" class="help" role="status"></p>
+      <div class="library-actions">
+        <button id="export-cancel" class="secondary" type="button">Close</button
+        ><button id="export-save" type="button">Save to Downloads</button>
+      </div>
     </dialog>
     <dialog id="import-dialog" aria-labelledby="import-title">
-      <h2 id="import-title">Import scenes & palettes</h2><p class="help">Review the file before importing. Lighting stays as it is; a backup of your current library is saved first.</p>
+      <h2 id="import-title" tabindex="-1">Import scenes &amp; palettes</h2>
+      <p class="help">
+        Review the file before importing. Lighting stays as it is; a backup of
+        your current library is saved first.
+      </p>
       <div id="import-items" class="transfer-list"></div>
-      <label>When an ID or name matches<select id="import-policy"><option value="copy">Keep both (add a copy)</option><option value="replace">Replace the matching scene or palette</option><option value="skip">Skip matching items</option></select></label>
-      <p class="help">Replacing a scene keeps its local display, shortcut and favorite setting. New scenes use the primary display and have no shortcut.</p>
-      <p id="import-status" class="help" role="status"></p><div class="library-actions"><button id="import-cancel" class="secondary">Cancel</button><button id="import-confirm">Import</button></div>
+      <label
+        >When an ID or name matches<select id="import-policy">
+          <option value="copy">Keep both (add a copy)</option>
+          <option value="replace">Replace the matching scene or palette</option>
+          <option value="skip">Skip matching items</option>
+        </select></label
+      >
+      <p class="help">
+        Replacing a scene keeps its local display, shortcut and favorite
+        setting. New scenes use the primary display and have no shortcut.
+      </p>
+      <p id="import-status" class="help" role="status"></p>
+      <div class="library-actions">
+        <button id="import-cancel" class="secondary" type="button">
+          Cancel</button
+        ><button id="import-confirm" type="button">Import</button>
+      </div>
     </dialog>
 
+    <dialog id="calibration-dialog" aria-labelledby="calibration-title">
+      <h2 id="calibration-title" tabindex="-1">Calibrate your strip</h2>
+      <p class="help">
+        1. Step through LEDs to find the first light and count. The test uses
+        low brightness and pauses your current lighting.
+      </p>
+      <div class="settings-grid">
+        <label
+          >LED count<input id="cal-count" type="number" min="1" max="127"
+        /></label>
+        <label
+          >Test LED<input id="cal-led" type="number" min="1" max="127"
+        /></label>
+      </div>
+      <div class="input-row">
+        <button id="cal-prev" class="secondary" type="button">
+          Previous LED</button
+        ><button id="cal-next" class="secondary" type="button">Next LED</button>
+      </div>
+      <p class="help">
+        2. Set the route. In the edge test, red is left, green is top, blue is
+        right and amber is bottom. Adjust offset and direction until they match.
+      </p>
+      <div class="settings-grid">
+        <label
+          >Coverage<select id="cal-sides">
+            <option value="3">Three sides</option>
+            <option value="4">Four sides</option>
+          </select></label
+        >
+        <label
+          >Starting offset<input
+            id="cal-offset"
+            type="number"
+            min="0"
+            max="126"
+        /></label>
+        <label class="checkbox"
+          ><input id="cal-reverse" type="checkbox" /> Reverse direction</label
+        >
+      </div>
+      <button id="cal-preview" class="secondary" type="button">
+        Preview mapped edges
+      </button>
+      <p id="cal-status" role="status"></p>
+      <div class="input-row">
+        <button id="cal-apply" class="power" type="button">Apply layout</button
+        ><button id="cal-cancel" class="secondary" type="button">
+          Cancel &amp; restore</button
+        ><button id="cal-stop" class="secondary" type="button">
+          Stop lighting
+        </button>
+      </div>
+    </dialog>
+
+    <dialog id="save-scene-dialog" aria-labelledby="save-scene-title">
+      <div class="dialog-heading">
+        <h2 id="save-scene-title" tabindex="-1">Save scene</h2>
+        <button
+          class="icon-button"
+          data-close="save-scene-dialog"
+          aria-label="Close"
+          type="button"
+        >
+          <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+            <use href="icons.svg#x"></use>
+          </svg>
+        </button>
+      </div>
+      <div class="profile-create">
+        <label for="profile-name">Scene name</label
+        ><input id="profile-name" maxlength="50" placeholder="Scene name" />
+        <button id="profile-save" class="secondary" type="button">
+          Save scene
+        </button>
+      </div>
+      <p id="save-scene-status" class="help" role="status"></p>
+    </dialog>
+    <dialog id="scene-editor" aria-labelledby="scene-editor-title">
+      <div class="dialog-heading">
+        <h2 id="scene-editor-title" tabindex="-1">Edit scene</h2>
+        <button
+          class="icon-button"
+          data-close="scene-editor"
+          aria-label="Close"
+          type="button"
+        >
+          <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+            <use href="icons.svg#x"></use>
+          </svg>
+        </button>
+      </div>
+      <div id="scene-editor-fields" class="profile-fields"></div>
+      <p id="scene-editor-status" class="help" role="status"></p>
+    </dialog>
+    <dialog id="connection-dialog" aria-labelledby="connection-title">
+      <button
+        class="dialog-close icon-button"
+        data-close="connection-dialog"
+        aria-label="Close connection details"
+        type="button"
+      >
+        <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+          <use href="icons.svg#x"></use>
+        </svg>
+      </button>
+      <details class="telemetry" open="">
+        <div class="section-title">
+          <h2 id="connection-title" tabindex="-1">Connection details</h2>
+          <span id="activity-label" class="badge">Idle</span>
+        </div>
+
+        <div class="metric-grid">
+          <div>
+            <strong id="usb-fps">—</strong><span>USB frames / sec</span>
+          </div>
+          <div>
+            <strong id="write-time">—</strong><span>Last write · ms</span>
+          </div>
+        </div>
+        <dl>
+          <div>
+            <dt>Last successful write</dt>
+            <dd id="last-write">Never</dd>
+          </div>
+          <div>
+            <dt>Frames sent</dt>
+            <dd id="frames-written">0</dd>
+          </div>
+          <div>
+            <dt>Write failures</dt>
+            <dd id="write-errors">0</dd>
+          </div>
+          <div>
+            <dt>Capture resolution</dt>
+            <dd id="capture-size">—</dd>
+          </div>
+          <div>
+            <dt>Audio input</dt>
+            <dd id="audio-level">—</dd>
+          </div>
+        </dl>
+        <dl>
+          <div>
+            <dt>Missed frame slots</dt>
+            <dd id="dropped-frames">0</dd>
+          </div>
+        </dl>
+        <p class="help">
+          Missed engine deadlines while animation or capture is active.
+          Video-source drops are not measured.
+        </p>
+        <button id="diagnostic-preview" class="secondary" type="button">
+          Troubleshooting report…
+        </button>
+        <p class="help">
+          USB delivery is measured. Physical LED state is not available.
+        </p>
+      </details>
+    </dialog>
+    <script src="ui-common.js"></script>
     <script src="library-tools.js"></script>
     <script src="renderer.js"></script>
-    <dialog id="calibration-dialog" aria-labelledby="calibration-title">
-      <h2 id="calibration-title">Calibrate your strip</h2>
-      <p class="help">1. Step through LEDs to find the first light and count. The test uses low brightness and pauses your current lighting.</p>
-      <div class="settings-grid">
-        <label>LED count<input id="cal-count" type="number" min="1" max="127" /></label>
-        <label>Test LED<input id="cal-led" type="number" min="1" max="127" /></label>
-      </div>
-      <div class="input-row"><button id="cal-prev" class="secondary">Previous LED</button><button id="cal-next" class="secondary">Next LED</button></div>
-      <p class="help">2. Set the route. In the edge test, red is left, green is top, blue is right and amber is bottom. Adjust offset and direction until they match.</p>
-      <div class="settings-grid">
-        <label>Coverage<select id="cal-sides"><option value="3">Three sides</option><option value="4">Four sides</option></select></label>
-        <label>Starting offset<input id="cal-offset" type="number" min="0" max="126" /></label>
-        <label class="checkbox"><input id="cal-reverse" type="checkbox" /> Reverse direction</label>
-      </div>
-      <button id="cal-preview" class="secondary">Preview mapped edges</button>
-      <p id="cal-status" role="status"></p>
-      <div class="input-row"><button id="cal-apply" class="power">Apply layout</button><button id="cal-cancel" class="secondary">Cancel & restore</button><button id="cal-stop" class="secondary">Stop lighting</button></div>
-    </dialog>
   </body>
 </html>

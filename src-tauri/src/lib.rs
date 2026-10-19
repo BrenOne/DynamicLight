@@ -95,6 +95,10 @@ fn platform_name() -> &'static str {
     std::env::consts::OS
 }
 #[tauri::command]
+fn app_version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}
+#[tauri::command]
 fn effect_previews(
     settings: settings::Settings,
     seconds: f32,
@@ -159,6 +163,7 @@ pub fn run() {
             displays,
             quit,
             platform_name,
+            app_version,
             effect_previews,
             launch_at_login,
             profiles::profile_library,

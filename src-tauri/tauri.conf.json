@@ -1,12 +1,25 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "DynamicLight",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "identifier": "com.dynamiclight.desktop",
-  "build": { "frontendDist": "../src/ui" },
+  "build": {
+    "frontendDist": "../src/ui"
+  },
   "app": {
     "withGlobalTauri": true,
-    "windows": [{ "label": "main", "title": "DynamicLight", "visible": false, "width": 1180, "height": 830, "minWidth": 540, "minHeight": 560, "backgroundColor": "#101115" }],
+    "windows": [
+      {
+        "label": "main",
+        "title": "DynamicLight",
+        "visible": false,
+        "width": 1120,
+        "height": 780,
+        "minWidth": 540,
+        "minHeight": 560,
+        "backgroundColor": "#141419"
+      }
+    ],
     "security": {
       "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src 'none'"
     }
@@ -17,19 +30,37 @@
     "icon": ["icons/icon.png", "icons/icon.ico", "icons/icon.icns"],
     "copyright": "Copyright 2026 mskutin",
     "licenseFile": "../LICENSE",
-    "resources": { "../LICENSE": "LICENSE" },
+    "resources": {
+      "../LICENSE": "LICENSE"
+    },
     "category": "Utility",
     "shortDescription": "USB monitor backlight controller",
-    "windows": { "nsis": { "installMode": "currentUser" } },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
     "linux": {
       "deb": {
-        "depends": ["libasound2", "libudev1", "libpipewire-0.3-0", "libxcb1", "libxcb-randr0", "pulseaudio-utils"],
+        "depends": [
+          "libasound2",
+          "libudev1",
+          "libpipewire-0.3-0",
+          "libxcb1",
+          "libxcb-randr0",
+          "pulseaudio-utils"
+        ],
         "recommends": ["libasound2-plugins"],
-        "files": {"/usr/lib/udev/rules.d/69-dynamiclight.rules": "linux/69-dynamiclight.rules"},
+        "files": {
+          "/usr/lib/udev/rules.d/69-dynamiclight.rules": "linux/69-dynamiclight.rules"
+        },
         "postInstallScript": "linux/postinst",
         "postRemoveScript": "linux/postrm"
       }
     },
-    "macOS": { "minimumSystemVersion": "13.0", "infoPlist": "Info.plist" }
+    "macOS": {
+      "minimumSystemVersion": "13.0",
+      "infoPlist": "Info.plist"
+    }
   }
 }

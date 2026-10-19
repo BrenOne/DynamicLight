@@ -18,12 +18,15 @@ function markSettings(keys) {
   for (const key of keys) pendingSettings[key] = structuredClone(settings[key]);
 }
 function acceptSettings(value) {
-  settings = { ...structuredClone(value.settings), ...structuredClone(pendingSettings) };
+  settings = {
+    ...structuredClone(value.settings),
+    ...structuredClone(pendingSettings),
+  };
 }
 const labels = {
-  solid: "Solid color",
+  solid: "Color",
   screen: "Screen sync",
-  blend: "Screen + music",
+  blend: "Screen + audio",
   music: "Music",
   rainbow: "Effects",
 };
@@ -41,8 +44,13 @@ const ranges = {
   speed: "speed",
   "noise-floor": "noiseFloor",
   release: "release",
-  "input-gain": "inputGain", blend: "blend", saturation: "saturation", gamma: "gamma",
-  "max-brightness": "maxBrightness", "transition-limit": "transitionLimit", "minimum-glow": "minimumGlow",
+  "input-gain": "inputGain",
+  blend: "blend",
+  saturation: "saturation",
+  gamma: "gamma",
+  "max-brightness": "maxBrightness",
+  "transition-limit": "transitionLimit",
+  "minimum-glow": "minimumGlow",
 };
 const behaviorSettings = [
   ["restore-on-start", "restoreOnStart"],
@@ -55,7 +63,11 @@ function notice(message, error = false) {
   $("notice").hidden = !message;
   $("notice").classList.toggle("error", error);
 }
-$("open-compact").onclick = () => run(async () => { await save(); await invoke("compact_window", { operation: "open", pinned: null }); });
+$("open-compact").onclick = () =>
+  run(async () => {
+    await save();
+    await invoke("compact_window", { operation: "open", pinned: null });
+  });
 function request(action) {
   const pending = queue
     .catch(() => {})
@@ -69,7 +81,11 @@ function request(action) {
 function renderRuntime(value) {
   const endedCalibration = runtime?.calibrating && !value.calibrating;
   runtime = value;
-  if (endedCalibration && $("calibration-dialog").open) { $("calibration-dialog").close(); settings = value.settings; queueMicrotask(updateUI); }
+  if (endedCalibration && $("calibration-dialog").open) {
+    $("calibration-dialog").close();
+    settings = value.settings;
+    queueMicrotask(updateUI);
+  }
   if (!settings) return;
   const connected = value.status.connected;
   const current = value.settings;
@@ -77,9 +93,12 @@ function renderRuntime(value) {
     ["screen", "music", "blend"].includes(current.mode) && !value.capturing;
   const active =
     connected && value.powered && !waiting && current.brightness > 0;
-  $("status-dot").classList.toggle("connected", connected);
+  $("status-dot").classList.toggle(
+    "connected",
+    LightUI.status(value) === "Sending",
+  );
   $("live-dot").classList.toggle("active", active);
-  $("status-label").textContent = connected ? "Connected" : "Not connected";
+  $("status-label").textContent = LightUI.status(value);
   $("connect").textContent = connected ? "Disconnect" : "Reconnect";
   $("connection-message").textContent = value.status.message;
   const running = value.requested;
@@ -89,7 +108,7 @@ function renderRuntime(value) {
     ? "Working…"
     : running
       ? "Stop"
-      : `Start ${labels[settings.mode].toLowerCase()}`;
+      : "Start";
   $("power").setAttribute(
     "aria-label",
     running ? "Stop lighting" : `Start ${labels[settings.mode].toLowerCase()}`,
@@ -141,19 +160,27 @@ function renderRuntime(value) {
   const message = value.pauseReason
     ? `${value.pauseReason}${value.requested ? " · lighting paused" : ""}`
     : value.captureRequiresStart
-      ? (value.error ? `${value.error} ` : "") + "Capture needs a restart. Click Retry to continue."
-      : value.error || (value.recovering ? "Reconnecting… Stop cancels recovery." : "");
-  if (message !== lastError || (message && $("notice").hidden)) notice(message, !!value.error && !value.pauseReason);
+      ? (value.error ? `${value.error} ` : "") +
+        "Capture needs a restart. Click Retry to continue."
+      : value.error ||
+        (value.recovering ? "Reconnecting… Stop cancels recovery." : "");
+  if (message !== lastError || (message && $("notice").hidden))
+    notice(message, !!value.error && !value.pauseReason);
   lastError = message;
-  $("retry").hidden = !value.requested || !!value.pauseReason || !(value.error || value.captureRequiresStart || value.recovering);
+  $("retry").hidden =
+    !value.requested ||
+    !!value.pauseReason ||
+    !(value.error || value.captureRequiresStart || value.recovering);
   $("retry").disabled = busy;
   $("lifecycle-warning").textContent = value.lifecycleWarning || "";
   $("lifecycle-warning").hidden = !value.lifecycleWarning;
   if (value.pauseReason) $("frame-rate").textContent = value.pauseReason;
-  else if (value.recovering) $("frame-rate").textContent = "Waiting to reconnect";
+  else if (value.recovering)
+    $("frame-rate").textContent = "Waiting to reconnect";
   draw(value.colors);
   drawSpectrum(value.audioBands);
   updateSceneSelection();
+  updateWorkspaceSummary();
 }
 function selectButtons(selector, key, selected) {
   document.querySelectorAll(selector).forEach((button) => {
@@ -181,9 +208,14 @@ function updateUI() {
     $(name).value = settings[name];
   $("input-gain-value").textContent = settings.inputGain + " dB";
   $("gamma-value").textContent = (settings.gamma / 100).toFixed(2);
-  $("transition-limit-value").textContent = settings.transitionLimit ? settings.transitionLimit + "% / s" : "Off";
+  $("transition-limit-value").textContent = settings.transitionLimit
+    ? settings.transitionLimit + "% / s"
+    : "Off";
   $("exclude-bars").checked = !!settings.excludeBars;
-  ["red", "green", "blue"].forEach((c, i) => { $(c + "-balance").value = settings.rgbBalance[i]; $(c + "-balance-value").textContent = settings.rgbBalance[i] + "%"; });
+  ["red", "green", "blue"].forEach((c, i) => {
+    $(c + "-balance").value = settings.rgbBalance[i];
+    $(c + "-balance-value").textContent = settings.rgbBalance[i] + "%";
+  });
   $("screen-tuning").hidden = !["screen", "blend"].includes(settings.mode);
   $("blend-control").hidden = settings.mode !== "blend";
   document.querySelector(".music-styles").hidden = settings.mode === "blend";
@@ -196,11 +228,15 @@ function updateUI() {
   for (const [id, key] of behaviorSettings) $(id).checked = !!settings[key];
   $("launch-at-login").checked = loginEnabled;
   $("launch-at-login").disabled = busy || !loginAvailable;
-  $("device-detail").textContent = `${settings.count} LEDs · USB HID`;
+  $("device-detail").textContent =
+    `${settings.count} LEDs · ${settings.sides === 3 ? "Three sides" : "Four sides"} · USB HID`;
   $("led-total").textContent = `→ ${settings.count}`;
-  $("capture-controls").hidden = !["screen", "music", "blend"].includes(settings.mode);
+  $("capture-controls").hidden = !["screen", "music", "blend"].includes(
+    settings.mode,
+  );
   $("display-controls").hidden = !["screen", "blend"].includes(settings.mode);
   $("music-controls").hidden = !["music", "blend"].includes(settings.mode);
+  $("audio-monitor").hidden = $("music-controls").hidden;
   $("effect-controls").hidden = settings.mode !== "rainbow";
   $("palette-controls").hidden = !["music", "rainbow"].includes(settings.mode);
   const fixedPalette =
@@ -218,25 +254,27 @@ function updateUI() {
     settings.mode !== "rainbow" &&
     !(settings.mode === "music" && settings.musicStyle === "wave");
   $("smoothing").disabled = busy || settings.mode === "solid";
+  $("smoothing-control").hidden = settings.mode === "solid";
   $("screen").disabled = busy || !["screen", "blend"].includes(settings.mode);
-  $("refresh-screens").disabled = busy || !["screen", "blend"].includes(settings.mode);
-  $("capture-help").textContent =
-    ["screen", "blend"].includes(settings.mode)
-      ? "Capture stays on this computer. " +
-        (platform === "linux"
-          ? "Screen sync needs an X11 session; Wayland support is planned."
-          : platform === "macos"
-            ? "Allow Screen Recording in Privacy settings."
-            : "Only edge colors are sent to your strip.")
-      : "Audio is analyzed locally. " +
-        (platform === "linux"
-          ? "Computer audio uses PulseAudio or PipeWire."
-          : platform === "macos"
-            ? "Allow Screen & System Audio Recording for computer audio, or Microphone access for your mic."
-            : "Computer audio follows your speakers. Microphone listens to your room.");
+  $("refresh-screens").disabled =
+    busy || !["screen", "blend"].includes(settings.mode);
+  $("capture-help").textContent = ["screen", "blend"].includes(settings.mode)
+    ? "Capture stays on this computer. " +
+      (platform === "linux"
+        ? "Screen sync needs an X11 session; Wayland support is planned."
+        : platform === "macos"
+          ? "Allow Screen Recording in Privacy settings."
+          : "Only edge colors are sent to your strip.")
+    : "Audio is analyzed locally. " +
+      (platform === "linux"
+        ? "Computer audio uses PulseAudio or PipeWire."
+        : platform === "macos"
+          ? "Allow Screen & System Audio Recording for computer audio, or Microphone access for your mic."
+          : "Computer audio follows your speakers. Microphone listens to your room.");
   if (runtime) renderRuntime(runtime);
   refreshEffectPreviews();
   window.LibraryTools?.sync();
+  updateWorkspaceSummary();
 }
 // Coalesce drag updates: at most one preview IPC in flight, then the newest value.
 // Disk writes happen after the user pauses, not on each animation frame.
@@ -245,17 +283,26 @@ function previewSettings() {
     previewPending = (async () => {
       while (Object.keys(pendingSettings).length) {
         const patch = structuredClone(pendingSettings);
-        const value = await request({ type: "patchSettings", patch, persist: false });
+        const value = await request({
+          type: "patchSettings",
+          patch,
+          persist: false,
+        });
         for (const [key, sent] of Object.entries(patch)) {
-          if (JSON.stringify(pendingSettings[key]) === JSON.stringify(sent)) delete pendingSettings[key];
+          if (JSON.stringify(pendingSettings[key]) === JSON.stringify(sent))
+            delete pendingSettings[key];
         }
         acceptSettings(value);
       }
-    })().catch((error) => {
-      notice(String(error), true);
-      $("save-state").textContent = "Not saved";
-      throw error;
-    }).finally(() => { previewPending = undefined; });
+    })()
+      .catch((error) => {
+        notice(String(error), true);
+        $("save-state").textContent = "Not saved";
+        throw error;
+      })
+      .finally(() => {
+        previewPending = undefined;
+      });
   }
   return previewPending;
 }
@@ -329,112 +376,18 @@ async function run(action) {
     updateUI();
   }
 }
-function positions(count, sides) {
-  const aspect = 16 / 9,
-    perimeter = 2 + aspect * (sides === 4 ? 2 : 1);
-  return Array.from({ length: count }, (_, i) => {
-    const p = ((i + 0.5) / count) * perimeter;
-    if (p < 1) return [0, 1 - p];
-    if (p < 1 + aspect) return [(p - 1) / aspect, 0];
-    if (p < 2 + aspect) return [1, p - 1 - aspect];
-    return [1 - (p - 2 - aspect) / aspect, 1];
-  });
-}
 function draw(colors) {
-  const ctx = $("preview").getContext("2d");
-  ctx.clearRect(0, 0, 1000, 420);
-  const s = runtime.settings;
-  const shown = runtime.powered ? colors : colors.map(() => [0, 0, 0]);
-  const points = positions(shown.length, s.sides);
-  ctx.strokeStyle = "#283a402b";
-  ctx.lineWidth = 1;
-  for (let x = 20; x < 1000; x += 40) {
-    ctx.beginPath();
-    ctx.moveTo(x, 20);
-    ctx.lineTo(x, 400);
-    ctx.stroke();
-  }
-  for (let y = 20; y < 420; y += 40) {
-    ctx.beginPath();
-    ctx.moveTo(20, y);
-    ctx.lineTo(980, y);
-    ctx.stroke();
-  }
-  // The glow uses actual generated colors, including silence and lights-off black.
-  shown.forEach((rgb, i) => {
-    const [x, y] = points[i],
-      px = 235 + x * 530,
-      py = 55 + y * 275;
-    const glow = ctx.createRadialGradient(px, py, 0, px, py, 75);
-    glow.addColorStop(0, `rgba(${rgb.join(",")},0.13)`);
-    glow.addColorStop(1, `rgba(${rgb.join(",")},0)`);
-    ctx.fillStyle = glow;
-    ctx.fillRect(px - 75, py - 75, 150, 150);
-  });
-  ctx.fillStyle = "#0c1419";
-  ctx.strokeStyle = "#4b6269";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.roundRect(247, 66, 506, 253, 11);
-  ctx.fill();
-  ctx.stroke();
-  const color = shown[Math.floor(shown.length / 2)] || [0, 0, 0];
-  const gradient = ctx.createLinearGradient(260, 80, 730, 310);
-  gradient.addColorStop(0, `rgba(${color.join(",")},0.15)`);
-  gradient.addColorStop(1, "#10191e");
-  ctx.fillStyle = gradient;
-  ctx.fillRect(257, 76, 486, 232);
-  ctx.fillStyle = "#d5e7e0";
-  ctx.font = "500 24px Segoe UI";
-  ctx.textAlign = "center";
-  ctx.fillText(
-    s.mode === "rainbow" ? effectLabels[s.effect] : labels[s.mode],
-    500,
-    184,
+  if (!runtime) return;
+  LightUI.monitor($("preview"), colors, runtime.settings, runtime.powered);
+  LightUI.strip(
+    $("strip-preview"),
+    colors,
+    runtime.settings,
+    runtime.powered,
+    runtime.calibrating && runtime.calibrationLed !== null,
   );
-  ctx.font = "14px Segoe UI";
-  ctx.fillStyle = "#94a8b2";
-  ctx.fillText(
-    isRunning(runtime)
-      ? s.brightness === 0
-        ? "Brightness is 0%"
-        : "Running"
-      : runtime.pauseReason || (runtime.recovering ? "Reconnecting…" : runtime.captureRequiresStart ? "Capture paused · click Retry" : "Stopped · select a mode to start"),
-    500,
-    216,
-  );
-  shown.forEach((rgb, i) => {
-    const [x, y] = points[i];
-    ctx.beginPath();
-    ctx.fillStyle = rgb.some((c) => c > 0)
-      ? `rgb(${rgb.join(",")})`
-      : "#34434a";
-    ctx.arc(235 + x * 530, 55 + y * 275, 3.2, 0, Math.PI * 2);
-    ctx.fill();
-  });
-  ctx.fillStyle = "#283a40";
-  ctx.fillRect(486, 321, 28, 29);
-  ctx.beginPath();
-  ctx.roundRect(439, 350, 122, 5, 3);
-  ctx.fill();
-  ctx.fillStyle = "#6e868f";
-  ctx.font = "10px Segoe UI";
-  ctx.fillText(`${s.count} LEDS  /  ${s.sides}-SIDE LAYOUT`, 500, 384);
-  const strip = $("strip-preview").getContext("2d");
-  strip.clearRect(0, 0, 1000, 18);
-  shown.forEach((_, i) => {
-    const physicalTest = runtime.calibrating && runtime.calibrationLed !== null;
-    const j = (i + (physicalTest ? 0 : s.offset)) % shown.length,
-      rgb = shown[s.reverse && !physicalTest ? shown.length - 1 - j : j];
-    strip.fillStyle = `rgb(${rgb.join(",")})`;
-    strip.fillRect(
-      (i * 1000) / shown.length,
-      0,
-      Math.max(1, 1000 / shown.length - 1),
-      18,
-    );
-  });
 }
+
 function drawSpectrum(bands) {
   if ($("music-controls").hidden) return;
   const ctx = $("spectrum").getContext("2d");
@@ -454,7 +407,8 @@ function isRunning(value) {
   return (
     value?.status.connected &&
     value.powered &&
-    (!["screen", "music", "blend"].includes(value.settings.mode) || value.capturing)
+    (!["screen", "music", "blend"].includes(value.settings.mode) ||
+      value.capturing)
   );
 }
 async function startLighting() {
@@ -493,10 +447,12 @@ async function refreshDisplays() {
     $("screen").append(missing);
   }
   $("screen").value = settings.screenId;
+  updateWorkspaceSummary();
 }
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 let thumbnailTimer,
   thumbnailBusy = false,
+  lastEffectPreviewKey = "",
   thumbnailsVisible = true,
   thumbnailsFocused = true;
 async function refreshEffectPreviews() {
@@ -505,6 +461,7 @@ async function refreshEffectPreviews() {
     !settings ||
     thumbnailBusy ||
     $("effect-controls").hidden ||
+    currentView !== "control" ||
     !thumbnailsVisible ||
     !thumbnailsFocused ||
     document.hidden
@@ -512,61 +469,191 @@ async function refreshEffectPreviews() {
     return;
   thumbnailBusy = true;
   const key = JSON.stringify(settings);
+  const active = reducedMotion.matches
+    ? null
+    : document.querySelector(
+        ".effect-grid button:hover, .effect-grid button:focus-within",
+      );
   try {
+    if (key === lastEffectPreviewKey && !active) return;
     const frames = await invoke("effect_previews", {
       settings: { ...settings },
-      seconds: reducedMotion.matches ? 2 : (performance.now() / 1000) % 86400,
+      seconds: active ? (performance.now() / 1000) % 86400 : 2,
     });
     if (!$("effect-controls").hidden)
-      document
-        .querySelectorAll(".effect-art")
-        .forEach((canvas, i) => drawEffectThumbnail(canvas, frames[i]));
+      document.querySelectorAll(".effect-art").forEach((canvas, i) => {
+        if (key !== lastEffectPreviewKey || !active || active.contains(canvas))
+          drawEffectThumbnail(canvas, frames[i]);
+      });
+    lastEffectPreviewKey = key;
   } catch (error) {
     notice("Effect preview unavailable: " + String(error), true);
   } finally {
     thumbnailBusy = false;
-    if (!reducedMotion.matches || key !== JSON.stringify(settings))
+    if (active || key !== JSON.stringify(settings))
       thumbnailTimer = setTimeout(refreshEffectPreviews, 100);
   }
 }
 function drawEffectThumbnail(canvas, colors) {
-  const ctx = canvas.getContext("2d");
-  ctx.clearRect(0, 0, 240, 150);
-  const points = positions(colors.length, 3);
-  // Lit segments and their spill follow the actual native effect samples.
-  ctx.fillStyle = "#101b21";
-  ctx.strokeStyle = "#2b3b43";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.roundRect(43, 37, 154, 76, 5);
-  ctx.fill();
-  ctx.stroke();
-  colors.forEach((rgb, i) => {
-    const [x, y] = points[i],
-      px = 34 + x * 172,
-      py = 28 + y * 94;
-    const glow = ctx.createRadialGradient(px, py, 0, px, py, 24);
-    glow.addColorStop(0, `rgba(${rgb.join(",")},.22)`);
-    glow.addColorStop(1, `rgba(${rgb.join(",")},0)`);
-    ctx.fillStyle = glow;
-    ctx.fillRect(px - 24, py - 24, 48, 48);
+  LightUI.pattern(canvas, colors);
+}
+
+let currentView = "control";
+const viewTitles = {
+  control: "Control",
+  scenes: "Scenes",
+  device: "Device setup",
+  settings: "Settings",
+};
+function showView(view, focus = true) {
+  if (!viewTitles[view]) return;
+  currentView = view;
+  for (const key of Object.keys(viewTitles))
+    $("view-" + key).hidden = key !== view;
+  document.querySelectorAll(".app-sidebar [data-view]").forEach((button) => {
+    if (button.dataset.view === view)
+      button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
   });
-  colors.forEach((rgb, i) => {
-    const [x, y] = points[i];
-    ctx.fillStyle = rgb.some((c) => c > 1)
-      ? `rgb(${rgb.join(",")})`
-      : "#29363c";
-    ctx.beginPath();
-    ctx.roundRect(32 + x * 172, 26 + y * 94, 4, 4, 1.2);
-    ctx.fill();
+  $("view-title").textContent = viewTitles[view];
+  if (focus)
+    $("view-" + view)
+      .querySelector("h2")
+      ?.focus({ preventScroll: true });
+  requestAnimationFrame(() => {
+    if (runtime) {
+      draw(runtime.colors);
+      drawSpectrum(runtime.audioBands);
+    }
+    refreshEffectPreviews();
+    refreshScenePreviews();
   });
-  ctx.fillStyle = "#2b3b43";
-  ctx.fillRect(117, 114, 6, 9);
-  ctx.fillRect(104, 123, 32, 2);
+}
+function updateWorkspaceSummary() {
+  if (!settings) return;
+  const display =
+    $("screen").selectedOptions[0]?.textContent || "Primary display";
+  const musicNames = {
+    spectrum: "Spectrum",
+    bass: "Bass pulse",
+    vu: "Level meter",
+    wave: "Color wave",
+    beat: "Beat pulse",
+  };
+  $("workspace-title").textContent =
+    settings.mode === "rainbow"
+      ? effectLabels[settings.effect]
+      : labels[settings.mode];
+  $("inspector-title").textContent =
+    settings.mode === "rainbow"
+      ? "Effect settings"
+      : labels[settings.mode] + " settings";
+  $("workspace-subtitle").textContent = ["screen", "blend"].includes(
+    settings.mode,
+  )
+    ? display
+    : settings.mode === "music"
+      ? musicNames[settings.musicStyle]
+      : settings.mode === "solid"
+        ? "Fixed color"
+        : "Animated pattern";
+  $("preview-title").textContent = ["screen", "blend"].includes(settings.mode)
+    ? display
+    : settings.mode === "solid"
+      ? settings.color.toUpperCase()
+      : settings.mode === "music"
+        ? musicNames[settings.musicStyle]
+        : effectLabels[settings.effect];
+  $("preview-state").textContent = runtime?.calibrating
+    ? "Calibration output"
+    : !runtime?.status.connected
+      ? "No USB output"
+      : LightUI.status(runtime) === "Sending"
+        ? "Colors sent to USB"
+        : LightUI.status(runtime);
+}
+function initWorkspace() {
+  for (const [index, button] of [
+    ...document.querySelectorAll(".app-sidebar [data-view]"),
+  ].entries()) {
+    button.title = `${viewTitles[button.dataset.view]} (${platform === "macos" ? "⌘" : "Ctrl+"}${index + 1})`;
+    button.setAttribute(
+      "aria-keyshortcuts",
+      `${platform === "macos" ? "Meta" : "Control"}+${index + 1}`,
+    );
+  }
+  document
+    .querySelectorAll("[data-view]")
+    .forEach(
+      (button) => (button.onclick = () => showView(button.dataset.view)),
+    );
+  document
+    .querySelectorAll("[data-close]")
+    .forEach(
+      (button) => (button.onclick = () => $(button.dataset.close).close()),
+    );
+  document.querySelectorAll("[data-save-scene]").forEach(
+    (button) =>
+      (button.onclick = () => {
+        $("save-scene-status").textContent = "";
+        $("save-scene-dialog").showModal();
+        $("profile-name").focus();
+      }),
+  );
+  $("profile-name").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      $("profile-save").click();
+    }
+  });
+  $("connection-details").onclick = () => $("connection-dialog").showModal();
+  $("preview-toggle").onclick = () => {
+    const open = $("view-control").classList.toggle("preview-expanded");
+    $("preview-toggle").setAttribute("aria-expanded", String(open));
+    $("preview-toggle").querySelector("span").textContent = open
+      ? "Hide output preview"
+      : "Show output preview";
+    if (runtime) draw(runtime.colors);
+  };
+  const refresh = () => {
+    if (runtime) {
+      draw(runtime.colors);
+      drawSpectrum(runtime.audioBands);
+    }
+    lastEffectPreviewKey = "";
+    lastScenePreviewKey = "";
+    refreshEffectPreviews();
+    refreshScenePreviews();
+  };
+  new ResizeObserver(refresh).observe(document.querySelector(".app-views"));
+  matchMedia("(prefers-color-scheme: dark)").addEventListener(
+    "change",
+    refresh,
+  );
+  for (const event of ["pointerover", "pointerout", "focusin", "focusout"]) {
+    $("effect-controls").addEventListener(event, refreshEffectPreviews);
+    $("view-scenes").addEventListener(event, refreshScenePreviews);
+  }
+  document.addEventListener("keydown", (event) => {
+    if (
+      !(event.ctrlKey || event.metaKey) ||
+      event.shiftKey ||
+      event.altKey ||
+      document.querySelector("dialog[open]")
+    )
+      return;
+    const view = Object.keys(viewTitles)[Number(event.key) - 1];
+    if (view) {
+      event.preventDefault();
+      showView(view);
+    }
+  });
 }
 
 async function init() {
   platform = await invoke("platform_name");
+  initWorkspace();
+  await LightUI.version();
   if (platform === "linux")
     $("close-behavior").textContent =
       "Closing the window minimizes it and keeps lighting running. Use Quit to exit.";
@@ -575,14 +662,34 @@ async function init() {
   );
   const initial = await request({ type: "snapshot" });
   settings = initial.settings;
-  try { loginEnabled = await invoke("launch_at_login", { enabled: null }); }
-  catch (error) { loginAvailable = false; notice(`Launch at login is unavailable: ${error}`, true); }
+  try {
+    loginEnabled = await invoke("launch_at_login", { enabled: null });
+  } catch (error) {
+    loginAvailable = false;
+    notice(`Launch at login is unavailable: ${error}`, true);
+  }
   await initProfiles();
   window.LibraryTools.init();
   initCalibration();
-  $("exclude-bars").onchange = e => { settings.excludeBars = e.target.checked; changed(["excludeBars"]); };
-  ["red", "green", "blue"].forEach((c, i) => { $(c + "-balance").oninput = e => { settings.rgbBalance[i] = Number(e.target.value); changed(["rgbBalance"]); }; });
-  $("reset-screen").onclick = () => { Object.assign(settings, { excludeBars: false, rgbBalance: [100,100,100], saturation: 100, gamma: 100 }); changed(["excludeBars", "rgbBalance", "saturation", "gamma"]); };
+  $("exclude-bars").onchange = (e) => {
+    settings.excludeBars = e.target.checked;
+    changed(["excludeBars"]);
+  };
+  ["red", "green", "blue"].forEach((c, i) => {
+    $(c + "-balance").oninput = (e) => {
+      settings.rgbBalance[i] = Number(e.target.value);
+      changed(["rgbBalance"]);
+    };
+  });
+  $("reset-screen").onclick = () => {
+    Object.assign(settings, {
+      excludeBars: false,
+      rgbBalance: [100, 100, 100],
+      saturation: 100,
+      gamma: 100,
+    });
+    changed(["excludeBars", "rgbBalance", "saturation", "gamma"]);
+  };
   updateUI();
   $("connect").onclick = () =>
     run(async () => {
@@ -603,10 +710,16 @@ async function init() {
     const enabled = event.target.checked;
     run(async () => {
       loginEnabled = await invoke("launch_at_login", { enabled });
-      if (loginEnabled !== enabled) throw new Error("Login startup was not changed. Check your operating system's login-item settings.");
+      if (loginEnabled !== enabled)
+        throw new Error(
+          "Login startup was not changed. Check your operating system's login-item settings.",
+        );
     });
   };
-  $("effect-direction").onchange = () => { settings.effectReverse = $("effect-direction").value === "reverse"; changed(["effectReverse"]); };
+  $("effect-direction").onchange = () => {
+    settings.effectReverse = $("effect-direction").value === "reverse";
+    changed(["effectReverse"]);
+  };
   document.querySelectorAll("[data-mode]").forEach((button) => {
     button.setAttribute(
       "aria-label",
@@ -615,10 +728,12 @@ async function init() {
     button.onclick = () =>
       run(async () => {
         await save();
-        settings = (await request({ type: "selectMode", mode: button.dataset.mode })).settings;
+        settings = (
+          await request({ type: "startMode", mode: button.dataset.mode })
+        ).settings;
         updateUI();
-        await startLighting();
-        if (["screen", "blend"].includes(settings.mode)) await refreshDisplays();
+        if (["screen", "blend"].includes(settings.mode))
+          await refreshDisplays();
       });
   });
   for (const [selector, dataset, key] of [
@@ -698,130 +813,420 @@ async function init() {
   if (["screen", "blend"].includes(settings.mode))
     refreshDisplays().catch((error) => notice(String(error), true));
   window.addEventListener("focus", () =>
-    request({ type: "snapshot" }).then(value => { if (!busy && !saveTimer && !previewPending) { settings = value.settings; updateUI(); } }).catch((error) => notice(String(error), true)),
+    request({ type: "snapshot" })
+      .then((value) => {
+        if (!busy && !saveTimer && !previewPending) {
+          settings = value.settings;
+          updateUI();
+        }
+      })
+      .catch((error) => notice(String(error), true)),
   );
 }
 function initCalibration() {
   const dialog = $("calibration-dialog");
-  let draft, edgePreview = false;
+  let draft,
+    edgePreview = false;
   async function step() {
     if (!runtime?.calibrating) return false;
-    for (const id of ["cal-count", "cal-led", "cal-offset"]) if (!$(id).reportValidity()) return false;
+    for (const id of ["cal-count", "cal-led", "cal-offset"])
+      if (!$(id).reportValidity()) return false;
     draft.count = Number($("cal-count").value);
     draft.sides = Number($("cal-sides").value);
     draft.offset = Number($("cal-offset").value);
     draft.reverse = $("cal-reverse").checked;
     const led = Math.min(draft.count, Number($("cal-led").value));
     $("cal-led").value = led;
-    await request({ type: "calibrationStep", settings: draft, led: edgePreview ? null : led - 1 });
-    $("cal-status").textContent = edgePreview ? "Mapped edges: red left · green top · blue right · amber bottom" : `Physical LED ${led} of ${draft.count}`;
+    await request({
+      type: "calibrationStep",
+      settings: draft,
+      led: edgePreview ? null : led - 1,
+    });
+    $("cal-status").textContent = edgePreview
+      ? "Mapped edges: red left · green top · blue right · amber bottom"
+      : `Physical LED ${led} of ${draft.count}`;
     return true;
   }
-  const safe = action => async () => { try { await action(); } catch (e) { $("cal-status").textContent = String(e); } };
-  $("calibrate").onclick = () => run(async () => {
-    await save();
-    draft = structuredClone(settings); edgePreview = false;
-    await request({ type: "calibrationStart" });
-    $("cal-count").value = draft.count; $("cal-led").value = 1;
-    $("cal-sides").value = draft.sides; $("cal-offset").value = draft.offset; $("cal-reverse").checked = draft.reverse;
-    dialog.showModal(); await step();
+  const safe = (action) => async () => {
+    try {
+      await action();
+    } catch (e) {
+      $("cal-status").textContent = String(e);
+    }
+  };
+  $("calibrate").onclick = () =>
+    run(async () => {
+      await save();
+      draft = structuredClone(settings);
+      edgePreview = false;
+      await request({ type: "calibrationStart" });
+      $("cal-count").value = draft.count;
+      $("cal-led").value = 1;
+      $("cal-sides").value = draft.sides;
+      $("cal-offset").value = draft.offset;
+      $("cal-reverse").checked = draft.reverse;
+      dialog.showModal();
+      await step();
+    });
+  for (const id of ["cal-count", "cal-sides", "cal-offset", "cal-reverse"])
+    $(id).onchange = safe(step);
+  $("cal-led").onchange = safe(async () => {
+    edgePreview = false;
+    await step();
   });
-  for (const id of ["cal-count", "cal-sides", "cal-offset", "cal-reverse"]) $(id).onchange = safe(step);
-  $("cal-led").onchange = safe(async () => { edgePreview = false; await step(); });
-  $("cal-prev").onclick = safe(async () => { edgePreview = false; $("cal-led").value = Math.max(1, Number($("cal-led").value) - 1); await step(); });
-  $("cal-next").onclick = safe(async () => { edgePreview = false; $("cal-led").value = Math.min(draft.count, Number($("cal-led").value) + 1); await step(); });
-  $("cal-preview").onclick = safe(async () => { edgePreview = true; await step(); });
+  $("cal-prev").onclick = safe(async () => {
+    edgePreview = false;
+    $("cal-led").value = Math.max(1, Number($("cal-led").value) - 1);
+    await step();
+  });
+  $("cal-next").onclick = safe(async () => {
+    edgePreview = false;
+    $("cal-led").value = Math.min(draft.count, Number($("cal-led").value) + 1);
+    await step();
+  });
+  $("cal-preview").onclick = safe(async () => {
+    edgePreview = true;
+    await step();
+  });
   async function end(apply, stop = false) {
-    const state = await request(stop ? { type: "power", on: false } : { type: "calibrationEnd", apply });
-    settings = state.settings; dialog.close(); updateUI();
+    const state = await request(
+      stop ? { type: "power", on: false } : { type: "calibrationEnd", apply },
+    );
+    settings = state.settings;
+    dialog.close();
+    updateUI();
   }
-  $("cal-apply").onclick = safe(async () => { if (await step()) await end(true); });
+  $("cal-apply").onclick = safe(async () => {
+    if (await step()) await end(true);
+  });
   $("cal-cancel").onclick = safe(() => end(false));
   $("cal-stop").onclick = safe(() => end(false, true));
-  dialog.addEventListener("cancel", e => { e.preventDefault(); safe(() => end(false))(); });
+  dialog.addEventListener("cancel", (e) => {
+    e.preventDefault();
+    safe(() => end(false))();
+  });
 }
-let library = { profiles: [] }, starters = { profiles: [] };
+let library = { profiles: [] },
+  starters = { profiles: [] };
 async function initProfiles() {
   library = await invoke("profile_library", { library: null });
   starters = await invoke("starter_scenes");
   renderProfiles();
   $("scene-search").oninput = renderProfiles;
   $("scene-filter").onchange = renderProfiles;
-  document.querySelector(".profiles").addEventListener("toggle", refreshScenePreviews);
+  await window.__TAURI__.event.listen("profiles-changed", async () => {
+    try {
+      library = await invoke("profile_library", { library: null });
+      renderProfiles();
+    } catch (error) {
+      notice(String(error), true);
+    }
+  });
   await window.__TAURI__.event.listen("external-settings", async () => {
     try {
       // Finish local field edits, then read the authoritative worker state.
       // Do not replay a full draft over a tray/profile/Quick-controls change.
       await previewPending?.catch(() => {});
       const latest = await request({ type: "snapshot" });
-      acceptSettings(latest); renderRuntime(latest); updateUI();
+      acceptSettings(latest);
+      renderRuntime(latest);
+      updateUI();
       if (["screen", "blend"].includes(settings.mode)) await refreshDisplays();
-    } catch (error) { notice(String(error), true); }
+    } catch (error) {
+      notice(String(error), true);
+    }
   });
-  await window.__TAURI__.event.listen("control-error", ({ payload }) => notice(payload, true));
-  $("profile-save").onclick = () => run(async () => {
-    await save();
-    const name = $("profile-name").value.trim();
-    if (!name) throw new Error("Enter a profile name.");
-    await editLibrary(next => next.profiles.push({ id: crypto.randomUUID(), name, favorite: true, shortcut: "", settings: { ...settings, modeSettings: {} } }));
-    $("profile-name").value = "";
-  });
+  await window.__TAURI__.event.listen("control-error", ({ payload }) =>
+    notice(payload, true),
+  );
+  $("profile-save").onclick = () =>
+    run(async () => {
+      const name = $("profile-name").value.trim();
+      if (!name) {
+        $("save-scene-status").textContent = "Enter a scene name.";
+        $("profile-name").focus();
+        return;
+      }
+      try {
+        await save();
+        await editLibrary((next) =>
+          next.profiles.push({
+            id: crypto.randomUUID(),
+            name,
+            favorite: true,
+            shortcut: "",
+            settings: { ...settings, modeSettings: {} },
+          }),
+        );
+        $("profile-name").value = "";
+        $("save-scene-dialog").close();
+      } catch (error) {
+        $("save-scene-status").textContent = String(error);
+        throw error;
+      }
+    });
 }
 async function editLibrary(edit) {
-  const next = structuredClone(library); edit(next);
+  const next = structuredClone(library);
+  edit(next);
   try {
     library = await invoke("profile_library", { library: next });
-    $("profile-message").textContent = "Saved"; renderProfiles();
-  } catch (e) { $("profile-message").textContent = String(e); throw e; }
+    $("profile-message").textContent = "Saved";
+    renderProfiles();
+  } catch (e) {
+    $("profile-message").textContent = String(e);
+    throw e;
+  }
+}
+function sceneButton(p, action) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "profile-apply";
+  decorateScene(button, p);
+  button.onclick = () =>
+    run(async () => {
+      await save();
+      const state = await action();
+      settings = state.settings;
+      renderRuntime(state);
+      updateUI();
+      if (["screen", "blend"].includes(settings.mode)) await refreshDisplays();
+    });
+  return button;
+}
+function renderFavorites() {
+  const favorites = library.profiles.filter((p) => p.favorite).slice(0, 4);
+  document.querySelector(".control-favorites").hidden = !favorites.length;
+  $("control-favorites-empty").hidden = !!favorites.length;
+  $("control-favorites").replaceChildren(
+    ...favorites.map((p) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.favoriteProfile = p.id;
+      const canvas = document.createElement("canvas");
+      canvas.width = 46;
+      canvas.height = 46;
+      canvas.setAttribute("aria-hidden", "true");
+      const colors =
+        p.settings.customPalette?.length && p.settings.palette === "custom"
+          ? p.settings.customPalette
+          : p.settings.mode === "solid"
+            ? [p.settings.color]
+            : p.settings.palette === "ocean"
+              ? ["#459ddd", "#6ccbd7"]
+              : p.settings.palette === "sunset"
+                ? ["#eaa07a", "#eac77e"]
+                : ["#79cbb9", "#ae96de"];
+      const ctx = canvas.getContext("2d");
+      colors.forEach((c, i) => {
+        ctx.fillStyle = c;
+        ctx.fillRect((i * 46) / colors.length, 0, 46 / colors.length + 1, 46);
+      });
+      button.append(canvas, document.createTextNode(p.name));
+      button.onclick = () =>
+        run(async () => {
+          await save();
+          const value = await invoke("apply_profile", { id: p.id });
+          settings = value.settings;
+          renderRuntime(value);
+          updateUI();
+          if (["screen", "blend"].includes(settings.mode))
+            await refreshDisplays();
+        });
+      return button;
+    }),
+  );
+}
+function editScene(p) {
+  const fields = $("scene-editor-fields");
+  fields.replaceChildren();
+  $("scene-editor-status").textContent = "";
+  const field = (label, value) => {
+    const wrap = document.createElement("label");
+    wrap.textContent = label;
+    const input = document.createElement("input");
+    input.value = value;
+    input.maxLength = 60;
+    wrap.append(input);
+    fields.append(wrap);
+    return input;
+  };
+  const name = field("Scene name", p.name);
+  name.maxLength = 50;
+  const shortcut = field("Global shortcut", p.shortcut || "");
+  shortcut.placeholder =
+    platform === "macos" ? "Command+Shift+1" : "Control+Shift+1";
+  const actions = document.createElement("div");
+  actions.className = "scene-edit-actions";
+  fields.append(actions);
+  const mutate = (edit) =>
+    editLibrary((next) => {
+      const index = next.profiles.findIndex((scene) => scene.id === p.id);
+      if (index < 0)
+        throw Error(
+          "This scene was removed. Close the editor and choose another scene.",
+        );
+      edit(next, index);
+    });
+  const action = (text, task, iconName) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    if (iconName) button.append(LightUI.icon(iconName));
+    button.append(document.createTextNode(text));
+    button.onclick = () =>
+      run(async () => {
+        try {
+          await task();
+          $("scene-editor").close();
+        } catch (error) {
+          $("scene-editor-status").textContent = String(error);
+          throw error;
+        }
+      });
+    actions.append(button);
+    return button;
+  };
+  action(
+    "Save changes",
+    () =>
+      mutate((next, i) => {
+        next.profiles[i].name = name.value.trim();
+        next.profiles[i].shortcut = shortcut.value.trim();
+      }),
+    "check",
+  );
+  action(
+    "Replace with current settings",
+    async () => {
+      await save();
+      await mutate((next, i) => {
+        next.profiles[i].settings = { ...settings, modeSettings: {} };
+        next.profiles[i].source = { screenId: settings.screenId };
+      });
+    },
+    "refresh-cw",
+  );
+  action(
+    "Duplicate",
+    () =>
+      mutate((next, i) => {
+        next.profiles.splice(i + 1, 0, {
+          ...structuredClone(next.profiles[i]),
+          id: crypto.randomUUID(),
+          name: (next.profiles[i].name + " copy").slice(0, 50),
+          shortcut: "",
+        });
+      }),
+    "copy",
+  );
+  const index = library.profiles.findIndex((scene) => scene.id === p.id);
+  action(
+    "Move up",
+    () =>
+      mutate((next, i) => {
+        if (i > 0)
+          [next.profiles[i - 1], next.profiles[i]] = [
+            next.profiles[i],
+            next.profiles[i - 1],
+          ];
+      }),
+    "arrow-up",
+  ).disabled = index === 0;
+  action(
+    "Move down",
+    () =>
+      mutate((next, i) => {
+        if (i < next.profiles.length - 1)
+          [next.profiles[i + 1], next.profiles[i]] = [
+            next.profiles[i],
+            next.profiles[i + 1],
+          ];
+      }),
+    "arrow-down",
+  ).disabled = index === library.profiles.length - 1;
+  action(
+    "Delete scene",
+    () => mutate((next, i) => next.profiles.splice(i, 1)),
+    "trash-2",
+  ).classList.add("danger");
+  $("scene-editor").showModal();
+  name.focus();
 }
 function renderProfiles() {
   window.LibraryTools?.sync();
   lastScenePreviewKey = "";
   $("profile-list").replaceChildren();
-  library.profiles.forEach((p, i) => {
-    if (!sceneVisible(p, false)) return;
-    const row = document.createElement("div"); row.className = "profile-row scene-card"; row.setAttribute("role", "group"); row.setAttribute("aria-label", p.name);
-    const apply = document.createElement("button"); apply.className = "profile-apply";
-    decorateScene(apply, p);
-    apply.onclick = () => run(async () => { await save(); const state = await invoke("apply_profile", { id: p.id }); settings = state.settings; renderRuntime(state); });
-    row.append(apply);
-    const favorite = document.createElement("button"); favorite.className = "scene-favorite text-button"; favorite.textContent = p.favorite ? "★ Favorite" : "☆ Favorite"; favorite.setAttribute("aria-pressed", String(p.favorite)); favorite.onclick = () => run(() => editLibrary(n => { n.profiles[i].favorite = !p.favorite; })); row.append(favorite);
-    const editor = document.createElement("details"); const summary = document.createElement("summary"); summary.textContent = "Edit"; editor.append(summary); row.append(editor);
-    const fields = document.createElement("div"); fields.className = "profile-fields"; editor.append(fields);
-    const field = (label, value) => {
-      const wrap = document.createElement("label"); wrap.textContent = label;
-      const input = document.createElement("input"); input.value = value; input.maxLength = 60;
-      wrap.append(input); fields.append(wrap); return input;
-    };
-    const name = field("Name", p.name); name.maxLength = 50;
-    const shortcut = field("Global shortcut (optional)", p.shortcut); shortcut.placeholder = "Control+Shift+1";
-    const button = (text, action) => {
-      const b = document.createElement("button"); b.className = "secondary"; b.textContent = text;
-      b.onclick = () => run(action); fields.append(b); return b;
-    };
-    button("Save name & shortcut", () => editLibrary(n => { n.profiles[i].name = name.value.trim(); n.profiles[i].shortcut = shortcut.value.trim(); }));
-    button(p.favorite ? "★ Favorite" : "☆ Favorite", () => editLibrary(n => { n.profiles[i].favorite = !p.favorite; })).setAttribute("aria-pressed", String(p.favorite));
-    button("Update settings", async () => { await save(); await editLibrary(n => { n.profiles[i].settings = { ...settings, modeSettings: {} }; n.profiles[i].source = { screenId: settings.screenId }; }); });
-    button("Duplicate", () => editLibrary(n => { n.profiles.splice(i + 1, 0, { ...structuredClone(p), id: crypto.randomUUID(), name: (p.name + " copy").slice(0, 50), shortcut: "" }); }));
-    button("Move up", () => editLibrary(n => { [n.profiles[i-1], n.profiles[i]] = [n.profiles[i], n.profiles[i-1]]; })).disabled = i === 0;
-    button("Move down", () => editLibrary(n => { [n.profiles[i+1], n.profiles[i]] = [n.profiles[i], n.profiles[i+1]]; })).disabled = i === library.profiles.length - 1;
-    button("Delete", () => editLibrary(n => { n.profiles.splice(i, 1); }));
+  for (const p of library.profiles) {
+    if (!sceneVisible(p, false)) continue;
+    const row = document.createElement("div");
+    row.className = "profile-row scene-card";
+    row.setAttribute("role", "group");
+    row.setAttribute("aria-label", p.name);
+    row.append(sceneButton(p, () => invoke("apply_profile", { id: p.id })));
+    const actions = document.createElement("div");
+    actions.className = "scene-actions";
+    const favorite = document.createElement("button");
+    favorite.type = "button";
+    favorite.className = "scene-favorite text-button";
+    favorite.append(LightUI.icon("star"), document.createTextNode("Favorite"));
+    favorite.setAttribute("aria-label", "Favorite " + p.name);
+    favorite.setAttribute("aria-pressed", String(p.favorite));
+    favorite.onclick = () =>
+      run(() =>
+        editLibrary((next) => {
+          const current = next.profiles.find((scene) => scene.id === p.id);
+          if (current) current.favorite = !current.favorite;
+        }),
+      );
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.className = "text-button";
+    edit.append(LightUI.icon("ellipsis"), document.createTextNode("Edit"));
+    edit.setAttribute("aria-label", "Edit " + p.name);
+    edit.onclick = () => editScene(p);
+    actions.append(favorite, edit);
+    row.append(actions);
     $("profile-list").append(row);
-  });
-  if (!library.profiles.length) $("profile-message").textContent = "Save a scene to add it to favorites or assign a shortcut.";
+  }
+  $("profile-message").textContent = library.profiles.length
+    ? ""
+    : "Save your current settings to create a scene.";
   $("starter-list").replaceChildren();
   for (const p of starters.profiles) {
     if (!sceneVisible(p, true)) continue;
-    const row = document.createElement("div"); row.className = "scene-card starter-card"; row.setAttribute("role", "group"); row.setAttribute("aria-label", p.name);
-    const apply = document.createElement("button"); apply.className = "profile-apply"; decorateScene(apply,p);
-    apply.onclick = () => run(async () => { await save(); const state = await invoke("apply_starter", { id:p.id }); settings = state.settings; renderRuntime(state); });
-    const copy = document.createElement("button"); copy.className = "text-button"; copy.textContent = "Save a copy";
-    copy.onclick = () => run(() => editLibrary(n => n.profiles.push({ ...structuredClone(p), id:crypto.randomUUID(), favorite:true })));
-    row.append(apply,copy); $("starter-list").append(row);
+    const row = document.createElement("div");
+    row.className = "scene-card starter-card";
+    row.setAttribute("role", "group");
+    row.setAttribute("aria-label", p.name);
+    row.append(sceneButton(p, () => invoke("apply_starter", { id: p.id })));
+    const actions = document.createElement("div");
+    actions.className = "scene-actions";
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "text-button";
+    copy.append(LightUI.icon("plus"), document.createTextNode("Save a copy"));
+    copy.onclick = () =>
+      run(() =>
+        editLibrary((next) =>
+          next.profiles.push({
+            ...structuredClone(p),
+            id: crypto.randomUUID(),
+            favorite: true,
+          }),
+        ),
+      );
+    actions.append(copy);
+    row.append(actions);
+    $("starter-list").append(row);
   }
+  $("saved-scenes-heading").hidden = !$("profile-list").children.length;
+  $("starter-scenes-heading").hidden = !$("starter-list").children.length;
   $("scene-empty").hidden = !!document.querySelector(".scene-card");
+  renderFavorites();
+  updateSceneSelection();
   refreshScenePreviews();
 }
+
 init().catch((error) => notice(`Unable to initialize: ${error}`, true));
 
 async function refreshDiagnostics(enabled = null, clear = false) {
@@ -831,73 +1236,175 @@ async function refreshDiagnostics(enabled = null, clear = false) {
 }
 async function diagnosticAction(action) {
   const controls = $("diagnostic-dialog").querySelectorAll("button, input");
-  controls.forEach(c => c.disabled = true);
+  controls.forEach((c) => (c.disabled = true));
   $("diagnostic-status").textContent = "";
-  try { await action(); } catch (e) { $("diagnostic-status").textContent = String(e); }
-  finally { controls.forEach(c => c.disabled = false); }
+  try {
+    await action();
+  } catch (e) {
+    $("diagnostic-status").textContent = String(e);
+  } finally {
+    controls.forEach((c) => (c.disabled = false));
+  }
 }
-$("diagnostic-preview").onclick = () => { $("diagnostic-dialog").showModal(); diagnosticAction(() => refreshDiagnostics()); };
+$("diagnostic-preview").onclick = () => {
+  $("diagnostic-dialog").showModal();
+  diagnosticAction(() => refreshDiagnostics());
+};
 $("diagnostic-close").onclick = () => $("diagnostic-dialog").close();
-$("diagnostic-enabled").onchange = () => diagnosticAction(async () => {
-  try { await refreshDiagnostics($("diagnostic-enabled").checked); }
-  catch (e) { $("diagnostic-enabled").checked = !$("diagnostic-enabled").checked; throw e; }
-});
-$("diagnostic-clear").onclick = () => diagnosticAction(async () => { await refreshDiagnostics(null, true); $("diagnostic-status").textContent = "History cleared."; });
-$("diagnostic-copy").onclick = () => diagnosticAction(async () => {
-  try { await navigator.clipboard.writeText($("diagnostic-text").value); $("diagnostic-status").textContent = "Copied."; }
-  catch { $("diagnostic-text").focus(); $("diagnostic-text").select(); $("diagnostic-status").textContent = "Select Copy from the text menu, or press Ctrl+C / ⌘C."; }
-});
-$("diagnostic-export").onclick = () => diagnosticAction(async () => {
-  const path = await invoke("export_diagnostics"); $("diagnostic-status").textContent = "Saved to " + path;
-});
+$("diagnostic-enabled").onchange = () =>
+  diagnosticAction(async () => {
+    try {
+      await refreshDiagnostics($("diagnostic-enabled").checked);
+    } catch (e) {
+      $("diagnostic-enabled").checked = !$("diagnostic-enabled").checked;
+      throw e;
+    }
+  });
+$("diagnostic-clear").onclick = () =>
+  diagnosticAction(async () => {
+    await refreshDiagnostics(null, true);
+    $("diagnostic-status").textContent = "History cleared.";
+  });
+$("diagnostic-copy").onclick = () =>
+  diagnosticAction(async () => {
+    try {
+      await navigator.clipboard.writeText($("diagnostic-text").value);
+      $("diagnostic-status").textContent = "Copied.";
+    } catch {
+      $("diagnostic-text").focus();
+      $("diagnostic-text").select();
+      $("diagnostic-status").textContent =
+        "Select Copy from the text menu, or press Ctrl+C / ⌘C.";
+    }
+  });
+$("diagnostic-export").onclick = () =>
+  diagnosticAction(async () => {
+    const path = await invoke("export_diagnostics");
+    $("diagnostic-status").textContent = "Saved to " + path;
+  });
 
-let sceneTimer, scenePreviewBusy = false, scenePreviewDirty = false, lastScenePreviewKey = "";
+let sceneTimer,
+  scenePreviewBusy = false,
+  scenePreviewDirty = false,
+  lastScenePreviewKey = "";
 function sceneVisible(p, starter) {
   const filter = $("scene-filter").value;
   const query = $("scene-search").value.trim().toLowerCase();
-  return !(filter === "favorites" && !p.favorite || filter === "saved" && starter || filter === "starters" && !starter) && (p.name + " " + labels[p.settings.mode]).toLowerCase().includes(query);
+  return (
+    !(
+      (filter === "favorites" && !p.favorite) ||
+      (filter === "saved" && starter) ||
+      (filter === "starters" && !starter)
+    ) && (p.name + " " + labels[p.settings.mode]).toLowerCase().includes(query)
+  );
 }
-function decorateScene(button,p) {
+function decorateScene(button, p) {
   button.scene = p;
-  const canvas = document.createElement("canvas"); canvas.className = "scene-art"; canvas.width=240; canvas.height=150; canvas.setAttribute("aria-hidden","true");
-  const title = document.createElement("strong"); title.textContent = p.name;
-  const meta = document.createElement("small"); const s=p.settings;
-  meta.textContent = (s.mode === "rainbow" ? effectLabels[s.effect] : labels[s.mode]) + " · " + s.brightness + "%" + (s.mode === "rainbow" ? " · " + s.speed + "% speed" : "");
-  const status = document.createElement("span"); status.className="scene-tag"; status.textContent="Example preview";
-  button.append(canvas,title,meta,status); button.setAttribute("aria-label", "Start " + p.name);
+  const canvas = document.createElement("canvas");
+  canvas.className = "scene-art";
+  canvas.width = 240;
+  canvas.height = 150;
+  canvas.setAttribute("aria-hidden", "true");
+  const title = document.createElement("strong");
+  title.textContent = p.name;
+  const meta = document.createElement("small");
+  const s = p.settings;
+  meta.textContent =
+    (s.mode === "rainbow" ? effectLabels[s.effect] : labels[s.mode]) +
+    " · " +
+    s.brightness +
+    "%" +
+    (s.mode === "rainbow" ? " · " + s.speed + "% speed" : "");
+  const status = document.createElement("span");
+  status.className = "scene-tag";
+  status.textContent = "Example preview";
+  button.append(canvas, title, meta, status);
+  button.setAttribute("aria-label", "Start " + p.name);
 }
 async function refreshScenePreviews() {
   clearTimeout(sceneTimer);
-  if (scenePreviewBusy) { scenePreviewDirty = true; return; }
-  if (!document.querySelector(".profiles").open || document.hidden || !thumbnailsFocused) return;
+  if (scenePreviewBusy) {
+    scenePreviewDirty = true;
+    return;
+  }
+  if (currentView !== "scenes" || document.hidden || !thumbnailsFocused) return;
   scenePreviewDirty = false;
-  scenePreviewBusy=true;
+  scenePreviewBusy = true;
   try {
-    const buttons=[...document.querySelectorAll(".scene-card .profile-apply")].filter(b => { const r=b.getBoundingClientRect(); return r.bottom>0 && r.top<innerHeight; });
-    const key = JSON.stringify(buttons.map(b => [b.scene.id, b.scene.settings]));
-    if (reducedMotion.matches && key === lastScenePreviewKey) return;
-    for (let i=0;i<buttons.length;i+=8) {
-      const chunk=buttons.slice(i,i+8);
-      const frames=await invoke("scene_previews",{settings:chunk.map(b=>b.scene.settings),seconds:reducedMotion.matches?2:(performance.now()/1000)%86400});
-      chunk.forEach((b,j)=>{ if(b.isConnected) drawEffectThumbnail(b.querySelector("canvas"),frames[j]); });
+    const buttons = [
+      ...document.querySelectorAll(".scene-card .profile-apply"),
+    ].filter((b) => {
+      const r = b.getBoundingClientRect();
+      return r.bottom > 0 && r.top < innerHeight;
+    });
+    const key = JSON.stringify(
+      buttons.map((b) => [b.scene.id, b.scene.settings]),
+    );
+    const active = reducedMotion.matches
+      ? null
+      : document.querySelector(
+          ".scene-card .profile-apply:hover, .scene-card .profile-apply:focus-within",
+        );
+    if (key === lastScenePreviewKey && !active) return;
+    for (let i = 0; i < buttons.length; i += 8) {
+      const chunk = buttons.slice(i, i + 8);
+      const frames = await invoke("scene_previews", {
+        settings: chunk.map((b) => b.scene.settings),
+        seconds: active ? (performance.now() / 1000) % 86400 : 2,
+      });
+      chunk.forEach((b, j) => {
+        if (
+          b.isConnected &&
+          (key !== lastScenePreviewKey || !active || active === b)
+        )
+          drawEffectThumbnail(b.querySelector("canvas"), frames[j]);
+      });
     }
-    lastScenePreviewKey = reducedMotion.matches ? key : "";
+    lastScenePreviewKey = key;
     updateSceneSelection();
-  } catch(e) { $("profile-message").textContent="Scene previews unavailable: "+String(e); }
-  finally { scenePreviewBusy=false; if(scenePreviewDirty)lastScenePreviewKey=""; if(scenePreviewDirty || !reducedMotion.matches) sceneTimer=setTimeout(refreshScenePreviews,150); }
-}
-function updateSceneSelection() {
-  if(!runtime) return;
-  const common=["mode","brightness","smoothing"];
-  const keys={solid:["color"],rainbow:["effect","palette","customPalette","color","speed","effectReverse"],music:["musicStyle","palette","customPalette","color","audioSource","inputGain","sensitivity","noiseFloor","release","speed"],screen:["screenId","excludeBars","rgbBalance","saturation","gamma"],blend:["screenId","audioSource","blend","inputGain","sensitivity","noiseFloor","release","excludeBars","rgbBalance","saturation","gamma"]};
-  for(const b of document.querySelectorAll(".scene-card .profile-apply")) {
-    const s={...b.scene.settings, screenId:b.scene.source?.screenId ?? b.scene.settings.screenId ?? ""};
-    const match=!runtime.calibrating && [...common,...keys[s.mode]].every(k=>JSON.stringify(s[k])===JSON.stringify(runtime.settings[k]));
-    b.classList.toggle("scene-current",match);
-    b.querySelector(".scene-tag").textContent = match ? "Current settings · example" : "Example preview";
+  } catch (e) {
+    $("profile-message").textContent =
+      "Scene previews unavailable: " + String(e);
+  } finally {
+    scenePreviewBusy = false;
+    if (scenePreviewDirty) lastScenePreviewKey = "";
+    if (
+      scenePreviewDirty ||
+      (!reducedMotion.matches &&
+        document.querySelector(
+          ".scene-card .profile-apply:hover, .scene-card .profile-apply:focus-within",
+        ))
+    )
+      sceneTimer = setTimeout(refreshScenePreviews, 150);
   }
 }
-document.addEventListener("scroll",()=>{if(reducedMotion.matches)refreshScenePreviews();},{passive:true});
-window.addEventListener("focus",refreshScenePreviews);
-document.addEventListener("visibilitychange",refreshScenePreviews);
-reducedMotion.addEventListener("change",refreshScenePreviews);
+function updateSceneSelection() {
+  if (!runtime) return;
+  for (const button of document.querySelectorAll(
+    ".scene-card .profile-apply",
+  )) {
+    const match = LightUI.matchesScene(button.scene, runtime);
+    button.classList.toggle("scene-current", match);
+    button.querySelector(".scene-tag").textContent = match
+      ? "Current settings · example"
+      : "Example preview";
+  }
+  for (const button of document.querySelectorAll("[data-favorite-profile]")) {
+    const profile = library.profiles.find(
+      (p) => p.id === button.dataset.favoriteProfile,
+    );
+    if (profile)
+      button.setAttribute(
+        "aria-pressed",
+        String(LightUI.matchesScene(profile, runtime)),
+      );
+  }
+}
+
+document.addEventListener("scroll", refreshScenePreviews, {
+  passive: true,
+  capture: true,
+});
+window.addEventListener("focus", refreshScenePreviews);
+document.addEventListener("visibilitychange", refreshScenePreviews);
+reducedMotion.addEventListener("change", refreshScenePreviews);

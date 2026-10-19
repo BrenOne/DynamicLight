@@ -133,8 +133,8 @@ pub fn open(app: &tauri::AppHandle) -> Result<(), String> {
         let window =
             WebviewWindowBuilder::new(app, "compact", WebviewUrl::App("compact.html".into()))
                 .title("DynamicLight · Quick controls")
-                .inner_size(360.0, 460.0)
-                .min_inner_size(300.0, 260.0)
+                .inner_size(430.0, 550.0)
+                .min_inner_size(300.0, 360.0)
                 .visible(false)
                 .always_on_top(prefs.pinned)
                 .build()
@@ -193,9 +193,12 @@ pub async fn compact_control(
     brightness: Option<u8>,
     toggle: bool,
     preview: Option<bool>,
+    mode: Option<String>,
 ) -> Result<Snapshot, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let action = if preview.unwrap_or(false) {
+        let action = if let Some(mode) = mode {
+            Action::StartMode { mode }
+        } else if preview.unwrap_or(false) {
             Action::PreviewBrightness {
                 brightness: brightness.ok_or("Missing brightness")?,
             }

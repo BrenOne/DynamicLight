@@ -9,7 +9,18 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
   const server = http.createServer((req, res) => {
     const name = req.url === "/" ? "index.html" : req.url.slice(1);
     if (
-      !["index.html", "style.css", "renderer.js", "library-tools.js", "icon.svg", "compact.html", "compact.css", "compact.js"].includes(name)
+      ![
+        "index.html",
+        "style.css",
+        "renderer.js",
+        "library-tools.js",
+        "ui-common.js",
+        "icons.svg",
+        "icon.svg",
+        "compact.html",
+        "compact.css",
+        "compact.js",
+      ].includes(name)
     ) {
       res.writeHead(404).end();
       return;
@@ -46,7 +57,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
     });
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
-    await page.addInitScript(() => {
+    await page.addInitScript((appVersion) => {
       const initial = {
         color: "#9b72ff",
         brightness: 65,
@@ -73,7 +84,15 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
         musicStyle: "spectrum",
         noiseFloor: 0,
         release: 40,
-        excludeBars: false, rgbBalance: [100,100,100], saturation: 100, gamma: 100, inputGain: 0, blend: 60, maxBrightness: 100, transitionLimit: 0, minimumGlow: 0,
+        excludeBars: false,
+        rgbBalance: [100, 100, 100],
+        saturation: 100,
+        gamma: 100,
+        inputGain: 0,
+        blend: 60,
+        maxBrightness: 100,
+        transitionLimit: 0,
+        minimumGlow: 0,
       };
       const state = {
         settings: initial,
@@ -101,11 +120,31 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
         writeErrors: 0,
       };
       const calls = [];
-      const listeners = {}; let listener; let calibrationOriginal; let profileLibrary = { profiles: [] };
+      const listeners = {};
+      let listener;
+      let calibrationOriginal;
+      let profileLibrary = { profiles: [] };
       function portableProfile(p) {
         const settings = structuredClone(p.settings);
-        const source = p.source || { screenId: settings.screenId || '' };
-        for (const key of ['count','sides','reverse','offset','screenId','offOnSleep','offOnDisplaySleep','offOnLock','offOnQuit','restoreOnStart','resumeCapture','maxBrightness','transitionLimit','minimumGlow','modeSettings']) delete settings[key];
+        const source = p.source || { screenId: settings.screenId || "" };
+        for (const key of [
+          "count",
+          "sides",
+          "reverse",
+          "offset",
+          "screenId",
+          "offOnSleep",
+          "offOnDisplaySleep",
+          "offOnLock",
+          "offOnQuit",
+          "restoreOnStart",
+          "resumeCapture",
+          "maxBrightness",
+          "transitionLimit",
+          "minimumGlow",
+          "modeSettings",
+        ])
+          delete settings[key];
         return { ...p, settings, source };
       }
       function colors() {
@@ -131,7 +170,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
       window.__TAURI__ = {
         event: {
           listen: async (name, callback) => {
-            listeners[name] = callback; if (name === "lighting") listener = callback;
+            listeners[name] = callback;
+            if (name === "lighting") listener = callback;
           },
         },
         core: {
@@ -147,34 +187,190 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
                 ]),
               );
             }
-            if (cmd === "profile_library") { if (args.library) profileLibrary = { ...structuredClone(args.library), profiles: args.library.profiles.map(portableProfile) }; return structuredClone(profileLibrary); }
-            if (cmd === "remember_color") { profileLibrary.recent_colors=[args.color,...(profileLibrary.recent_colors||[]).filter(c=>c!==args.color)].slice(0,12); return structuredClone(profileLibrary); }
-            if (cmd === 'export_profiles') { fixture.lastExport=args; return 'Downloads/DynamicLight-scenes-test.json'; }
-            if (cmd === 'preview_profile_import') {
-              const bundle=JSON.parse(args.text); if(bundle.version!==1||bundle.format!=='dynamiclight')throw Error('Unsupported scene file');
-              return {bundle,base:structuredClone(profileLibrary),conflicts:bundle.profiles.map(p=>profileLibrary.profiles.find(o=>o.id===p.id||o.name===p.name)?.name||null),palette_conflicts:bundle.palettes.map(p=>profileLibrary.palettes?.find(o=>o.id===p.id||o.name===p.name)?.name||null)};
-            }
-            if (cmd === 'import_profiles') {
-              if(JSON.stringify(args.expected)!==JSON.stringify(profileLibrary))throw Error('Your library changed. Choose the file again.');
-              for(const p of args.bundle.profiles){const i=profileLibrary.profiles.findIndex(o=>o.id===p.id||o.name===p.name);if(i>=0&&args.policy==='skip')continue;if(i>=0&&args.policy==='replace')profileLibrary.profiles[i]={...profileLibrary.profiles[i],settings:p.settings};else profileLibrary.profiles.push({...p,id:crypto.randomUUID(),name:p.name+(i>=0?' (2)':''),favorite:false,shortcut:'',source:{screenId:''}});}
+            if (cmd === "profile_library") {
+              if (args.library)
+                profileLibrary = {
+                  ...structuredClone(args.library),
+                  profiles: args.library.profiles.map(portableProfile),
+                };
               return structuredClone(profileLibrary);
             }
-            if (cmd === "starter_scenes") return { profiles: [
-              { id:'warm-desk',name:'Warm desk',favorite:false,shortcut:'',settings:{...initial,mode:'solid',brightness:28,color:'#ffbf80'} },
-              { id:'cinema',name:'Cinema',favorite:false,shortcut:'',settings:{...initial,mode:'screen',brightness:35} },
-              { id:'neon',name:'Neon',favorite:false,shortcut:'',settings:{...initial,mode:'rainbow',effect:'aurora',brightness:55} },
-              { id:'ocean',name:'Ocean',favorite:false,shortcut:'',settings:{...initial,mode:'rainbow',effect:'aurora',palette:'ocean',brightness:40} }
-            ].map(portableProfile) };
-            if (cmd === "scene_previews") { fixture.sceneCalls=(fixture.sceneCalls||0)+1; if(fixture.sceneDelay)await new Promise(r=>setTimeout(r,fixture.sceneDelay)); return args.settings.map(s=>Array.from({length:48},(_,i)=>[50+i*3,140,200])); }
-            if (cmd === "apply_starter") { state.settings = {...initial,mode:'rainbow',palette:'ocean'}; state.powered=true; state.requested=true; return structuredClone(state); }
-            if (cmd === "compact_window") { if(args.operation==='pin')fixture.pinned=args.pinned; return !!fixture.pinned; }
-            if (cmd === "compact_control") { if(args.preview&&fixture.failBrightnessPreview){fixture.failBrightnessPreview=false;throw Error('Transient preview failure');} if(args.brightness!==null)state.settings.brightness=args.brightness; if(args.toggle)state.requested=state.powered=!state.requested; return structuredClone(state); }
-            if (cmd === "apply_profile") { const p=profileLibrary.profiles.find(p => p.id === args.id); state.settings = { ...state.settings, ...structuredClone(p.settings), screenId:p.source.screenId }; state.requested = true; state.powered = true; return structuredClone(state); }
-            if (cmd === "diagnostic_report") return { text: "DynamicLight test report: no private data", enabled: !!args.enabled };
-            if (cmd === "export_diagnostics") return "Downloads/DynamicLight-diagnostics-test.txt";
+            if (cmd === "remember_color") {
+              profileLibrary.recent_colors = [
+                args.color,
+                ...(profileLibrary.recent_colors || []).filter(
+                  (c) => c !== args.color,
+                ),
+              ].slice(0, 12);
+              return structuredClone(profileLibrary);
+            }
+            if (cmd === "export_profiles") {
+              fixture.lastExport = args;
+              return "Downloads/DynamicLight-scenes-test.json";
+            }
+            if (cmd === "preview_profile_import") {
+              const bundle = JSON.parse(args.text);
+              if (bundle.version !== 1 || bundle.format !== "dynamiclight")
+                throw Error("Unsupported scene file");
+              return {
+                bundle,
+                base: structuredClone(profileLibrary),
+                conflicts: bundle.profiles.map(
+                  (p) =>
+                    profileLibrary.profiles.find(
+                      (o) => o.id === p.id || o.name === p.name,
+                    )?.name || null,
+                ),
+                palette_conflicts: bundle.palettes.map(
+                  (p) =>
+                    profileLibrary.palettes?.find(
+                      (o) => o.id === p.id || o.name === p.name,
+                    )?.name || null,
+                ),
+              };
+            }
+            if (cmd === "import_profiles") {
+              if (
+                JSON.stringify(args.expected) !== JSON.stringify(profileLibrary)
+              )
+                throw Error("Your library changed. Choose the file again.");
+              for (const p of args.bundle.profiles) {
+                const i = profileLibrary.profiles.findIndex(
+                  (o) => o.id === p.id || o.name === p.name,
+                );
+                if (i >= 0 && args.policy === "skip") continue;
+                if (i >= 0 && args.policy === "replace")
+                  profileLibrary.profiles[i] = {
+                    ...profileLibrary.profiles[i],
+                    settings: p.settings,
+                  };
+                else
+                  profileLibrary.profiles.push({
+                    ...p,
+                    id: crypto.randomUUID(),
+                    name: p.name + (i >= 0 ? " (2)" : ""),
+                    favorite: false,
+                    shortcut: "",
+                    source: { screenId: "" },
+                  });
+              }
+              return structuredClone(profileLibrary);
+            }
+            if (cmd === "starter_scenes")
+              return {
+                profiles: [
+                  {
+                    id: "warm-desk",
+                    name: "Warm desk",
+                    favorite: false,
+                    shortcut: "",
+                    settings: {
+                      ...initial,
+                      mode: "solid",
+                      brightness: 28,
+                      color: "#ffbf80",
+                    },
+                  },
+                  {
+                    id: "cinema",
+                    name: "Cinema",
+                    favorite: false,
+                    shortcut: "",
+                    settings: { ...initial, mode: "screen", brightness: 35 },
+                  },
+                  {
+                    id: "neon",
+                    name: "Neon",
+                    favorite: false,
+                    shortcut: "",
+                    settings: {
+                      ...initial,
+                      mode: "rainbow",
+                      effect: "aurora",
+                      brightness: 55,
+                    },
+                  },
+                  {
+                    id: "ocean",
+                    name: "Ocean",
+                    favorite: false,
+                    shortcut: "",
+                    settings: {
+                      ...initial,
+                      mode: "rainbow",
+                      effect: "aurora",
+                      palette: "ocean",
+                      brightness: 40,
+                    },
+                  },
+                ].map(portableProfile),
+              };
+            if (cmd === "scene_previews") {
+              fixture.sceneCalls = (fixture.sceneCalls || 0) + 1;
+              if (fixture.sceneDelay)
+                await new Promise((r) => setTimeout(r, fixture.sceneDelay));
+              return args.settings.map((s) =>
+                Array.from({ length: 48 }, (_, i) => [50 + i * 3, 140, 200]),
+              );
+            }
+            if (cmd === "apply_starter") {
+              state.settings = {
+                ...initial,
+                mode: "rainbow",
+                palette: "ocean",
+              };
+              state.powered = true;
+              state.requested = true;
+              return structuredClone(state);
+            }
+            if (cmd === "compact_window") {
+              if (args.operation === "pin") fixture.pinned = args.pinned;
+              return !!fixture.pinned;
+            }
+            if (cmd === "compact_control") {
+              if (args.preview && fixture.failBrightnessPreview) {
+                fixture.failBrightnessPreview = false;
+                throw Error("Transient preview failure");
+              }
+              if (typeof args.brightness === "number")
+                state.settings.brightness = args.brightness;
+              if (args.mode) {
+                state.settings.mode = args.mode;
+                state.requested = state.powered = true;
+                state.status.connected = true;
+                state.capturing = ["screen", "music", "blend"].includes(
+                  args.mode,
+                );
+              }
+              if (args.toggle)
+                state.requested = state.powered = !state.requested;
+              return structuredClone(state);
+            }
+            if (cmd === "apply_profile") {
+              const p = profileLibrary.profiles.find((p) => p.id === args.id);
+              state.settings = {
+                ...state.settings,
+                ...structuredClone(p.settings),
+                screenId: p.source.screenId,
+              };
+              state.requested = true;
+              state.powered = true;
+              return structuredClone(state);
+            }
+            if (cmd === "diagnostic_report")
+              return {
+                text: "DynamicLight test report: no private data",
+                enabled: !!args.enabled,
+              };
+            if (cmd === "export_diagnostics")
+              return "Downloads/DynamicLight-diagnostics-test.txt";
             if (cmd === "platform_name") return "windows";
+            if (cmd === "app_version") return appVersion;
             if (cmd === "launch_at_login") {
-              if (fixture.failLogin) { fixture.failLogin = false; throw new Error("Test login registration failed"); }
+              if (fixture.failLogin) {
+                fixture.failLogin = false;
+                throw new Error("Test login registration failed");
+              }
               if (args.enabled !== null) fixture.login = args.enabled;
               return !!fixture.login;
             }
@@ -184,11 +380,34 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
             const a = args.action;
             calls.push(structuredClone(a));
             await new Promise((resolve) => setTimeout(resolve, 35));
-            if (a.type === "calibrationStep" && !state.calibrating) throw new Error("Start calibration first");
-            if (a.type === "calibrationStart") { calibrationOriginal = structuredClone(state); state.calibrating = true; }
-            if (a.type === "calibrationEnd") { const layout = state.settings; Object.assign(state, calibrationOriginal); if (a.apply) Object.assign(state.settings, { count: layout.count, sides: layout.sides, reverse: layout.reverse, offset: layout.offset }); state.calibrating = false; }
-            if (a.type === "selectMode") { state.settings.mode = a.mode; state.capturing = false; }
-            if (a.type === "patchSettings") a.settings = { ...state.settings, ...structuredClone(a.patch) };
+            if (a.type === "calibrationStep" && !state.calibrating)
+              throw new Error("Start calibration first");
+            if (a.type === "calibrationStart") {
+              calibrationOriginal = structuredClone(state);
+              state.calibrating = true;
+            }
+            if (a.type === "calibrationEnd") {
+              const layout = state.settings;
+              Object.assign(state, calibrationOriginal);
+              if (a.apply)
+                Object.assign(state.settings, {
+                  count: layout.count,
+                  sides: layout.sides,
+                  reverse: layout.reverse,
+                  offset: layout.offset,
+                });
+              state.calibrating = false;
+            }
+            if (a.type === "selectMode") {
+              state.settings.mode = a.mode;
+              state.capturing = false;
+            }
+            if (a.type === "startMode") {
+              state.settings.mode = a.mode;
+              state.capturing = false;
+            }
+            if (a.type === "patchSettings")
+              a.settings = { ...state.settings, ...structuredClone(a.patch) };
             if (a.settings) {
               if (
                 state.settings.mode !== a.settings.mode ||
@@ -198,7 +417,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
                 state.capturing = false;
               state.settings = structuredClone(a.settings);
             }
-            if (a.type === "start") {
+            if (a.type === "start" || a.type === "startMode") {
               state.requested = true;
               state.powered = true;
               state.error = "";
@@ -210,14 +429,19 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
                 state.recovering = true;
                 return structuredClone(state);
               }
-              state.status = { connected: true, message: "Test fixture controller" };
+              state.status = {
+                connected: true,
+                message: "Test fixture controller",
+              };
               if (fixture.failCapture) {
                 fixture.failCapture = false;
                 state.error = "Test capture denied";
                 state.captureRequiresStart = true;
                 return structuredClone(state);
               }
-              state.capturing = ["screen", "music", "blend"].includes(state.settings.mode);
+              state.capturing = ["screen", "music", "blend"].includes(
+                state.settings.mode,
+              );
             }
             if (a.type === "connect" && fixture.failConnect) {
               fixture.failConnect = false;
@@ -252,7 +476,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
           },
         },
       };
-    });
+    }, require("../package.json").version);
     await page.goto(`http://127.0.0.1:${server.address().port}`);
     await page.waitForFunction(
       () => typeof settings !== "undefined" && settings,
@@ -260,10 +484,29 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
     assert.match(await page.locator("#frame-rate").innerText(), /Preview only/);
     assert.equal(
       await page.evaluate(() =>
-        fixture.calls.some((a) => ["connect", "startCapture", "start"].includes(a.type)),
+        fixture.calls.some((a) =>
+          ["connect", "startCapture", "start"].includes(a.type),
+        ),
       ),
       false,
       "Startup never captures implicitly",
+    );
+    assert.equal(
+      await page.locator("[data-app-version]").innerText(),
+      "v" + require("../package.json").version,
+    );
+    for (const view of ["scenes", "device", "settings", "control"]) {
+      await page.locator('.app-sidebar [data-view="' + view + '"]').click();
+      assert(await page.locator("#view-" + view).isVisible());
+    }
+    assert.equal(
+      await page.evaluate(() =>
+        fixture.calls.some((a) =>
+          ["start", "startMode", "connect", "startCapture"].includes(a.type),
+        ),
+      ),
+      false,
+      "Navigation never activates lighting or capture",
     );
     // Drag bursts must coalesce, apply immediately, and persist once at idle.
     await page.evaluate(() => {
@@ -288,35 +531,57 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
       "One persistence write",
     );
     assert.deepEqual(edits.at(-1).patch, {});
-    assert.equal(await page.evaluate(() => fixture.state.settings.brightness), 100);
+    assert.equal(
+      await page.evaluate(() => fixture.state.settings.brightness),
+      100,
+    );
     // A different window changes an unrelated field between preview and save.
     // Studio must commit the worker's current state, not its earlier full draft.
     await page.evaluate(() => {
-      const slider = document.getElementById('brightness');
-      slider.value = 63; slider.dispatchEvent(new Event('input'));
+      const slider = document.getElementById("brightness");
+      slider.value = 63;
+      slider.dispatchEvent(new Event("input"));
     });
-    await page.waitForFunction(() => fixture.state.settings.brightness === 63 && !previewPending);
+    await page.waitForFunction(
+      () => fixture.state.settings.brightness === 63 && !previewPending,
+    );
     await page.evaluate(() => {
-      fixture.state.settings.color = '#123456';
-      fixture.emitEvent('external-settings', structuredClone(fixture.state));
+      fixture.state.settings.color = "#123456";
+      fixture.emitEvent("external-settings", structuredClone(fixture.state));
     });
-    await page.waitForFunction(() => document.getElementById('save-state').textContent === 'Saved');
-    assert.equal(await page.evaluate(() => fixture.state.settings.brightness), 63);
-    assert.equal(await page.evaluate(() => fixture.state.settings.color), '#123456');
+    await page.waitForFunction(
+      () => document.getElementById("save-state").textContent === "Saved",
+    );
+    assert.equal(
+      await page.evaluate(() => fixture.state.settings.brightness),
+      63,
+    );
+    assert.equal(
+      await page.evaluate(() => fixture.state.settings.color),
+      "#123456",
+    );
     // For the same field, a later external edit wins even if Studio's delayed
     // persistence timer has not fired yet.
     await page.evaluate(() => {
-      const slider = document.getElementById('brightness');
-      slider.value = 48; slider.dispatchEvent(new Event('input'));
+      const slider = document.getElementById("brightness");
+      slider.value = 48;
+      slider.dispatchEvent(new Event("input"));
     });
-    await page.waitForFunction(() => fixture.state.settings.brightness === 48 && !previewPending);
+    await page.waitForFunction(
+      () => fixture.state.settings.brightness === 48 && !previewPending,
+    );
     await page.evaluate(() => {
       fixture.state.settings.brightness = 81;
-      fixture.emitEvent('external-settings', structuredClone(fixture.state));
+      fixture.emitEvent("external-settings", structuredClone(fixture.state));
     });
-    await page.waitForFunction(() => document.getElementById('save-state').textContent === 'Saved');
-    assert.equal(await page.evaluate(() => fixture.state.settings.brightness), 81);
-    assert.equal(await page.locator('#brightness').inputValue(), '81');
+    await page.waitForFunction(
+      () => document.getElementById("save-state").textContent === "Saved",
+    );
+    assert.equal(
+      await page.evaluate(() => fixture.state.settings.brightness),
+      81,
+    );
+    assert.equal(await page.locator("#brightness").inputValue(), "81");
     await page.locator('[data-mode="rainbow"]').click();
     await page.waitForFunction(() => !busy);
     assert(
@@ -363,11 +628,18 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
         `No horizontal overflow at ${width}px`,
       );
       if (width <= 760) {
-        const controls = await page.locator(".tuning").boundingBox();
-        const preview = await page.locator(".preview-card").boundingBox();
         assert(
-          controls.y < preview.y,
-          "Compact layout puts controls before output preview",
+          await page.locator("#preview-toggle").isVisible(),
+          "Large preview has an explicit narrow-window toggle",
+        );
+        assert.equal(await page.locator(".preview-card").isVisible(), false);
+        assert(
+          await page.locator(".controls-column").isVisible(),
+          "Mode controls remain available",
+        );
+        assert(
+          await page.locator("#power").isVisible(),
+          "Stop stays in the fixed header",
         );
       }
       if (width === 540)
@@ -432,7 +704,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
       });
       fixture.emit();
     });
-    await page.locator(".telemetry summary").click();
+    await page.locator("#connection-details").click();
     assert.equal(await page.locator("#usb-fps").innerText(), "29");
     assert.equal(await page.locator("#audio-level").innerText(), "25% RMS");
     assert.equal(await page.locator("#write-errors").innerText(), "2");
@@ -440,6 +712,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
       path: ".local/ui-music-fixture.png",
       fullPage: true,
     });
+    await page.locator('[data-close="connection-dialog"]').click();
     await page.locator('[data-mode="screen"]').click();
     await page.waitForFunction(() => !busy);
     assert.equal(await page.locator("#display-controls").isVisible(), true);
@@ -456,7 +729,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
       ),
       "Active display change resumes capture",
     );
-    await page.locator("#setup > summary").click();
+    await page.locator('.app-sidebar [data-view="device"]').click();
     assert.equal(await page.locator("#count").isVisible(), true);
     await page.evaluate(() => {
       fixture.state.status.connected = false;
@@ -524,162 +797,485 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
     assert.equal(await page.locator("#retry").isVisible(), false);
     await page.locator("#power").click();
     await page.waitForFunction(() => !busy);
-    await page.evaluate(() => { fixture.state.pauseReason = ""; fixture.emit(); });
+    await page.evaluate(() => {
+      fixture.state.pauseReason = "";
+      fixture.emit();
+    });
     assert.equal(await page.evaluate(() => fixture.state.requested), false);
     // Preference edits never start lighting, and login registration failures roll back.
+    await page.locator('.app-sidebar [data-view="settings"]').click();
     await page.locator("#restore-on-start").check();
     await page.locator("#resume-capture").check();
-    await page.waitForFunction(() => document.getElementById("save-state").textContent === "Saved");
+    await page.waitForFunction(
+      () => document.getElementById("save-state").textContent === "Saved",
+    );
     assert.equal(await page.evaluate(() => fixture.state.requested), false);
-    assert.equal(await page.evaluate(() => fixture.state.settings.resumeCapture), true);
+    assert.equal(
+      await page.evaluate(() => fixture.state.settings.resumeCapture),
+      true,
+    );
     await page.locator("#launch-at-login").check();
     await page.waitForFunction(() => !busy);
     assert.equal(await page.evaluate(() => fixture.login), true);
-    await page.evaluate(() => { fixture.failLogin = true; });
+    await page.evaluate(() => {
+      fixture.failLogin = true;
+    });
     await page.locator("#launch-at-login").click();
     await page.waitForFunction(() => !busy);
     assert.equal(await page.locator("#launch-at-login").isChecked(), true);
-    assert.match(await page.locator("#notice").innerText(), /Test login registration failed/);
+    assert.match(
+      await page.locator("#notice").innerText(),
+      /Test login registration failed/,
+    );
     for (const width of [1180, 650, 390]) {
       await page.setViewportSize({ width, height: 900 });
-      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Behavior settings fit at ${width}px`);
+      assert(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+        `Behavior settings fit at ${width}px`,
+      );
     }
-    // New controls use the same Start action; no additional connect/capture clicks.
-    await page.locator('[data-mode="blend"]').click(); await page.waitForFunction(() => !busy);
-    assert.equal(await page.locator('#music-controls').isVisible(), true);
-    assert.equal(await page.locator('#display-controls').isVisible(), true);
-    await page.locator('#screen-tuning summary').click();
-    await page.locator('#exclude-bars').check();
-    await page.locator('#input-gain').fill('6'); await page.locator('#input-gain').dispatchEvent('input');
-    await page.locator('#blend').fill('75'); await page.locator('#blend').dispatchEvent('input');
+    await page.locator('.app-sidebar [data-view="control"]').click();
+    // New controls use one atomic Start-mode action.
+    await page.locator('[data-mode="blend"]').click();
+    await page.waitForFunction(() => !busy);
+    assert.equal(await page.locator("#music-controls").isVisible(), true);
+    assert.equal(await page.locator("#display-controls").isVisible(), true);
+    await page.locator("#screen-tuning summary").click();
+    await page.locator("#exclude-bars").check();
+    await page.locator(".advanced-audio > summary").click();
+    await page.locator("#input-gain").fill("6");
+    await page.locator("#input-gain").dispatchEvent("input");
+    await page.locator("#blend").fill("75");
+    await page.locator("#blend").dispatchEvent("input");
     await page.waitForTimeout(800);
-    assert.equal(await page.evaluate(() => fixture.state.settings.inputGain), 6);
+    assert.equal(
+      await page.evaluate(() => fixture.state.settings.inputGain),
+      6,
+    );
     assert.equal(await page.evaluate(() => fixture.state.settings.blend), 75);
-    assert.equal(await page.evaluate(() => fixture.state.settings.excludeBars), true);
-    await page.locator('[data-mode="music"]').click(); await page.waitForFunction(() => !busy);
-    await page.locator('[data-music="beat"]').click(); await page.waitForFunction(() => !busy);
-    assert.equal(await page.evaluate(() => fixture.state.settings.musicStyle), 'beat');
-    await page.locator('[data-mode="blend"]').click(); await page.waitForFunction(() => !busy);
-    await page.locator('.profiles > summary').click();
-    await page.locator('#profile-name').fill('Movies'); await page.locator('#profile-save').click(); await page.waitForFunction(() => !busy);
-    assert.equal(await page.locator('.profile-row').count(), 1);
-    await page.locator('.profile-row summary').click();
-    await page.locator('.profile-row').getByRole('button', { name: 'Duplicate', exact: true }).click(); await page.waitForFunction(() => !busy);
-    assert.equal(await page.locator('.profile-row').count(), 2);
-    await page.locator('.profile-apply').first().click(); await page.waitForFunction(() => !busy);
-    assert.equal(await page.evaluate(() => fixture.state.settings.mode), 'blend');
-    await page.waitForFunction(() => document.querySelector('.profile-apply').classList.contains('scene-current'));
-    assert.equal(await page.evaluate(() => 'screenId' in library.profiles[0].settings), false);
-    assert.equal(await page.evaluate(() => library.profiles[0].source.screenId), await page.evaluate(() => fixture.state.settings.screenId));
-    await page.locator('.profiles > summary').click();
-    await page.locator('#calibrate').click(); await page.waitForFunction(() => !busy);
-    assert.equal(await page.locator('#calibration-dialog').isVisible(), true);
-    await page.locator('#cal-count').fill('32'); await page.locator('#cal-count').dispatchEvent('change');
+    assert.equal(
+      await page.evaluate(() => fixture.state.settings.excludeBars),
+      true,
+    );
+    await page.locator('[data-mode="music"]').click();
+    await page.waitForFunction(() => !busy);
+    await page.locator('[data-music="beat"]').click();
+    await page.waitForFunction(() => !busy);
+    assert.equal(
+      await page.evaluate(() => fixture.state.settings.musicStyle),
+      "beat",
+    );
+    await page.locator('[data-mode="blend"]').click();
+    await page.waitForFunction(() => !busy);
+    await page.locator(".workspace-heading [data-save-scene]").click();
+    await page.locator("#profile-name").fill("Movies");
+    await page.locator("#profile-save").click();
+    await page.waitForFunction(() => !busy);
+    await page.locator('.app-sidebar [data-view="scenes"]').click();
+    assert.equal(await page.locator(".profile-row").count(), 1);
+    await page
+      .getByRole("button", { name: "Edit Movies", exact: true })
+      .click();
+    await page
+      .locator("#scene-editor")
+      .getByRole("button", { name: "Duplicate", exact: true })
+      .click();
+    await page.waitForFunction(() => !busy);
+    assert.equal(await page.locator(".profile-row").count(), 2);
+    await page.locator(".profile-apply").first().click();
+    await page.waitForFunction(() => !busy);
+    assert.equal(
+      await page.evaluate(() => fixture.state.settings.mode),
+      "blend",
+    );
+    await page.waitForFunction(() =>
+      document
+        .querySelector(".profile-apply")
+        .classList.contains("scene-current"),
+    );
+    assert.equal(
+      await page.evaluate(() => "screenId" in library.profiles[0].settings),
+      false,
+    );
+    assert.equal(
+      await page.evaluate(() => library.profiles[0].source.screenId),
+      await page.evaluate(() => fixture.state.settings.screenId),
+    );
+    await page.locator('.app-sidebar [data-view="device"]').click();
+    await page.locator("#calibrate").click();
+    await page.waitForFunction(() => !busy);
+    assert.equal(await page.locator("#calibration-dialog").isVisible(), true);
+    await page.locator("#cal-count").fill("32");
+    await page.locator("#cal-count").dispatchEvent("change");
     await page.waitForTimeout(100);
-    await page.locator('#cal-next').click(); await page.waitForTimeout(100);
-    assert.match(await page.locator('#cal-status').innerText(), /LED 2 of 32/);
-    await page.locator('#cal-preview').click(); await page.waitForTimeout(100);
-    await page.locator('#cal-apply').click(); await page.waitForFunction(() => !document.querySelector('#calibration-dialog').open);
+    await page.locator("#cal-next").click();
+    await page.waitForTimeout(100);
+    assert.match(await page.locator("#cal-status").innerText(), /LED 2 of 32/);
+    await page.locator("#cal-preview").click();
+    await page.waitForTimeout(100);
+    await page.locator("#cal-apply").click();
+    await page.waitForFunction(
+      () => !document.querySelector("#calibration-dialog").open,
+    );
     assert.equal(await page.evaluate(() => fixture.state.settings.count), 32);
-    await page.locator('#calibrate').click(); await page.waitForFunction(() => !busy);
-    await page.locator('#cal-count').fill('12'); await page.locator('#cal-count').dispatchEvent('change'); await page.waitForTimeout(100);
-    await page.keyboard.press('Escape'); await page.waitForFunction(() => !document.querySelector('#calibration-dialog').open);
+    await page.locator("#calibrate").click();
+    await page.waitForFunction(() => !busy);
+    await page.locator("#cal-count").fill("12");
+    await page.locator("#cal-count").dispatchEvent("change");
+    await page.waitForTimeout(100);
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(
+      () => !document.querySelector("#calibration-dialog").open,
+    );
     assert.equal(await page.evaluate(() => fixture.state.settings.count), 32);
     await page.evaluate(() => queue);
-    await page.evaluate(() => { fixture.state.settings.brightness = 25; fixture.emitEvent('external-settings', structuredClone(fixture.state)); });
+    await page.evaluate(() => {
+      fixture.state.settings.brightness = 25;
+      fixture.emitEvent("external-settings", structuredClone(fixture.state));
+    });
     await page.waitForTimeout(200);
-    await page.waitForFunction(() => document.querySelector('#brightness').value === '25');
-    for (const width of [390, 600, 1180]) { await page.setViewportSize({ width, height: 1000 }); assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)); }
+    await page.waitForFunction(
+      () => document.querySelector("#brightness").value === "25",
+    );
+    for (const width of [390, 600, 1180]) {
+      await page.setViewportSize({ width, height: 1000 });
+      assert(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      );
+    }
     await page.setViewportSize({ width: 1180, height: 1000 });
     await page.screenshot({ path: ".local/ui-lifecycle.png", fullPage: true });
-    if (!await page.locator('#diagnostic-preview').isVisible()) await page.locator('.telemetry > summary').click();
-    await page.locator('#diagnostic-preview').click();
-    await page.waitForFunction(() => document.querySelector('#diagnostic-dialog').open);
-    assert.match(await page.locator('#diagnostic-text').inputValue(), /no private data/);
-    await page.locator('#diagnostic-enabled').check();
+    if (!(await page.locator("#diagnostic-preview").isVisible()))
+      await page.locator("#connection-details").click();
+    await page.locator("#diagnostic-preview").click();
+    await page.waitForFunction(
+      () => document.querySelector("#diagnostic-dialog").open,
+    );
+    assert.match(
+      await page.locator("#diagnostic-text").inputValue(),
+      /no private data/,
+    );
+    await page.locator("#diagnostic-enabled").check();
     await page.waitForTimeout(100);
-    await page.locator('#diagnostic-clear').click();
-    await page.waitForFunction(() => document.querySelector('#diagnostic-status').textContent === 'History cleared.');
-    await page.locator('#diagnostic-export').click();
-    await page.waitForFunction(() => document.querySelector('#diagnostic-status').textContent.startsWith('Saved to '));
+    await page.locator("#diagnostic-clear").click();
+    await page.waitForFunction(
+      () =>
+        document.querySelector("#diagnostic-status").textContent ===
+        "History cleared.",
+    );
+    await page.locator("#diagnostic-export").click();
+    await page.waitForFunction(() =>
+      document
+        .querySelector("#diagnostic-status")
+        .textContent.startsWith("Saved to "),
+    );
     await page.setViewportSize({ width: 390, height: 800 });
-    await page.screenshot({ path: '.local/ui-diagnostics.png' });
-    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-    await page.keyboard.press('Escape');
-    assert.equal(await page.locator('#diagnostic-dialog').isVisible(), false);
-    await page.locator('.profiles > summary').click();
-    assert.equal(await page.locator('.starter-card').count(),4);
-    await page.locator('#scene-search').fill('ocean');
-    assert.equal(await page.locator('.scene-card').count(),1);
-    await page.locator('.starter-card .profile-apply').click(); await page.waitForFunction(()=>!busy);
-    assert.equal(await page.evaluate(()=>fixture.state.settings.palette),'ocean');
-    await page.locator('.starter-card').getByRole('button',{name:'Save a copy'}).click(); await page.waitForFunction(()=>!busy);
-    await page.locator('#scene-filter').selectOption('favorites');
-    assert.equal(await page.locator('.profile-row').count(),1);
-    assert.equal(await page.locator('.starter-card').count(),0);
-    await page.locator('#scene-search').fill(''); await page.locator('#scene-filter').selectOption('all');
-    await page.setViewportSize({width:1180,height:1000});
-    await page.locator('#scene-search').scrollIntoViewIfNeeded();
-    await page.waitForFunction(()=>fixture.sceneCalls>0);
+    await page.screenshot({ path: ".local/ui-diagnostics.png" });
+    assert(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    );
+    await page.keyboard.press("Escape");
+    assert.equal(await page.locator("#diagnostic-dialog").isVisible(), false);
+    await page.locator('[data-close="connection-dialog"]').click();
+    await page.locator('.app-sidebar [data-view="scenes"]').click();
+    assert.equal(await page.locator(".starter-card").count(), 4);
+    await page.locator("#scene-search").fill("ocean");
+    assert.equal(await page.locator(".scene-card").count(), 1);
+    await page.locator(".starter-card .profile-apply").click();
+    await page.waitForFunction(() => !busy);
+    assert.equal(
+      await page.evaluate(() => fixture.state.settings.palette),
+      "ocean",
+    );
+    await page
+      .locator(".starter-card")
+      .getByRole("button", { name: "Save a copy" })
+      .click();
+    await page.waitForFunction(() => !busy);
+    await page.locator("#scene-filter").selectOption("favorites");
+    assert.equal(await page.locator(".profile-row").count(), 1);
+    assert.equal(await page.locator(".starter-card").count(), 0);
+    await page.locator("#scene-search").fill("");
+    await page.locator("#scene-filter").selectOption("all");
+    await page.setViewportSize({ width: 1180, height: 1000 });
+    await page.locator("#scene-search").scrollIntoViewIfNeeded();
+    await page.waitForFunction(() => fixture.sceneCalls > 0);
     await page.waitForTimeout(300);
-    await page.screenshot({path:'.local/ui-scenes.png'});
-    await page.emulateMedia({reducedMotion:'reduce'}); await page.waitForTimeout(300);
-    const sceneCalls=await page.evaluate(()=>fixture.sceneCalls);
-    await page.waitForTimeout(400); assert.equal(await page.evaluate(()=>fixture.sceneCalls),sceneCalls);
-    await page.evaluate(()=>{fixture.sceneDelay=150;lastScenePreviewKey='';refreshScenePreviews();renderProfiles();});
-    await page.waitForFunction(()=>[...document.querySelectorAll('.scene-art')].some(c=>c.getContext('2d').getImageData(100,75,1,1).data[3]>0));
-    await page.evaluate(()=>{fixture.sceneDelay=0;});
-    await page.locator('[data-mode="solid"]').click();await page.waitForFunction(()=>!busy);
-    const oldColor=await page.evaluate(()=>settings.color);
-    await page.locator('#open-color-editor').click();
-    await page.locator('#color-hex').fill('#ffffff');await page.locator('#color-hex').dispatchEvent('input');
-    const wheel=await page.locator('#color-wheel').boundingBox();await page.mouse.click(wheel.x+wheel.width*.9,wheel.y+wheel.height*.5);
-    assert.notEqual(await page.locator('#color-hex').inputValue(),'#ffffff','The wheel can select a color starting from white');
-    await page.locator('#color-hex').fill('#123456');await page.locator('#color-hex').dispatchEvent('input');
-    assert.equal(await page.evaluate(()=>fixture.state.settings.color),oldColor,'Draft color never changes hardware');
-    await page.locator('#reset-color').click();assert.equal(await page.locator('#color-hex').inputValue(),oldColor);
-    await page.locator('#color-temperature').fill('2700');await page.locator('#color-temperature').dispatchEvent('input');
-    assert.match(await page.locator('#color-temperature-value').innerText(),/2700 K/);
-    await page.locator('#close-color-editor').click();assert.equal(await page.evaluate(()=>settings.color),oldColor);
-    await page.locator('#open-color-editor').click();await page.locator('#color-hex').fill('#123456');await page.locator('#color-hex').dispatchEvent('input');await page.locator('#apply-color').click();
-    await page.waitForFunction(()=>document.querySelector('#save-state').textContent==='Saved');
-    assert.equal(await page.evaluate(()=>fixture.state.settings.color),'#123456');assert(await page.locator('#recent-colors button').count());
-    await page.locator('[data-mode="rainbow"]').click();await page.waitForFunction(()=>!busy);await page.locator('[data-effect="aurora"]').click();await page.waitForFunction(()=>!busy);
-    await page.locator('#open-palette-editor').click();await page.locator('#color-hex').fill('#abcdef');await page.locator('#color-hex').dispatchEvent('input');await page.locator('#palette-add').click();await page.locator('#palette-left').click();
-    await page.locator('#palette-name').fill('Evening');await page.locator('#palette-save').click();await page.waitForFunction(()=>library.palettes?.length===1);
-    assert.equal(await page.evaluate(()=>library.palettes[0].colors[0]),'#abcdef');
-    await page.locator('#palette-apply').click();await page.waitForFunction(()=>fixture.state.settings.palette==='custom');assert.equal(await page.evaluate(()=>fixture.state.settings.customPalette[0]),'#abcdef');
-    await page.locator('.profiles').evaluate(d=>{d.open=true;});
-    await page.locator('#share-scenes').click();await page.locator('#export-save').click();await page.waitForFunction(()=>!!fixture.lastExport);
-    assert.equal((await page.evaluate(()=>fixture.lastExport.paletteIds)).length,1);assert.match(await page.locator('#export-status').innerText(),/Downloads/);await page.locator('#export-cancel').click();
-    const bundle=await page.evaluate(()=>({format:'dynamiclight',version:1,profiles:[{id:library.profiles[0].id,name:library.profiles[0].name,settings:library.profiles[0].settings}],palettes:[]}));
-    const upload=()=>page.locator('#scene-file').setInputFiles({name:'scenes.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(bundle))});
-    await upload();await page.waitForFunction(()=>document.querySelector('#import-dialog').open);assert.match(await page.locator('#import-items').innerText(),/matches/);
-    await page.evaluate(()=>window.__TAURI__.core.invoke('profile_library',{library:{...library,recent_colors:['#000000']}}));
-    await page.locator('#import-confirm').click();await page.waitForFunction(()=>document.querySelector('#import-status').textContent.includes('library changed'));await page.locator('#import-cancel').click();
-    await upload();await page.waitForFunction(()=>document.querySelector('#import-dialog').open);const profileCount=await page.evaluate(()=>library.profiles.length);await page.locator('#import-confirm').click();await page.waitForFunction(()=>!document.querySelector('#import-dialog').open);assert.equal(await page.evaluate(()=>library.profiles.length),profileCount+1);
-    await page.locator('#open-palette-editor').click();await page.screenshot({path:'.local/ui-color-tools.png'});for(const width of [390,540,1180]){await page.setViewportSize({width,height:1000});const geometry=await page.evaluate(()=>{const d=document.querySelector('#color-editor');return {client:d.clientWidth,scroll:d.scrollWidth,overflow:[...d.querySelectorAll('*')].filter(e=>e.getBoundingClientRect().right>d.getBoundingClientRect().right).map(e=>e.id||e.className||e.tagName)};});assert(geometry.scroll<=geometry.client,'Responsive color editor at '+width+': '+JSON.stringify(geometry));}await page.locator('#close-color-editor').click();
+    await page.screenshot({ path: ".local/ui-scenes.png" });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.waitForTimeout(300);
+    const sceneCalls = await page.evaluate(() => fixture.sceneCalls);
+    await page.waitForTimeout(400);
+    assert.equal(await page.evaluate(() => fixture.sceneCalls), sceneCalls);
+    await page.evaluate(() => {
+      fixture.sceneDelay = 150;
+      lastScenePreviewKey = "";
+      refreshScenePreviews();
+      renderProfiles();
+    });
+    await page.waitForFunction(() =>
+      [...document.querySelectorAll(".scene-art")].some((c) =>
+        c
+          .getContext("2d")
+          .getImageData(0, 0, c.width, c.height)
+          .data.some((v, i) => i % 4 === 3 && v > 0),
+      ),
+    );
+    await page.evaluate(() => {
+      fixture.sceneDelay = 0;
+    });
+    await page.locator('.app-sidebar [data-view="control"]').click();
+    await page.locator('[data-mode="solid"]').click();
+    await page.waitForFunction(() => !busy);
+    const oldColor = await page.evaluate(() => settings.color);
+    await page.locator("#open-color-editor").click();
+    await page.locator("#color-hex").fill("#ffffff");
+    await page.locator("#color-hex").dispatchEvent("input");
+    const wheel = await page.locator("#color-wheel").boundingBox();
+    await page.mouse.click(
+      wheel.x + wheel.width * 0.9,
+      wheel.y + wheel.height * 0.5,
+    );
+    assert.notEqual(
+      await page.locator("#color-hex").inputValue(),
+      "#ffffff",
+      "The wheel can select a color starting from white",
+    );
+    await page.locator("#color-hex").fill("#123456");
+    await page.locator("#color-hex").dispatchEvent("input");
+    assert.equal(
+      await page.evaluate(() => fixture.state.settings.color),
+      oldColor,
+      "Draft color never changes hardware",
+    );
+    await page.locator("#reset-color").click();
+    assert.equal(await page.locator("#color-hex").inputValue(), oldColor);
+    await page.locator("#color-temperature").fill("2700");
+    await page.locator("#color-temperature").dispatchEvent("input");
+    assert.match(
+      await page.locator("#color-temperature-value").innerText(),
+      /2700 K/,
+    );
+    await page.locator("#close-color-editor").click();
+    assert.equal(await page.evaluate(() => settings.color), oldColor);
+    await page.locator("#open-color-editor").click();
+    await page.locator("#color-hex").fill("#123456");
+    await page.locator("#color-hex").dispatchEvent("input");
+    await page.locator("#apply-color").click();
+    await page.waitForFunction(
+      () => document.querySelector("#save-state").textContent === "Saved",
+    );
+    assert.equal(
+      await page.evaluate(() => fixture.state.settings.color),
+      "#123456",
+    );
+    assert(await page.locator("#recent-colors button").count());
+    await page.locator('[data-mode="rainbow"]').click();
+    await page.waitForFunction(() => !busy);
+    await page.locator('[data-effect="aurora"]').click();
+    await page.waitForFunction(() => !busy);
+    await page.locator("#open-palette-editor").click();
+    await page.locator("#color-hex").fill("#abcdef");
+    await page.locator("#color-hex").dispatchEvent("input");
+    await page.locator("#palette-add").click();
+    await page.locator("#palette-left").click();
+    await page.locator("#palette-name").fill("Evening");
+    await page.locator("#palette-save").click();
+    await page.waitForFunction(() => library.palettes?.length === 1);
+    assert.equal(
+      await page.evaluate(() => library.palettes[0].colors[0]),
+      "#abcdef",
+    );
+    await page.locator("#palette-apply").click();
+    await page.waitForFunction(
+      () => fixture.state.settings.palette === "custom",
+    );
+    assert.equal(
+      await page.evaluate(() => fixture.state.settings.customPalette[0]),
+      "#abcdef",
+    );
+    await page.locator('.app-sidebar [data-view="scenes"]').click();
+    await page.locator("#share-scenes").click();
+    await page.locator("#export-save").click();
+    await page.waitForFunction(() => !!fixture.lastExport);
+    assert.equal(
+      (await page.evaluate(() => fixture.lastExport.paletteIds)).length,
+      1,
+    );
+    assert.match(await page.locator("#export-status").innerText(), /Downloads/);
+    await page.locator("#export-cancel").click();
+    const bundle = await page.evaluate(() => ({
+      format: "dynamiclight",
+      version: 1,
+      profiles: [
+        {
+          id: library.profiles[0].id,
+          name: library.profiles[0].name,
+          settings: library.profiles[0].settings,
+        },
+      ],
+      palettes: [],
+    }));
+    const upload = () =>
+      page.locator("#scene-file").setInputFiles({
+        name: "scenes.json",
+        mimeType: "application/json",
+        buffer: Buffer.from(JSON.stringify(bundle)),
+      });
+    await upload();
+    await page.waitForFunction(
+      () => document.querySelector("#import-dialog").open,
+    );
+    assert.match(await page.locator("#import-items").innerText(), /matches/);
+    await page.evaluate(() =>
+      window.__TAURI__.core.invoke("profile_library", {
+        library: { ...library, recent_colors: ["#000000"] },
+      }),
+    );
+    await page.locator("#import-confirm").click();
+    await page.waitForFunction(() =>
+      document
+        .querySelector("#import-status")
+        .textContent.includes("library changed"),
+    );
+    await page.locator("#import-cancel").click();
+    await upload();
+    await page.waitForFunction(
+      () => document.querySelector("#import-dialog").open,
+    );
+    const profileCount = await page.evaluate(() => library.profiles.length);
+    await page.locator("#import-confirm").click();
+    await page.waitForFunction(
+      () => !document.querySelector("#import-dialog").open,
+    );
+    assert.equal(
+      await page.evaluate(() => library.profiles.length),
+      profileCount + 1,
+    );
+    await page.locator('.app-sidebar [data-view="control"]').click();
+    await page.locator("#open-palette-editor").click();
+    await page.screenshot({ path: ".local/ui-color-tools.png" });
+    for (const width of [390, 540, 1180]) {
+      await page.setViewportSize({ width, height: 1000 });
+      const geometry = await page.evaluate(() => {
+        const d = document.querySelector("#color-editor");
+        return {
+          client: d.clientWidth,
+          scroll: d.scrollWidth,
+          overflow: [...d.querySelectorAll("*")]
+            .filter(
+              (e) =>
+                e.getBoundingClientRect().right >
+                d.getBoundingClientRect().right,
+            )
+            .map((e) => e.id || e.className || e.tagName),
+        };
+      });
+      assert(
+        geometry.scroll <= geometry.client,
+        "Responsive color editor at " + width + ": " + JSON.stringify(geometry),
+      );
+    }
+    await page.locator("#close-color-editor").click();
     await page.goto(`http://127.0.0.1:${server.address().port}/compact.html`);
-    await page.waitForFunction(()=>document.querySelector('#quick-power').disabled===false);
-    await page.setViewportSize({width:360,height:460});
-    await page.locator('#quick-brightness').fill('32'); await page.locator('#quick-brightness').dispatchEvent('input');
-    await page.waitForFunction(()=>fixture.state.settings.brightness===32);
-    await page.waitForFunction(()=>!brightnessPreview);
-    await page.evaluate(()=>{ fixture.state.settings.brightness=74; });
-    await page.waitForFunction(()=>!editingBrightness);
-    assert.equal(await page.evaluate(()=>fixture.state.settings.brightness),74,'Quick-controls idle save preserves later edits');
-    await page.evaluate(()=>{fixture.failBrightnessPreview=true;});
-    await page.locator('#quick-brightness').fill('46');await page.locator('#quick-brightness').dispatchEvent('input');
-    await page.waitForFunction(()=>!editingBrightness);
-    assert.equal(await page.evaluate(()=>fixture.state.settings.brightness),46,'A failed preview retries the selected value at commit');
-    await page.locator('#quick-power').click(); await page.waitForFunction(()=>fixture.state.requested);
-    await page.locator('#quick-power').click(); await page.waitForFunction(()=>!fixture.state.requested);
-    await page.evaluate(()=>{fixture.state.settings.brightness=57; fixture.state.recovering=true; fixture.state.requested=true;});
-    await page.waitForFunction(()=>document.querySelector('#quick-value').textContent==='57%');
-    assert.equal(await page.locator('#quick-status').innerText(),'Reconnecting');
-    await page.locator('#quick-pin').check(); await page.waitForFunction(()=>fixture.pinned);
-    await page.screenshot({path:'.local/ui-compact.png'});
-    for(const width of [300,360,540]) {await page.setViewportSize({width,height:460});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));}
+    await page.waitForFunction(
+      () => document.querySelector("#quick-power").disabled === false,
+    );
+    await page.setViewportSize({ width: 360, height: 460 });
+    await page.locator("#quick-brightness").fill("32");
+    await page.locator("#quick-brightness").dispatchEvent("input");
+    await page.waitForFunction(() => fixture.state.settings.brightness === 32);
+    await page.waitForFunction(() => !brightnessPreview);
+    await page.evaluate(() => {
+      fixture.state.settings.brightness = 74;
+    });
+    await page.waitForFunction(() => !editingBrightness);
+    assert.equal(
+      await page.evaluate(() => fixture.state.settings.brightness),
+      74,
+      "Quick-controls idle save preserves later edits",
+    );
+    await page.evaluate(() => {
+      fixture.failBrightnessPreview = true;
+    });
+    await page.locator("#quick-brightness").fill("46");
+    await page.locator("#quick-brightness").dispatchEvent("input");
+    await page.waitForFunction(() => !editingBrightness);
+    assert.equal(
+      await page.evaluate(() => fixture.state.settings.brightness),
+      46,
+      "A failed preview retries the selected value at commit",
+    );
+    for (const mode of ["solid", "screen", "music", "blend", "rainbow"]) {
+      await page.locator('[data-quick-mode="' + mode + '"]').click();
+      await page.waitForFunction(() => !busy);
+      assert.equal(
+        await page.evaluate(() => fixture.state.settings.mode),
+        mode,
+      );
+      assert.equal(
+        await page
+          .locator('[data-quick-mode="' + mode + '"]')
+          .getAttribute("aria-pressed"),
+        "true",
+      );
+      assert.equal(
+        await page.evaluate(() => fixture.state.requested),
+        true,
+        "Quick mode starts with one click",
+      );
+    }
+    await page.locator("#quick-power").click();
+    await page.waitForFunction(() => !fixture.state.requested);
+    await page.locator("#quick-power").click();
+    await page.waitForFunction(() => fixture.state.requested);
+    await page.locator("#quick-power").click();
+    await page.waitForFunction(() => !fixture.state.requested);
+    await page.evaluate(() => {
+      fixture.state.settings.brightness = 57;
+      fixture.state.recovering = true;
+      fixture.state.requested = true;
+    });
+    await page.waitForFunction(
+      () => document.querySelector("#quick-value").textContent === "57%",
+    );
+    assert.equal(
+      await page.locator("#quick-status").innerText(),
+      "Reconnecting",
+    );
+    await page.locator("#quick-pin").check();
+    await page.waitForFunction(() => fixture.pinned);
+    await page.screenshot({ path: ".local/ui-compact.png" });
+    for (const width of [300, 360, 540]) {
+      await page.setViewportSize({ width, height: 460 });
+      assert(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      );
+      const layout = await page.evaluate(() => ({
+        modes: document.querySelector(".quick-modes").getBoundingClientRect(),
+        brightness: document
+          .querySelector(".quick-brightness")
+          .getBoundingClientRect(),
+        footer: document.querySelector(".quick-footer").getBoundingClientRect(),
+        height: innerHeight,
+      }));
+      assert(
+        layout.modes.y < layout.brightness.y,
+        "Quick modes stay before brightness at " + width,
+      );
+      assert(
+        layout.footer.bottom <= layout.height + 1,
+        "Quick footer fits at " + width,
+      );
+    }
     assert.deepEqual(errors, []);
     console.log(
       "UI passed: profiles, calibration apply/cancel, blend, beat controls, tray synchronization, drag coalescing, effects, recovery, responsive widths and CSP.",

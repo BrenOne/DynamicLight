@@ -1,3 +1,7 @@
+DynamicLight 0.8.0 reorganizes the main window into a workspace with a mode-specific inspector, plus separate Scenes, Device setup, and Settings views. Quick controls adds one-click mode switching. Both windows share the app icon, local SVG controls, output rendering, and a subtle build-version label.
+
+Scene editing uses a dialog, effect previews animate on hover or keyboard focus, and narrower windows prioritize controls. Brightness and Start/Stop remain available while browsing.
+
 Download the desktop installer for your computer:
 
 | Platform | Asset |

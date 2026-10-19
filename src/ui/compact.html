@@ -1,12 +1,95 @@
 <!doctype html>
-<html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>DynamicLight · Quick controls</title><link rel="stylesheet" href="style.css" /><link rel="stylesheet" href="compact.css" /></head>
-<body class="compact-body"><main class="quick-controls">
-  <header><div class="brand"><img src="icon.svg" width="28" height="28" alt="" /><h1>DynamicLight</h1></div><button id="open-studio" class="text-button">Open studio ↗</button></header>
-  <section class="quick-state" aria-label="Lighting state"><span id="quick-mode">Loading…</span><span id="quick-status" role="status">Connecting to app</span></section>
-  <canvas id="quick-strip" width="600" height="20" aria-label="Outgoing LED colors"></canvas>
-  <button id="quick-power" class="power" disabled>Start</button>
-  <label for="quick-brightness">Brightness <output id="quick-value">—</output></label><input id="quick-brightness" type="range" min="0" max="100" disabled />
-  <section class="quick-favorites" aria-labelledby="favorites-title"><h2 id="favorites-title">Favorites</h2><div id="quick-favorites"></div><p id="quick-empty" class="help">Add favorites in the studio’s Profiles section.</p></section>
-  <p id="quick-error" role="status" class="help" hidden></p><button id="quick-retry" class="secondary" hidden>Retry</button>
-  <footer><label class="checkbox"><input id="quick-pin" type="checkbox" /> Always on top</label><span id="quick-delivery" class="muted">USB idle</span></footer>
-</main><script src="compact.js"></script></body></html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DynamicLight · Quick controls</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="compact.css" />
+  </head>
+  <body class="compact-body">
+    <main class="quick-controls">
+      <header class="quick-header">
+        <div class="brand">
+          <img src="icon.svg" width="29" height="29" alt="" />
+          <div>
+            <h1>DynamicLight</h1>
+            <span class="quick-version" data-app-version></span>
+          </div>
+        </div>
+        <button id="open-studio" class="text-button" title="Open main window">
+          <span>Open app</span
+          ><svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+            <use href="icons.svg#arrow-up-right"></use>
+          </svg>
+        </button>
+      </header>
+      <section class="quick-state" aria-label="Lighting state">
+        <div>
+          <h2 id="quick-mode">Loading…</h2>
+          <span id="quick-status" role="status">Connecting to app</span>
+        </div>
+        <button id="quick-power" class="power" disabled>Start</button>
+      </section>
+      <div
+        class="modes quick-modes"
+        role="group"
+        aria-label="Start a lighting mode"
+      >
+        <button data-quick-mode="solid" aria-pressed="false" disabled>
+          <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+            <use href="icons.svg#palette"></use></svg
+          ><span>Color</span></button
+        ><button data-quick-mode="screen" aria-pressed="false" disabled>
+          <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+            <use href="icons.svg#monitor"></use></svg
+          ><span>Screen</span></button
+        ><button data-quick-mode="music" aria-pressed="false" disabled>
+          <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+            <use href="icons.svg#audio-lines"></use></svg
+          ><span>Music</span></button
+        ><button data-quick-mode="blend" aria-pressed="false" disabled>
+          <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+            <use href="icons.svg#blend"></use></svg
+          ><span>Blend</span></button
+        ><button data-quick-mode="rainbow" aria-pressed="false" disabled>
+          <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
+            <use href="icons.svg#waves"></use></svg
+          ><span>Effects</span>
+        </button>
+      </div>
+      <div class="quick-output">
+        <canvas id="quick-pattern" aria-label="Outgoing LED pattern"></canvas
+        ><canvas
+          id="quick-strip"
+          width="600"
+          height="20"
+          aria-label="Outgoing colors in physical LED order"
+        ></canvas>
+      </div>
+      <div class="quick-brightness">
+        <label for="quick-brightness"
+          >Brightness <output id="quick-value">—</output></label
+        ><input id="quick-brightness" type="range" min="0" max="100" disabled />
+      </div>
+      <section class="quick-favorites" aria-labelledby="favorites-title">
+        <h3 id="favorites-title">Favorites</h3>
+        <div id="quick-favorites"></div>
+        <p id="quick-empty" class="help">
+          Add favorites in the app’s Scenes view.
+        </p>
+      </section>
+      <div class="quick-notice">
+        <p id="quick-error" role="status" class="help" hidden></p>
+        <button id="quick-retry" class="secondary" hidden>Retry</button>
+      </div>
+      <footer class="quick-footer">
+        <label class="checkbox"
+          ><input id="quick-pin" type="checkbox" /> Keep on top</label
+        ><span id="quick-delivery">USB idle</span>
+      </footer>
+    </main>
+    <script src="ui-common.js"></script>
+    <script src="compact.js"></script>
+  </body>
+</html>
