@@ -1509,16 +1509,29 @@
         </select></label
       >
       <p class="help">
-        The outline previews the sampled area; no screenshot is taken here.
-        Selected edges map to the calibrated LED route. Changing source stops
-        capture until you press Start / Retry.
+        Lights follow the edges of the selected area. For a video inside a
+        browser page, select just the video to exclude white margins and toolbars.
+        Changing source stops capture until you press Start / Retry.
       </p>
+      <div id="source-window" hidden>
+        <label>Window<select id="source-windows"></select></label>
+        <button id="source-refresh">Refresh windows</button>
+        <button id="source-snapshot">Take window preview</button>
+        <p class="help">
+          Preview captures one image of this window, kept only while this dialog
+          is open. Drag over the video in the preview, or enter percentages.
+          The window follows its visible tab; switching tabs changes the content.
+        </p>
+        <label class="source-crop-toggle"><input id="source-crop" type="checkbox" />
+          Select an area within this window</label>
+      </div>
       <canvas
         id="source-preview"
         width="600"
         height="340"
-        aria-label="Selected capture rectangle. Drag to select, or enter percentages below."
+        aria-label="Capture area. Drag to select, or use the area checkbox and percentages below."
       ></canvas>
+      <p id="source-area-help" class="help"></p>
       <div id="source-region" class="settings-grid" hidden>
         <label
           >Left %<input
@@ -1550,12 +1563,10 @@
             step="0.1"
         /></label>
       </div>
-      <div id="source-window" hidden>
-        <label>Window<select id="source-windows"></select></label
-        ><button id="source-refresh">Refresh windows</button>
-      </div>
       <p class="help">
-        Window capture follows movement and resizing. Minimized, closed, or
+        Areas keep their relative position when the window resizes; reselect the
+        video after changing the page layout. Fullscreen video can use the whole
+        window. Minimized, closed, or
         revoked sources stop or fall back to Music in Blend; Retry after
         restoring them. Select windows again after restarting DynamicLight.
         Protected video may be black. macOS requires screen-recording

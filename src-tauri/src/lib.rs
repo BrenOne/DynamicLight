@@ -158,6 +158,20 @@ async fn capture_windows_list() -> Result<Vec<capture_source::Choice>, String> {
         .map_err(|e| e.to_string())?
 }
 #[tauri::command]
+async fn capture_window_preview(
+    source: capture_source::Source,
+) -> Result<capture::WindowPreview, String> {
+    // Explicit one-shot capture from the source picker. A fresh thread avoids
+    // inheriting an STA apartment from an unrelated blocking-pool task.
+    tauri::async_runtime::spawn_blocking(move || {
+        std::thread::spawn(move || capture::window_preview(source))
+            .join()
+            .map_err(|_| "Window preview failed".to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
 fn quit(app: tauri::AppHandle) {
     app.exit(0);
 }
@@ -207,6 +221,7 @@ pub fn run() {
             control,
             displays,
             capture_windows_list,
+            capture_window_preview,
             quit,
             platform_name,
             app_version,

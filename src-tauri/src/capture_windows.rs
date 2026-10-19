@@ -328,6 +328,7 @@ pub struct WindowCapture {
     staging: Option<ID3D11Texture2D>,
     size: SizeInt32,
     pixels: (u32, u32),
+    content: (u32, u32),
     crop: lighting::Crop,
     started: std::time::Instant,
     _apartment: Apartment,
@@ -408,6 +409,7 @@ impl WindowCapture {
             staging: None,
             size,
             pixels: (0, 0),
+            content: (0, 0),
             crop: lighting::Crop::default(),
             started: std::time::Instant::now(),
             _apartment: apartment,
@@ -420,6 +422,42 @@ impl WindowCapture {
             .map_err(|e| format!("Window capture ended: {e}. Select the source and Retry."))
     }
     fn read(&mut self, settings: &Settings, aspect: f32) -> windows::core::Result<Vec<Rgb>> {
+        self.poll()?;
+        if let Some(colors) = self.mapped_frame(|pixels, frame, crop| {
+            lighting::sample_window(pixels, frame, settings, crop, aspect)
+        })? {
+            return Ok(colors);
+        }
+        if self.started.elapsed() > std::time::Duration::from_secs(5) {
+            return Err(windows::core::Error::from_hresult(
+                windows::Win32::Foundation::E_FAIL,
+            ));
+        }
+        Ok(vec![[0; 3]; settings.count])
+    }
+    /// Explicit, short-lived preview of this same selected-window session.
+    /// The thumbnail stays in memory and retains the OS capture indicator.
+    pub fn preview(&mut self) -> Result<crate::capture::WindowPreview, String> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        loop {
+            self.poll()
+                .map_err(|e| format!("Window preview unavailable: {e}"))?;
+            if let Some(preview) = self
+                .mapped_frame(|pixels, (width, height, stride, _), _| {
+                    window_thumbnail(pixels, width, height, stride)
+                })
+                .map_err(|e| format!("Window preview unavailable: {e}"))?
+            {
+                return Ok(preview);
+            }
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            if remaining.is_zero() {
+                return Err("Window preview timed out. Restore the window and try again.".into());
+            }
+            std::thread::sleep(remaining.min(std::time::Duration::from_millis(16)));
+        }
+    }
+    fn poll(&mut self) -> windows::core::Result<()> {
         let hwnd = windows::Win32::Foundation::HWND(self.window as *mut c_void);
         let mut pid = 0;
         unsafe {
@@ -460,6 +498,18 @@ impl WindowCapture {
                         windows::Win32::Foundation::E_INVALIDARG,
                     ));
                 }
+                // The pooled texture may be larger than this frame's content.
+                // Pixels outside ContentSize are undefined and must not reach
+                // the edge sampler or preview, including during a resize.
+                self.content = (
+                    (content.Width as u32).min(desc.Width),
+                    (content.Height as u32).min(desc.Height),
+                );
+                if self.content.0 == 0 || self.content.1 == 0 {
+                    return Err(windows::core::Error::from_hresult(
+                        windows::Win32::Foundation::E_INVALIDARG,
+                    ));
+                }
                 if self.staging.is_none() || self.pixels != (desc.Width, desc.Height) {
                     self.pixels = (desc.Width, desc.Height);
                     desc.Usage = D3D11_USAGE_STAGING;
@@ -492,32 +542,67 @@ impl WindowCapture {
             Err(e) if e.code().is_ok() || e.code() == windows::Win32::Foundation::E_POINTER => {}
             Err(e) => return Err(e),
         }
+        Ok(())
+    }
+    fn mapped_frame<T>(
+        &mut self,
+        read: impl FnOnce(&[u8], (u32, u32, usize, bool), &mut lighting::Crop) -> T,
+    ) -> windows::core::Result<Option<T>> {
         let Some(staging) = self.staging.as_ref() else {
-            if self.started.elapsed() > std::time::Duration::from_secs(5) {
-                return Err(windows::core::Error::from_hresult(
-                    windows::Win32::Foundation::E_FAIL,
-                ));
-            }
-            return Ok(vec![[0; 3]; settings.count]);
+            return Ok(None);
         };
+        struct Mapping<'a>(&'a ID3D11DeviceContext, &'a ID3D11Texture2D);
+        impl Drop for Mapping<'_> {
+            fn drop(&mut self) {
+                unsafe { self.0.Unmap(self.1, 0) };
+            }
+        }
         let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
         unsafe {
             self.context
                 .Map(staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))?;
+            let _mapping = Mapping(&self.context, staging);
             let pixels = std::slice::from_raw_parts(
                 mapped.pData.cast::<u8>(),
-                mapped.RowPitch as usize * self.pixels.1 as usize,
+                mapped.RowPitch as usize * self.content.1 as usize,
             );
-            let colors = lighting::sample_geometry(
+            Ok(Some(read(
                 pixels,
-                (self.pixels.0, self.pixels.1, mapped.RowPitch as usize, true),
-                settings,
+                (
+                    self.content.0,
+                    self.content.1,
+                    mapped.RowPitch as usize,
+                    true,
+                ),
                 &mut self.crop,
-                aspect,
-            );
-            self.context.Unmap(staging, 0);
-            Ok(colors)
+            )))
         }
+    }
+}
+fn window_thumbnail(
+    pixels: &[u8],
+    width: u32,
+    height: u32,
+    stride: usize,
+) -> crate::capture::WindowPreview {
+    let scale = (600.0 / f64::from(width))
+        .min(340.0 / f64::from(height))
+        .min(1.0);
+    let w = (f64::from(width) * scale).floor().max(1.0) as u32;
+    let h = (f64::from(height) * scale).floor().max(1.0) as u32;
+    let mut rgba = Vec::with_capacity(w as usize * h as usize * 4);
+    for y in 0..h {
+        let py = (u64::from(y) * u64::from(height) / u64::from(h)) as usize;
+        for x in 0..w {
+            let px = (u64::from(x) * u64::from(width) / u64::from(w)) as usize;
+            let p = py * stride + px * 4;
+            rgba.extend_from_slice(&[pixels[p + 2], pixels[p + 1], pixels[p], 255]);
+        }
+    }
+    crate::capture::WindowPreview {
+        width: w,
+        height: h,
+        rgba,
     }
 }
 impl Drop for WindowCapture {
@@ -538,7 +623,84 @@ mod window_tests {
         },
         time::Duration,
     };
-    use windows::{core::w, Win32::UI::WindowsAndMessaging::*};
+    use windows::{
+        core::w,
+        Win32::{
+            Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM},
+            UI::WindowsAndMessaging::*,
+        },
+    };
+    #[test]
+    fn window_preview_is_bounded_and_excludes_strided_padding() {
+        let (width, height, stride) = (1600u32, 1200u32, 1664usize * 4);
+        let mut pixels = vec![255; stride * (height as usize + 8)];
+        for y in 0..height as usize {
+            for x in 0..width as usize {
+                pixels[y * stride + x * 4..y * stride + x * 4 + 4]
+                    .copy_from_slice(&[17, 80, 230, 255]);
+            }
+        }
+        let preview = window_thumbnail(&pixels, width, height, stride);
+        assert_eq!((preview.width, preview.height), (453, 340));
+        assert_eq!(preview.rgba.len(), 453 * 340 * 4);
+        assert!(preview
+            .rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .all(|p| *p == [230, 80, 17, 255]));
+    }
+    unsafe extern "system" fn fixture_proc(
+        hwnd: HWND,
+        message: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
+        unsafe {
+            if message == WM_PAINT {
+                let mut paint = PAINTSTRUCT::default();
+                let dc = BeginPaint(hwnd, &mut paint);
+                let mut bounds = RECT::default();
+                if GetClientRect(hwnd, &mut bounds).is_ok() {
+                    let white = CreateSolidBrush(COLORREF(0x00ff_ffff));
+                    FillRect(dc, &bounds, white);
+                    let _ = DeleteObject(white.into());
+                    let video = RECT {
+                        left: bounds.right / 4,
+                        top: bounds.bottom / 4,
+                        right: bounds.right * 3 / 4,
+                        bottom: bounds.bottom * 3 / 4,
+                    };
+                    let brush =
+                        CreateSolidBrush(COLORREF(GetWindowLongPtrW(hwnd, GWLP_USERDATA) as u32));
+                    FillRect(dc, &video, brush);
+                    let _ = DeleteObject(brush.into());
+                }
+                let _ = EndPaint(hwnd, &paint);
+                return LRESULT(0);
+            }
+            DefWindowProcW(hwnd, message, wparam, lparam)
+        }
+    }
+    fn wait_for_colors(capture: &mut WindowCapture, settings: &Settings, expected: Rgb) {
+        let mut frame = vec![];
+        for _ in 0..100 {
+            frame = capture.colors(settings, 16.0 / 9.0).unwrap();
+            if !frame.is_empty()
+                && frame.iter().all(|color| {
+                    color
+                        .iter()
+                        .zip(expected)
+                        .all(|(actual, expected)| actual.abs_diff(expected) <= 3)
+                })
+            {
+                assert_eq!(frame.len(), settings.count);
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(30));
+        }
+        panic!("Expected {expected:?}, captured {frame:?}");
+    }
     struct Fixture {
         stop: Arc<AtomicBool>,
         thread: Option<std::thread::JoinHandle<()>>,
@@ -563,21 +725,37 @@ mod window_tests {
         let done = stop.clone();
         let (tx, rx) = mpsc::channel();
         let thread = std::thread::spawn(move || unsafe {
+            let instance = HINSTANCE(
+                windows::Win32::System::LibraryLoader::GetModuleHandleW(None)
+                    .unwrap()
+                    .0,
+            );
+            let class = w!("DynamicLightCaptureColorFixture");
+            let registered = RegisterClassW(&WNDCLASSW {
+                lpfnWndProc: Some(fixture_proc),
+                hInstance: instance,
+                lpszClassName: class,
+                style: CS_HREDRAW | CS_VREDRAW,
+                ..Default::default()
+            });
+            assert_ne!(registered, 0);
             let window = CreateWindowExW(
                 WS_EX_TOOLWINDOW,
-                w!("STATIC"),
+                class,
                 w!("DynamicLight capture fixture"),
-                WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+                WS_POPUP | WS_VISIBLE,
                 50,
                 50,
                 480,
                 320,
                 None,
                 None,
-                None,
+                Some(instance),
                 None,
             )
             .unwrap();
+            SetWindowLongPtrW(window, GWLP_USERDATA, 0x0014_78f0);
+            let _ = InvalidateRect(Some(window), None, false);
             tx.send(window.0 as usize).unwrap();
             while !done.load(Ordering::Acquire) {
                 let mut msg = MSG::default();
@@ -588,6 +766,7 @@ mod window_tests {
                 std::thread::sleep(Duration::from_millis(10));
             }
             DestroyWindow(window).unwrap();
+            UnregisterClassW(class, Some(instance)).unwrap();
         });
         let fixture = Fixture {
             stop,
@@ -604,40 +783,67 @@ mod window_tests {
         }
         let mut capture = WindowCapture::new(hwnd.0 as usize as u32).unwrap();
         let settings = Settings::default();
-        let mut frame = vec![];
-        for _ in 0..100 {
-            frame = capture.colors(&settings, 16.0 / 9.0).unwrap();
-            if frame.iter().flatten().any(|v| *v > 0) {
-                break;
+        // White browser-like margins are expected to dominate whole-window
+        // edge sampling, even with a saturated orange video in the middle.
+        wait_for_colors(&mut capture, &settings, [255, 255, 255]);
+        let preview = capture.preview().unwrap();
+        assert!(preview.width <= 600 && preview.height <= 340);
+        let center = ((preview.height / 2 * preview.width + preview.width / 2) * 4) as usize;
+        assert_eq!(&preview.rgba[center..center + 4], &[240, 120, 20, 255]);
+        assert_eq!(&preview.rgba[..4], &[255; 4]);
+        let settings = Settings {
+            capture_source: crate::capture_source::Source::Window {
+                id: hwnd.0 as usize as u32,
+                pid: std::process::id(),
+                app: "Fixture".into(),
+                session: "Fixture".into(),
+                crop: Some(crate::capture_source::Rectangle {
+                    left: 300,
+                    top: 300,
+                    width: 400,
+                    height: 400,
+                }),
+            },
+            ..settings
+        };
+        wait_for_colors(&mut capture, &settings, [240, 120, 20]);
+        // Require newly painted frames, not only nonzero output. This catches
+        // stale frame reuse and an accidental BGRA/RGBA channel reversal.
+        for (paint, expected) in [(0x000a_0af0, [240, 10, 10]), (0x00f0_0a0a, [10, 10, 240])] {
+            unsafe {
+                SetWindowLongPtrW(hwnd, GWLP_USERDATA, paint);
+                let _ = InvalidateRect(Some(hwnd), None, false);
             }
-            std::thread::sleep(Duration::from_millis(30));
+            wait_for_colors(&mut capture, &settings, expected);
         }
-        assert_eq!(frame.len(), settings.count);
-        assert!(
-            frame.iter().flatten().any(|v| *v > 0),
-            "Fixture window produced no frame"
-        );
-        let before = capture.size;
-        unsafe {
-            SetWindowPos(
-                hwnd,
-                None,
-                0,
-                0,
-                620,
-                400,
-                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
-            )
-            .unwrap();
-        }
-        for _ in 0..100 {
-            capture.colors(&settings, 16.0 / 9.0).unwrap();
-            if capture.size != before {
-                break;
+        for (width, height) in [(840, 560), (360, 240)] {
+            let before = capture.size;
+            unsafe {
+                SetWindowPos(
+                    hwnd,
+                    None,
+                    0,
+                    0,
+                    width,
+                    height,
+                    SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
+                )
+                .unwrap();
             }
-            std::thread::sleep(Duration::from_millis(30));
+            for _ in 0..100 {
+                capture.colors(&settings, 16.0 / 9.0).unwrap();
+                if capture.size != before {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(30));
+            }
+            assert_ne!(capture.size, before);
+            wait_for_colors(&mut capture, &settings, [10, 10, 240]);
+            let preview = capture.preview().unwrap();
+            assert!(preview.width <= 600 && preview.height <= 340);
+            let center = ((preview.height / 2 * preview.width + preview.width / 2) * 4) as usize;
+            assert_eq!(&preview.rgba[center..center + 4], &[10, 10, 240, 255]);
         }
-        assert_ne!(capture.size, before);
         drop(fixture);
         for _ in 0..100 {
             if capture.colors(&settings, 16.0 / 9.0).is_err() {

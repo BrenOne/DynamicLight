@@ -2519,6 +2519,48 @@ mod tests {
         );
     }
     #[test]
+    fn changing_only_window_crop_requires_fresh_capture_consent() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut source = crate::capture_source::Source::Window {
+            id: 1,
+            pid: 2,
+            app: "local-browser".into(),
+            session: "local-session".into(),
+            crop: None,
+        };
+        let mut e = simulated(
+            Settings {
+                mode: "screen".into(),
+                capture_source: source.clone(),
+                ..Default::default()
+            },
+            dir.path().join("settings.json"),
+        );
+        e.life.requested = true;
+        e.life.capture_allowed = true;
+        e.state.capturing = true;
+        let crate::capture_source::Source::Window { crop, .. } = &mut source else {
+            unreachable!()
+        };
+        *crop = Some(crate::capture_source::Rectangle {
+            left: 200,
+            top: 200,
+            width: 600,
+            height: 600,
+        });
+        e.action(Action::PatchSettings {
+            patch: SettingsPatch(serde_json::Map::from_iter([(
+                "captureSource".into(),
+                serde_json::to_value(&source).unwrap(),
+            )])),
+            persist: true,
+        })
+        .unwrap();
+        assert_eq!(e.state.settings.capture_source, source);
+        assert!(!e.state.capturing && !e.life.capture_allowed);
+        assert!(e.state.capture_requires_start);
+    }
+    #[test]
     fn offline_replay_stops_capture_and_respects_stop_and_comfort() {
         let dir = tempfile::tempdir().unwrap();
         let mut e = simulated(

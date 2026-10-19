@@ -225,6 +225,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
           progress: null,
         },
         updateInstalls: 0,
+        windowPreviewCalls: [],
         state,
         calls,
         emitEvent: (name, payload) => listeners[name]?.({ payload }),
@@ -369,7 +370,32 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
                     session: "test",
                   },
                 },
+                {
+                  name: "Other window",
+                  source: {
+                    kind: "window",
+                    id: 789,
+                    pid: 456,
+                    app: "Player",
+                    session: "test",
+                  },
+                },
               ];
+            if (cmd === "capture_window_preview") {
+              fixture.windowPreviewCalls.push(structuredClone(args.source));
+              if (fixture.deferWindowPreview)
+                await new Promise((resolve) => {
+                  fixture.resolveWindowPreview = resolve;
+                });
+              if (fixture.failWindowPreview)
+                throw new Error("Window preview unavailable. Enter an area manually.");
+              const width = 40, height = 30, rgba = [];
+              for (let y = 0; y < height; ++y)
+                for (let x = 0; x < width; ++x)
+                  rgba.push(...(x >= 10 && x < 30 && y >= 6 && y < 24
+                    ? [240, 90, 20, 255] : [255, 255, 255, 255]));
+              return { width, height, rgba };
+            }
             if (cmd === "studio_library") {
               if (args.next) fixture.studioLibrary = args.next;
               return structuredClone(
@@ -1863,14 +1889,103 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
     await page.locator("#source-kind").selectOption("window");
     await page.locator("#source-refresh").click();
     await page.locator("#source-windows").selectOption("0");
+    await page.locator("#source-crop").check();
+    for (const [key, value] of Object.entries({ left: "10", top: "10", width: "80", height: "80" }))
+      await page.locator("#source-" + key).fill(value);
+    assert.equal(
+      await page.evaluate(() => fixture.windowPreviewCalls.length),
+      0,
+      "Opening, refreshing, selecting a window and editing its area never capture an image",
+    );
+    await page.locator("#source-snapshot").click();
+    await page.waitForFunction(() => document.querySelector("#source-preview").width === 40);
+    assert.deepEqual(
+      await page.locator("#source-preview").evaluate((canvas) => {
+        const ctx = canvas.getContext("2d");
+        return [Array.from(ctx.getImageData(1, 1, 1, 1).data),
+          Array.from(ctx.getImageData(20, 15, 1, 1).data)];
+      }),
+      [[255, 255, 255, 255], [240, 90, 20, 255]],
+      "Explicit preview displays the video colors inside the white browser page",
+    );
+    await page.locator("#source-preview").scrollIntoViewIfNeeded();
+    const previewBox = await page.locator("#source-preview").boundingBox();
+    await page.mouse.move(previewBox.x + previewBox.width * .25, previewBox.y + previewBox.height * .2);
+    await page.mouse.down();
+    await page.mouse.move(previewBox.x + previewBox.width * .75, previewBox.y + previewBox.height * .8, { steps: 5 });
+    await page.mouse.up();
+    const videoArea = { left: 250, top: 200, width: 500, height: 600 };
+    const readAreaFields = () => page.evaluate(() => Object.fromEntries(
+      ["left", "top", "width", "height"].map((key) => [key, Number(document.querySelector("#source-" + key).value) * 10]),
+    ));
+    assert.deepEqual(await readAreaFields(), videoArea, "Dragging stores normalized window coordinates");
+    await page.screenshot({ path: ".local/ui-window-video-area.png" });
+    await page.locator("#source-refresh").click();
+    await page.waitForFunction(() => !document.querySelector("#source-refresh").disabled);
+    assert.equal(await page.locator("#source-windows").inputValue(), "0");
+    assert.equal(await page.locator("#source-crop").isChecked(), true);
+    assert.deepEqual(await readAreaFields(), videoArea, "Refreshing preserves the selected video area");
     await page.locator("#source-apply").click();
     await page.waitForFunction(
       () => !document.querySelector("#source-dialog").open,
     );
-    assert.equal(
-      await page.evaluate(() => fixture.state.settings.captureSource.id),
-      123,
+    assert.deepEqual(
+      await page.evaluate(() => fixture.state.settings.captureSource),
+      { kind: "window", id: 123, pid: 456, app: "Player", session: "test", crop: videoArea },
     );
+    await page.locator("#source-open").click();
+    await page.waitForFunction(() => document.querySelector("#source-dialog").open);
+    assert.equal(await page.locator("#source-windows").inputValue(), "0");
+    assert.equal(await page.locator("#source-crop").isChecked(), true);
+    assert.deepEqual(await readAreaFields(), videoArea, "Reopening restores the saved area");
+    assert.equal(await page.evaluate(() => fixture.windowPreviewCalls.length), 1);
+    assert.equal(await page.locator("#source-preview").evaluate((canvas) => canvas.width), 600,
+      "Reopening does not retain the private window image");
+    await page.setViewportSize({ width: 540, height: 780 });
+    assert(await page.locator("#source-dialog").evaluate((dialog) => dialog.scrollWidth <= dialog.clientWidth),
+      "Window video area controls fit a narrow window");
+    await page.screenshot({ path: ".local/ui-window-video-area-narrow.png" });
+    await page.setViewportSize({ width: 1280, height: 1000 });
+
+    // An in-flight native result must never reveal an old source after selection changes or closing.
+    await page.evaluate(() => { fixture.deferWindowPreview = true; });
+    await page.locator("#source-snapshot").click();
+    await page.waitForFunction(() => fixture.windowPreviewCalls.length === 2);
+    await page.locator("#source-windows").selectOption("1");
+    await page.evaluate(async () => {
+      fixture.resolveWindowPreview();
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+    assert.equal(await page.locator("#source-preview").evaluate((canvas) => canvas.width), 600,
+      "Changing windows discards a late preview");
+    assert.equal(await page.locator("#source-crop").isChecked(), false);
+    await page.locator("#source-snapshot").click();
+    await page.waitForFunction(() => fixture.windowPreviewCalls.length === 3);
+    await page.locator("#source-cancel").click();
+    await page.evaluate(async () => {
+      fixture.resolveWindowPreview();
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      fixture.deferWindowPreview = false;
+    });
+    await page.locator("#source-open").click();
+    await page.waitForFunction(() => document.querySelector("#source-dialog").open);
+    assert.equal(await page.locator("#source-preview").evaluate((canvas) => canvas.width), 600,
+      "Closing discards a late preview, even after reopening");
+    assert.deepEqual(await readAreaFields(), videoArea, "Cancel preserves the saved area");
+    await page.evaluate(() => { fixture.failWindowPreview = true; });
+    await page.locator("#source-snapshot").click();
+    await page.waitForFunction(() => /Enter an area manually/.test(document.querySelector("#source-status").textContent));
+    await page.locator("#source-left").fill("20");
+    await page.locator("#source-apply").click();
+    await page.waitForFunction(() => !document.querySelector("#source-dialog").open);
+    assert.equal(await page.evaluate(() => fixture.state.settings.captureSource.crop.left), 200,
+      "Manual area selection remains usable when preview fails");
+    await page.locator("#source-open").click();
+    await page.locator("#source-crop").uncheck();
+    await page.locator("#source-apply").click();
+    await page.waitForFunction(() => !document.querySelector("#source-dialog").open);
+    assert.equal(await page.evaluate(() => fixture.state.settings.captureSource.crop), undefined,
+      "Disabling the area returns to the whole selected window");
     await page.locator('[data-view="settings"]').click();
     // Appearance preferences cover every supported palette and both color schemes.
     await page.setViewportSize({ width: 1120, height: 780 });
