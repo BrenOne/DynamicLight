@@ -46,6 +46,9 @@ jobs:
           cache-on-failure: true
       - run: npm install --global pnpm@11.25.0
       - run: pnpm install --frozen-lockfile
+      - name: Verify backlog publishing preserves triage
+        if: runner.os == 'Linux'
+        run: node scripts/backlog-test.cjs
       - name: Check studio UI and responsive layouts
         if: runner.os == 'Linux'
         run: |

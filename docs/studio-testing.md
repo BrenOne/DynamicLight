@@ -1,6 +1,8 @@
-# Profiles, calibration, screen tuning and music (0.5)
+# Studio validation (0.5–0.6)
 
 Physical checks are deferred at the user's request. Automated tests and successful packages are not evidence that a particular strip, desktop permission flow, or audio route works.
+
+Record results and defects in [Windows/Linux validation #45](https://github.com/mskutin/DynamicLight/issues/45), [macOS validation #38](https://github.com/mskutin/DynamicLight/issues/38), and [accessibility #37](https://github.com/mskutin/DynamicLight/issues/37). These trackers own remaining verification after implementation issues close. Include the tested build and environment; leave untested checks pending.
 
 ## Automated coverage
 

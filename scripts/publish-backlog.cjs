@@ -1,10 +1,11 @@
 // Explicit maintainer operation. Requires authenticated gh with repository and project access.
-// Uses stable keys and existing-item checks to avoid duplicates on retry.
+// Additive publisher: existing issue bodies, labels and project fields are never reset.
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const repo = 'mskutin/DynamicLight', owner = 'mskutin', title = 'DynamicLight Roadmap';
 const items = JSON.parse(fs.readFileSync('docs/backlog.json', 'utf8'));
+const progress = JSON.parse(fs.readFileSync('docs/backlog-progress.json', 'utf8'));
 const output = 'docs/github-backlog.json';
 const state = fs.existsSync(output) ? JSON.parse(fs.readFileSync(output, 'utf8')) : { issues: {} };
 fs.mkdirSync('.local', { recursive: true });
@@ -22,7 +23,8 @@ function graphql(query, variables = {}) {
 }
 function save() { fs.writeFileSync(output, JSON.stringify(state, null, 2) + '\n'); }
 function body(item) {
-  return `## Outcome\n\n${item.summary}\n\n## Acceptance criteria\n\n${item.criteria.map(c => `- [ ] ${c}`).join('\n')}\n\n## Planning\n\n- Backlog key: ${item.key}\n- Priority: ${item.priority}\n- Phase: ${item.phase}\n- Area: ${item.area}\n${item.dependsOn?.length ? `- Depends on: ${item.dependsOn.map(key => state.issues[key] ? `#${state.issues[key].number}` : key).join(', ')}\n` : ''}\nThis is planned work; inclusion in the backlog is not a release commitment.\n\n<!-- backlog-key: ${item.key} -->`;
+  const refs = keys => keys.map(key => state.issues[key] ? `#${state.issues[key].number}` : key).join(', ');
+  return `## Outcome\n\n${item.summary}\n\n${item.scopeNote ? `## Existing behavior and remaining scope\n\n${item.scopeNote}\n\n` : ''}## Acceptance criteria\n\n${item.criteria.map(c => `- [ ] ${c}`).join('\n')}\n\n## Planning\n\n- Backlog key: ${item.key}\n- Priority: ${item.priority}\n- Phase: ${item.phase}\n- Area: ${item.area}\n${item.dependsOn?.length ? `- Depends on unfinished work: ${refs(item.dependsOn)}\n` : ''}${item.availableFoundation?.length ? `- Available foundation: ${refs(item.availableFoundation)}\n` : ''}\nThis is planned work; inclusion in the backlog is not a release commitment.\n\n<!-- backlog-key: ${item.key} -->`;
 }
 if (json(['api', 'user']).login !== owner) throw new Error('Authenticate as mskutin before publishing this backlog.');
 json(['repo', 'view', repo, '--json', 'nameWithOwner']);
@@ -37,7 +39,7 @@ for (const [name, color, description] of definitions) if (!labels.has(name)) api
 const projects = json(['project', 'list', '--owner', owner, '--limit', '100', '--format', 'json']).projects;
 state.project = state.project || projects.find(project => project.title === title) || json(['project', 'create', '--owner', owner, '--title', title, '--format', 'json']);
 save();
-gh(['project', 'edit', String(state.project.number), '--owner', owner, '--visibility', 'PUBLIC', '--description', 'Feature and UI backlog for DynamicLight: reliable cross-platform USB lighting, a visual studio, and integrations.', '--readme', 'All items start in Backlog. P1 covers foundations and core usability; P2 expands the product; P3 covers exploratory integrations. Foundation, Studio, and Ecosystem are planning groups, not dated release commitments. Each issue includes acceptance criteria.']);
+// Project description, views and workflow are maintained through triage, not republished.
 gh(['project', 'link', String(state.project.number), '--owner', owner, '--repo', repo]);
 state.project = json(['project', 'view', String(state.project.number), '--owner', owner, '--format', 'json']); save();
 let fields = json(['project', 'field-list', String(state.project.number), '--owner', owner, '--format', 'json']).fields;
@@ -52,21 +54,28 @@ if (statusField && !statusField.options.some(option => option.name === 'Backlog'
   fields = json(['project', 'field-list', String(state.project.number), '--owner', owner, '--format', 'json']).fields;
 }
 const existingIssues = json(['issue', 'list', '--repo', repo, '--state', 'all', '--limit', '1000', '--json', 'number,title,body,url']);
+const createdKeys = new Set();
 for (const item of items) {
-  let issue = existingIssues.find(issue => issue.body.includes(`<!-- backlog-key: ${item.key} -->`));
+  const matches = existingIssues.filter(issue => issue.body.includes(`<!-- backlog-key: ${item.key} -->`));
+  if (matches.length > 1) throw new Error(`Duplicate issues for ${item.key}; reconcile manually.`);
+  let issue = matches[0] || existingIssues.find(issue => issue.number === state.issues[item.key]?.number);
   if (!issue) {
+    if (progress.items[item.key] || state.issues[item.key]) throw new Error(`Cannot recreate tracked work ${item.key}; reconcile its issue mapping manually.`);
     const result = api(`repos/${repo}/issues`, { title: item.title, body: body(item), labels: ['enhancement', `area:${item.area}`, `priority:${item.priority.toLowerCase()}`, `phase:${item.phase.toLowerCase()}`] });
     issue = { number: result.number, url: result.html_url };
+    createdKeys.add(item.key);
   }
   state.issues[item.key] = { number: issue.number, url: issue.url }; save();
   console.log(`${item.key}: #${issue.number}`);
 }
 // Resolve forward dependencies after all issues exist.
-for (const item of items.filter(item => item.dependsOn?.length)) api(`repos/${repo}/issues/${state.issues[item.key].number}`, { body: body(item) }, 'PATCH');
+for (const item of items.filter(item => createdKeys.has(item.key) && item.dependsOn?.length)) api(`repos/${repo}/issues/${state.issues[item.key].number}`, { body: body(item) }, 'PATCH');
 const projectItems = json(['project', 'item-list', String(state.project.number), '--owner', owner, '--limit', '1000', '--format', 'json']).items;
 for (const item of items) {
   const issue = state.issues[item.key];
-  const projectItem = projectItems.find(entry => entry.content?.url === issue.url) || json(['project', 'item-add', String(state.project.number), '--owner', owner, '--url', issue.url, '--format', 'json']);
+  // Preserve live triage, including intentionally cleared fields and excluded/archived issues.
+  if (projectItems.some(entry => entry.content?.url === issue.url) || !createdKeys.has(item.key)) continue;
+  const projectItem = json(['project', 'item-add', String(state.project.number), '--owner', owner, '--url', issue.url, '--format', 'json']);
   const assignments = [['Status', 'Backlog'], ['Priority', item.priority], ['Phase', item.phase]];
   const variables = { project: state.project.id, item: projectItem.id };
   const declarations = ['$project:ID!', '$item:ID!'];

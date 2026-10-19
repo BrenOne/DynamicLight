@@ -1,24 +1,38 @@
 const fs = require('node:fs');
 const items = JSON.parse(fs.readFileSync('docs/backlog.json', 'utf8'));
-const links = fs.existsSync('docs/github-backlog.json') ? JSON.parse(fs.readFileSync('docs/github-backlog.json', 'utf8')) : {};
+const links = JSON.parse(fs.readFileSync('docs/github-backlog.json', 'utf8'));
 const progress = JSON.parse(fs.readFileSync('docs/backlog-progress.json', 'utf8'));
-let md = `# DynamicLight backlog\n\nReviewed ${progress.updated} against main and current implementation. Partial means some acceptance criteria are implemented; it does not mean the issue is complete. Platform builds do not replace physical validation.\n\n`;
-md += 'Priority: **P1** = foundations and core usability; **P2** = the next layer of product capability; **P3** = exploratory or integration work. Dependencies are recorded in the issue bodies.\n\n';
-if (links.project) md += `[GitHub project](${links.project.url}) · [All issues](https://github.com/mskutin/DynamicLight/issues)\n\n`;
-md += '## Agreed implementation sequence\n\n1. Startup, sleep, lock and reconnect (#1, #2), with actionable recovery states.\n2. Saved profiles and tray controls (#5, #33).\n3. Guided strip calibration and screen sampling (#4, #3).\n4. Finish beat detection, then screen/music blending (#6, #20).\n\nThe original sequence is implemented in 0.5. The next batch—diagnostics (#7), mode memory (#31), compact controls (#32), and scene library (#30)—is implemented in 0.6; physical testing is deferred at the user’s request. Custom editors, plugins, phone control and game integrations remain deferred. Physical Mac/Linux validation remains a release requirement.\n\n## Implemented portions and remaining work\n\n';
-for (const [key, value] of Object.entries(progress.items)) {
+const status = item => progress.items[item.key]?.status || 'Backlog';
+const issueLink = key => {
   const issue = links.issues[key];
-  md += `- **[${key} · #${issue.number}](${issue.url}) — ${value.status}.** ${value.delivered} Remaining: ${value.remaining}\n`;
-}
-md += '\n';
-for (const phase of ['Foundation', 'Studio', 'Ecosystem']) {
-  md += `## ${phase}\n\n| ID | Feature | Area | Priority | Issue |\n| --- | --- | --- | --- | --- |\n`;
-  for (const item of items.filter(item => item.phase === phase)) {
-    const issue = links.issues?.[item.key];
-    md += `| ${item.key} | ${item.title} | ${item.area} | ${item.priority} | ${issue ? `[#${issue.number}](${issue.url})` : 'Pending publication'} |\n`;
+  if (!issue) throw new Error(`Missing issue mapping: ${key}`);
+  return `[#${issue.number}](${issue.url})`;
+};
+if (new Set(items.map(item => item.key)).size !== items.length) throw new Error('Duplicate backlog key');
+for (const [key, value] of Object.entries(progress.items)) {
+  if (!items.some(item => item.key === key)) throw new Error(`Unknown progress key: ${key}`);
+  if (!['Implemented', 'Validation'].includes(value.status)) throw new Error(`Unknown status: ${value.status}`);
+  for (const target of value.validation || []) {
+    if (progress.items[target]?.status !== 'Validation') throw new Error(`Invalid validation handoff: ${key}/${target}`);
   }
+}
+const delivered = items.filter(item => status(item) === 'Implemented');
+const validation = items.filter(item => status(item) === 'Validation');
+const backlog = items.filter(item => status(item) === 'Backlog');
+let md = `# DynamicLight backlog\n\nReviewed ${progress.updated}: **${backlog.length} future features**, **${validation.length} validation trackers**, **${delivered.length} delivered features**. No implementation batch is currently active.\n\n[GitHub project](${links.project.url}) · [Open issues](https://github.com/mskutin/DynamicLight/issues)\n\n`;
+md += 'Backlog means uncommitted future work. In Progress is reserved for active implementation. Validation tracks remaining checks and fixes; Done records delivered implementation with verification handed off explicitly. CI builds do not establish physical hardware or accessibility results.\n\n';
+md += '## Validation\n\nPhysical testing remains deferred. Record results in these issues; do not mark unchecked scenarios passed based on builds or simulations.\n\n';
+for (const item of validation) md += `- **${issueLink(item.key)} — ${item.title}.** ${progress.items[item.key].remaining}\n`;
+md += '\n## Future work\n\nP2 expands product capability; P3 covers exploratory features and integrations. P1 is currently reserved for outstanding validation. Phase groups are not release dates. Dependencies below refer only to unfinished work; shipped foundations are linked in each issue.\n\n';
+for (const phase of ['Foundation', 'Studio', 'Ecosystem']) {
+  const group = backlog.filter(item => item.phase === phase);
+  if (!group.length) continue;
+  md += `### ${phase}\n\n| Issue | Feature | Priority | Depends on |\n| --- | --- | --- | --- |\n`;
+  for (const item of group) md += `| ${issueLink(item.key)} | ${item.title} | ${item.priority} | ${(item.dependsOn || []).map(issueLink).join(', ') || '—'} |\n`;
   md += '\n';
 }
-md += 'The original planning baseline is [docs/backlog.json](docs/backlog.json); current implementation notes and sequencing are in [docs/backlog-progress.json](docs/backlog-progress.json). Each issue retains its acceptance checklist. Do not close partial issues until the remaining work and physical checks are complete.\n';
+md += '## Delivered\n\nThese implementation issues are closed. Their outstanding physical checks are tracked separately above.\n\n| Issue | Delivered work | Validation |\n| --- | --- | --- |\n';
+for (const item of delivered) md += `| ${issueLink(item.key)} | ${item.title} | ${progress.items[item.key].validation.map(issueLink).join(', ')} |\n`;
+md += '\nSources: [scope and dependencies](docs/backlog.json), [delivery and validation notes](docs/backlog-progress.json), [GitHub mapping](docs/github-backlog.json). Regenerate with `node scripts/render-backlog.cjs`. GitHub is authoritative for live status; update these snapshots when reconciling the roadmap.\n';
 fs.writeFileSync('BACKLOG.md', md);
-console.log(`Rendered ${items.length} backlog items.`);
+console.log(`Rendered ${backlog.length} backlog, ${validation.length} validation and ${delivered.length} delivered items.`);

@@ -3,84 +3,159 @@
   "next": [],
   "items": {
     "REL-01": {
-      "status": "Implemented; testing pending",
+      "status": "Implemented",
       "delivered": "Startup restore, login controls, USB recovery and saved running intent merged in #41. Profiles are implemented in 0.5.",
-      "remaining": "Physical startup, replug, busy-device and capture permission validation."
+      "remaining": "Physical startup, replug, busy-device and capture permission validation.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
     },
     "REL-02": {
-      "status": "Implemented; testing pending",
+      "status": "Implemented",
       "delivered": "Independent sleep, display and lock handling with intended-state restoration merged in #41.",
-      "remaining": "Physical overlapping lock/display/suspend validation. Wayland display sleep unsupported; Mac lock events best effort."
+      "remaining": "Physical overlapping lock/display/suspend validation. Wayland display sleep unsupported; Mac lock events best effort.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
     },
     "AUD-01": {
-      "status": "Implemented; testing pending",
+      "status": "Implemented",
       "delivered": "Spectrum, bass, level and wave styles plus adaptive spectral-flux beat pulse, input gain, sensitivity, noise gate, release and live input telemetry.",
-      "remaining": "Real-device audio response, routing and permissions on all platforms."
+      "remaining": "Real-device audio response, routing and permissions on all platforms.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
     },
     "REL-03": {
-      "status": "Implemented; testing pending",
+      "status": "Implemented",
       "delivered": "Missed engine deadlines, allowlisted diagnostic report with preview/copy/export, optional local history (200 changes / 7 days), clear/disable controls and recovery guidance.",
-      "remaining": "Physical recovery and export checks on macOS/Linux; video-source drops are not measured."
+      "remaining": "Physical recovery and export checks on macOS/Linux; video-source drops are not measured.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
     },
     "UI-04": {
-      "status": "Implemented; testing pending",
+      "status": "Implemented",
       "delivered": "Native per-mode settings memory persists with settings. Effect direction is independent of physical strip direction. Existing focused panels, source controls, calibration and profiles remain available.",
-      "remaining": "Physical mode switching and directional animation checks."
+      "remaining": "Physical mode switching and directional animation checks.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
     },
     "UI-08": {
-      "status": "Partial",
+      "status": "Implemented",
       "delivered": "Main-window and tray status share the native engine; lifecycle recovery, Retry and Stop are implemented. Compact controller now shares engine state, errors, Retry and Stop.",
-      "remaining": "Assistive-technology and physical desktop validation."
+      "remaining": "Assistive-technology and physical desktop validation.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
     },
     "UI-10": {
-      "status": "Partial",
+      "status": "Validation",
       "delivered": "Semantic controls, visible focus, responsive layouts and reduced-motion effect previews shipped in #40.",
       "remaining": "Complete keyboard, contrast, scaling and Windows/macOS screen-reader validation."
     },
     "PLAT-01": {
-      "status": "Partial",
+      "status": "Validation",
       "delivered": "Intel and Apple Silicon DMG builds pass CI. README documents unsigned installation and platform limitations.",
       "remaining": "Physical Mac USB, capture, permission, tray and lifecycle validation."
     },
     "AUT-01": {
-      "status": "Implemented; testing pending",
+      "status": "Implemented",
       "delivered": "Named profiles with create, rename, duplicate, delete, reorder, favorites, settings updates and configurable global shortcuts. Atomic persistence and conflict rejection; hardware and privacy settings preserved.",
-      "remaining": "Physical shortcut and capture-consent checks on macOS/Linux and Windows."
+      "remaining": "Physical shortcut and capture-consent checks on macOS/Linux and Windows.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
     },
     "UI-06": {
-      "status": "Implemented; testing pending",
+      "status": "Implemented",
       "delivered": "Native tray/menu bar with Start/Stop, brightness presets, recent colors, favorites, status and Retry, synchronized with the main window.",
-      "remaining": "Physical appearance and keyboard checks across desktops. Floating-controller synchronization awaits #32."
+      "remaining": "Physical appearance, keyboard and cross-window synchronization checks across desktops.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
     },
     "HW-01": {
-      "status": "Implemented; testing pending",
+      "status": "Implemented",
       "delivered": "Temporary low-brightness LED-by-LED calibration with count, direction, offset, coverage, mapped-edge preview, apply/cancel, prior-state restoration and immediate Stop.",
-      "remaining": "Physical strip verification of first LED, direction, coverage and restoration."
+      "remaining": "Physical strip verification of first LED, direction, coverage and restoration.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
     },
     "SCR-01": {
-      "status": "Implemented; testing pending",
+      "status": "Implemented",
       "delivered": "Optional stable symmetric black-bar exclusion, RGB balance, saturation, gamma, reset, time-based smoothing and brightness transition limits.",
-      "remaining": "Representative SDR/HDR video and physical capture testing on each platform. HDR tone mapping is not implemented."
+      "remaining": "Representative SDR/HDR video and physical capture testing on each platform. HDR tone mapping is not implemented.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
     },
     "FX-05": {
-      "status": "Implemented; testing pending",
+      "status": "Implemented",
       "delivered": "Screen colors modulated by audio, blend strength, sensitivity/smoothing, silence behavior, per-source fallback and one USB writer. Shared brightness limits apply.",
-      "remaining": "Physical simultaneous capture, source-loss, Retry and comfort checks."
+      "remaining": "Physical simultaneous capture, source-loss, Retry and comfort checks.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
     },
     "FX-03": {
-      "status": "Implemented; testing pending",
+      "status": "Implemented",
       "delivered": "Global maximum brightness, time-based change limiting to soften flashes, optional minimum glow and immediate Stop across every mode.",
-      "remaining": "Physical comfort-control validation. These controls are not a medical safety guarantee."
+      "remaining": "Physical comfort-control validation. These controls are not a medical safety guarantee.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
     },
     "UI-05": {
-      "status": "Implemented; testing pending",
+      "status": "Implemented",
       "delivered": "Compact native window with Start/Stop, live brightness, favorites, Retry, optional always-on-top and remembered position constrained to available work areas. Shares the native engine and stays synchronized with studio/tray.",
-      "remaining": "Physical multi-monitor, DPI scaling, keyboard and desktop-compositor behavior on macOS/Linux."
+      "remaining": "Physical multi-monitor, DPI scaling, keyboard and desktop-compositor behavior on macOS/Linux.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
     },
     "UI-03": {
-      "status": "Implemented; testing pending",
+      "status": "Implemented",
       "delivered": "Searchable/filterable scene cards, favorites, saved-profile editing and duplication, Warm desk/Cinema/Neon/Ocean starter scenes with Save a copy and native-rendered animated example previews. Current settings are marked; previews never start capture.",
-      "remaining": "Physical scene application and assistive-technology checks on each platform."
+      "remaining": "Physical scene application and assistive-technology checks on each platform.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
+    },
+    "QA-01": {
+      "status": "Validation",
+      "delivered": "Windows and Linux packages build in CI; automated and isolated native smoke checks cover core behavior.",
+      "remaining": "Physical Windows/Linux lifecycle, capture, USB and desktop checks; see the linked tracker."
     }
   }
 }

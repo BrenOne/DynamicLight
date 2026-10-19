@@ -4,6 +4,8 @@ Automated tests cover intent persistence, opt-in startup/capture rules, overlapp
 
 Physical checks below remain pending. A successful build or synthetic event is not a physical sleep/wake test.
 
+Record physical results and defects in [Windows/Linux validation #45](https://github.com/mskutin/DynamicLight/issues/45) or [macOS validation #38](https://github.com/mskutin/DynamicLight/issues/38). Track keyboard and assistive-technology findings in [accessibility #37](https://github.com/mskutin/DynamicLight/issues/37). Closing a delivered feature does not mark these checks passed.
+
 | Scenario | Expected | Windows | Mac | Linux |
 | --- | --- | --- | --- | --- |
 | Fresh install / upgrade | No login registration or capture without opt-in | Pending | Pending | Pending |
