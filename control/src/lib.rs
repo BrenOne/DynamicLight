@@ -10,6 +10,9 @@ pub const VERSION: u8 = 1;
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "command", rename_all = "camelCase", deny_unknown_fields)]
 pub enum Command {
+    Color {
+        value: String,
+    },
     Routine {
         action: RoutineControl,
     },
@@ -74,6 +77,13 @@ pub enum Power {
 impl Command {
     pub fn validate(&self) -> Result<(), String> {
         match self {
+            Self::Color { value }
+                if value.len() != 7
+                    || !value.starts_with('#')
+                    || !value[1..].bytes().all(|b| b.is_ascii_hexdigit()) =>
+            {
+                Err("Color must be #RRGGBB".into())
+            }
             Self::Brightness { value } if *value > 100 => Err("Brightness must be 0–100".into()),
             Self::ApplyScene { id, .. } | Self::ApplyProfile { id, .. }
                 if id.is_empty()

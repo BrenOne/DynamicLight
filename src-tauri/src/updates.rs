@@ -294,6 +294,8 @@ pub async fn update_install(
                 // Keep the worker alive so a failed installer can be retried and
                 // lighting can be started again. Preserve the saved startup intent.
                 crate::automation::stop(&app);
+                crate::remote::stop(&app);
+                crate::game::stop(&app);
                 handle.request(Action::PrepareUpdate)?;
                 update.install(bytes).map_err(|e| format!("Installation failed: {e}. You can start lighting again or retry the update."))?;
                 let _ = handle.request(Action::Shutdown);

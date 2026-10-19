@@ -1,5 +1,7 @@
 # Startup and recovery validation
 
+Also run the [validation handoff through 0.16](backlog-validation.md), including multiple-controller isolation, handoff, schedules, extension cancellation and phone pairing/revocation across sleep, updates and app restart.
+
 Automated tests cover intent persistence, opt-in startup/capture rules, overlapping pause reasons, Stop during suspend, changed-source consent, UI recovery actions and login-registration rollback. Windows native smoke checks load the real WebView/IPC and register OS watchers without USB or capture. CI builds Windows, both Mac architectures, and Linux; Linux also exercises X11 capture and virtual system audio.
 
 Physical checks below remain pending. A successful build or synthetic event is not a physical sleep/wake test.

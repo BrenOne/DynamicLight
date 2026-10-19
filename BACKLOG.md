@@ -1,6 +1,6 @@
 # DynamicLight backlog
 
-Reviewed 2026-10-19: **1 future features**, **3 validation trackers**, **35 delivered features**. Next implementation batch: [#17](https://github.com/mskutin/DynamicLight/issues/17).
+Reviewed 2026-10-19: **0 future features**, **3 validation trackers**, **36 delivered features**. No implementation batch is currently active.
 
 [GitHub project](https://github.com/users/mskutin/projects/4) · [Open issues](https://github.com/mskutin/DynamicLight/issues)
 
@@ -17,12 +17,6 @@ Physical testing remains deferred. Record results in these issues; do not mark u
 ## Future work
 
 P2 expands product capability; P3 covers exploratory features and integrations. P1 is currently reserved for outstanding validation. Phase groups are not release dates. Dependencies below refer only to unfinished work; shipped foundations are linked in each issue.
-
-### Ecosystem
-
-| Issue | Feature | Priority | Depends on |
-| --- | --- | --- | --- |
-| [#17](https://github.com/mskutin/DynamicLight/issues/17) | Add a paired phone remote on the local network | P3 | [#16](https://github.com/mskutin/DynamicLight/issues/16) |
 
 ## Delivered
 
@@ -46,6 +40,7 @@ These implementation issues are closed. Their outstanding physical checks are tr
 | [#14](https://github.com/mskutin/DynamicLight/issues/14) | Add brightness and flash comfort controls | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
 | [#15](https://github.com/mskutin/DynamicLight/issues/15) | Show temporary notification accents | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
 | [#16](https://github.com/mskutin/DynamicLight/issues/16) | Expose a local automation API and command-line controls | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
+| [#17](https://github.com/mskutin/DynamicLight/issues/17) | Add a paired phone remote on the local network | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
 | [#18](https://github.com/mskutin/DynamicLight/issues/18) | Export and import portable profiles across platforms | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
 | [#19](https://github.com/mskutin/DynamicLight/issues/19) | Add a neutral-white bias-lighting mode | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
 | [#20](https://github.com/mskutin/DynamicLight/issues/20) | Blend screen colors with music-reactive brightness | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |

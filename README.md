@@ -69,3 +69,7 @@ Capture tools: [window/region sources](docs/capture-sources.md) and [RGB sequenc
 [Lighting routines](docs/routines.md): local-time schedules, application rules, temporary cues and focus/break timers, with CLI controls.
 
 [Controller routing](docs/controller-routing.md): independent strips, monitor layout, grouped controls, USB handoff and ambient-light sensors.
+
+[Games and plugins](docs/extensions.md): opt-in Counter-Strike 2 telemetry, temporary zone cues and bounded declarative effect/integration plugins.
+
+[Phone remote](docs/phone-remote.md): opt-in HTTPS on a chosen private network interface, expiring pairing codes, client revocation and responsive lighting controls. The CLI also supports `dynamiclight color '#336699'`.

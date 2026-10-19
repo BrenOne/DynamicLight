@@ -1,4 +1,6 @@
-# Studio validation (0.5–0.7)
+# Studio validation
+
+For features added through 0.16, also run the [backlog validation handoff](backlog-validation.md). It covers compositions/zones, capture/replay, routines, multiple controllers, sensors, games/plugins and the phone remote. All physical results remain pending.
 
 Physical checks are deferred at the user's request. Automated tests and successful packages are not evidence that a particular strip, desktop permission flow, or audio route works.
 

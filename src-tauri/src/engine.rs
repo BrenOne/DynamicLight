@@ -20,6 +20,11 @@ use std::{
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 pub enum Action {
     #[serde(skip)]
+    Remote {
+        action: Box<Action>,
+        active: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    },
+    #[serde(skip)]
     Extension {
         overlay: crate::extensions::Overlay,
         cue: bool,
@@ -967,6 +972,18 @@ impl Engine {
                     }
                 }
             }
+            Action::Remote { action, active } => {
+                if !self.state.pause_reason.is_empty()
+                    && !matches!(*action, Action::Power { on: false })
+                {
+                    return Err("Host lighting is paused".into());
+                }
+                return self.action(Action::Automation {
+                    action,
+                    active,
+                    allow_capture: false,
+                });
+            }
             Action::Automation {
                 action,
                 active,
@@ -994,6 +1011,10 @@ impl Engine {
                     Action::Toggle
                     | Action::Routine { .. }
                     | Action::Extension { .. }
+                    | Action::Adjust {
+                        brightness: None,
+                        color: Some(_),
+                    }
                     | Action::Power { on: false }
                     | Action::Adjust {
                         brightness: Some(_),
@@ -1611,8 +1632,14 @@ impl Engine {
                 && (self.state.calibrating
                     || matches!(s.mode.as_str(), "rainbow" | "replay")
                     || self.state.capturing
+                    || self.extension.is_some()
+                    || self.external_cue.is_some()
+                    || self.state.colors.windows(2).any(|pair| pair[0] != pair[1])
                     || (s.mode == "solid" && !s.studio.zones.is_empty()));
             let result = if active {
+                // A frame changes device output independently of the cached solid.
+                // Invalidate it so removing a zone/extension restores immediately.
+                self.last_solid = None;
                 Some(self.controller.frame(&lighting::reorder(
                     &self.state.colors,
                     s.reverse && !(self.state.calibrating && self.state.calibration_led.is_some()),
@@ -1716,6 +1743,8 @@ pub fn start(
                                     engine.state.settings.mode.as_str(),
                                     "rainbow" | "replay"
                                 )
+                                || engine.extension.is_some()
+                                || engine.external_cue.is_some()
                                 || !engine.state.settings.studio.zones.is_empty()),
                     );
                     let began = Instant::now();
@@ -1893,6 +1922,122 @@ mod tests {
         .unwrap();
         assert!(!e.life.requested);
         assert_eq!(e.state.settings.color, "#00ff00");
+    }
+    #[test]
+    fn solid_extensions_send_all_physical_pixels_and_restore_on_the_next_write() {
+        use std::sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let settings = Settings {
+            count: 4,
+            color: "#0000ff".into(),
+            brightness: 100,
+            max_brightness: 100,
+            smoothing: 0,
+            transition_limit: 0,
+            offset: 1,
+            reverse: true,
+            ..Default::default()
+        };
+        let mut e = simulated(settings, dir.path().join("settings.json"));
+        e.action(Action::Start).unwrap();
+        e.tick();
+        assert_eq!(
+            &e.controller.test_bus.as_ref().unwrap().last_packet[..2],
+            b"RB"
+        );
+        let guard = Arc::new(AtomicBool::new(true));
+        let cue = crate::extensions::Overlay::cue(
+            crate::extensions::Rule {
+                event: "damage".into(),
+                color: "#ff0000".into(),
+                seconds: 2,
+                start: 500,
+                end: 1000,
+            },
+            guard.clone(),
+        )
+        .unwrap();
+        e.action(Action::Extension {
+            overlay: cue,
+            cue: true,
+        })
+        .unwrap();
+        e.tick();
+        assert_eq!(
+            e.state.colors,
+            vec![[0, 0, 255], [0, 0, 255], [255, 0, 0], [255, 0, 0]]
+        );
+        let packet = &e.controller.test_bus.as_ref().unwrap().last_packet;
+        assert_eq!(&packet[..2], b"SC");
+        let expected = lighting::reorder(&e.state.colors, true, 1);
+        for (i, color) in expected.iter().enumerate() {
+            assert_eq!(&packet[7 + i * 5..10 + i * 5], color);
+        }
+        let writes = e.controller.test_bus.as_ref().unwrap().writes;
+        guard.store(false, Ordering::Release);
+        e.tick();
+        let bus = e.controller.test_bus.as_ref().unwrap();
+        assert_eq!(
+            bus.writes,
+            writes + 1,
+            "do not wait for the solid heartbeat to restore"
+        );
+        assert_eq!(&bus.last_packet[..2], b"RB");
+        assert_eq!(&bus.last_packet[6..9], &[0, 0, 255]);
+        let guard = Arc::new(AtomicBool::new(true));
+        e.action(Action::Extension {
+            overlay: crate::extensions::Overlay::effect(
+                crate::studio::Composition::default(),
+                guard,
+            )
+            .unwrap(),
+            cue: false,
+        })
+        .unwrap();
+        e.tick();
+        assert_eq!(
+            &e.controller.test_bus.as_ref().unwrap().last_packet[..2],
+            b"SC"
+        );
+    }
+    #[test]
+    fn remote_color_preserves_off_and_worker_checks_pause_and_revocation() {
+        use std::sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let mut e = simulated(Settings::default(), dir.path().join("settings.json"));
+        let active = Arc::new(AtomicBool::new(true));
+        let color = || Action::Remote {
+            action: Box::new(Action::Adjust {
+                brightness: None,
+                color: Some("#123456".into()),
+            }),
+            active: active.clone(),
+        };
+        e.action(color()).unwrap();
+        assert_eq!(e.state.settings.color, "#123456");
+        assert!(!e.life.requested && !e.state.capturing);
+        e.system_event(SystemEvent::Sleep(true));
+        assert!(e.action(color()).is_err());
+        e.action(Action::Remote {
+            action: Box::new(Action::Power { on: false }),
+            active: active.clone(),
+        })
+        .unwrap();
+        e.system_event(SystemEvent::Sleep(false));
+        active.store(false, Ordering::Release);
+        assert!(e
+            .action(Action::Remote {
+                action: Box::new(Action::Start),
+                active
+            })
+            .is_err());
+        assert!(!e.life.requested);
     }
     #[test]
     fn extensions_restore_scene_on_revocation_stop_and_suspend_and_obey_comfort() {
@@ -2201,6 +2346,7 @@ mod tests {
             online: true,
             connects: 0,
             writes: 0,
+            last_packet: vec![],
         });
         e
     }

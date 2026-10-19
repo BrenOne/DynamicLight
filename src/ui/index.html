@@ -629,6 +629,7 @@
                 <p class="help">Match the LED count and route to your strip.</p>
               </div>
             </div>
+            <button id="remote-open" type="button">Phone remote…</button>
             <button id="extension-open" type="button">
               Games &amp; plugins…
             </button>
@@ -2218,6 +2219,65 @@
       </fieldset>
       <p id="extension-message" class="help" role="status"></p>
     </dialog>
+    <dialog
+      id="remote-dialog"
+      class="studio-dialog"
+      aria-labelledby="remote-title"
+    >
+      <div class="dialog-heading">
+        <h2 id="remote-title">Phone remote</h2>
+        <button id="remote-close" type="button">Close</button>
+      </div>
+      <p class="help">
+        Use a phone on the same private network. Choose an interface and strip,
+        then explicitly enable HTTPS access. The remote can change power,
+        brightness, solid color and saved offline profiles. It cannot start
+        capture or read captured frames/audio.
+      </p>
+      <label>Network interface<select id="remote-address"></select></label
+      ><label>Target strip<select id="remote-controller"></select></label>
+      <button id="remote-enable" type="button">Enable HTTPS remote</button
+      ><button id="remote-disable" type="button">
+        Disable &amp; revoke all
+      </button>
+      <p id="remote-status" role="status"></p>
+      <p id="remote-endpoint" class="help"></p>
+      <h3>Verify this host</h3>
+      <p class="help">
+        This session uses a self-signed certificate. Your browser may show a
+        certificate warning. Compare the SHA-256 fingerprint in its certificate
+        details with the value below before pairing. Browser support varies; if
+        it cannot verify or accept this certificate, use another browser. The
+        app never installs a trusted certificate or changes firewall settings.
+        Do not forward this port to the internet.
+      </p>
+      <pre id="remote-fingerprint"></pre>
+      <button id="remote-certificate" type="button">
+        Show public certificate
+      </button>
+      <details>
+        <summary>Public certificate PEM</summary>
+        <pre id="remote-pem"></pre>
+      </details>
+      <h3>Pair a phone</h3>
+      <p class="help">
+        The code expires after two minutes or five attempts and can pair one
+        phone. Up to eight phones per session. Give each phone a recognizable
+        name.
+      </p>
+      <p id="remote-code" role="status"></p>
+      <button id="remote-pair" type="button">Create new pairing code</button
+      ><button id="remote-revokeAll" type="button">Revoke all phones</button>
+      <div id="remote-clients"></div>
+      <p class="help">
+        Restarting or disabling the remote revokes every phone and changes the
+        HTTPS endpoint and certificate. Sleep or a network change may disconnect
+        the phone; use Reconnect after waking. Enable again if this computer's
+        address changes.
+      </p>
+      <p id="remote-message" class="help" role="status"></p>
+    </dialog>
+    <script src="remote.js"></script>
     <script src="extensions.js"></script>
     <script src="ambient.js"></script>
     <script src="controllers.js"></script>

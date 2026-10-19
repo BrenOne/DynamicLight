@@ -361,7 +361,7 @@ async function run(action) {
   busy = true;
   document
     .querySelectorAll(
-      "input:not([id^=automation-]):not([id^=studio-]):not([id^=routine-]):not([id^=controller-]):not([id^=ambient-]):not([id^=extension-]), select:not([id^=appearance-]):not([id^=studio-]):not([id^=routine-]):not([id^=controller-]):not([id^=ambient-]):not([id^=extension-])",
+      "input:not([id^=automation-]):not([id^=studio-]):not([id^=routine-]):not([id^=controller-]):not([id^=ambient-]):not([id^=extension-]):not([id^=remote-]), select:not([id^=appearance-]):not([id^=studio-]):not([id^=routine-]):not([id^=controller-]):not([id^=ambient-]):not([id^=extension-]):not([id^=remote-])",
     )
     .forEach((input) => {
       input.disabled = true;
@@ -385,7 +385,7 @@ async function run(action) {
     busy = false;
     document
       .querySelectorAll(
-        "input:not([id^=automation-]):not([id^=studio-]):not([id^=routine-]):not([id^=controller-]):not([id^=ambient-]):not([id^=extension-]), select:not([id^=appearance-]):not([id^=studio-]):not([id^=routine-]):not([id^=controller-]):not([id^=ambient-]):not([id^=extension-])",
+        "input:not([id^=automation-]):not([id^=studio-]):not([id^=routine-]):not([id^=controller-]):not([id^=ambient-]):not([id^=extension-]):not([id^=remote-]), select:not([id^=appearance-]):not([id^=studio-]):not([id^=routine-]):not([id^=controller-]):not([id^=ambient-]):not([id^=extension-]):not([id^=remote-])",
       )
       .forEach((input) => {
         input.disabled = false;
@@ -714,6 +714,7 @@ async function init() {
   window.Routines.init();
   window.ControllerRouting.init();
   window.Extensions.init();
+  window.PhoneRemote.init();
   window.Ambient.init();
   window.Updates.init({ save, showSettings: () => showView("settings") });
   window.Automation.init();

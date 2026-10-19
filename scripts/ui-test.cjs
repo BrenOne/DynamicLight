@@ -24,6 +24,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
         "controllers.js",
         "ambient.js",
         "extensions.js",
+        "remote.js",
         "library-tools.js",
         "ui-common.js",
         "icons.svg",
@@ -241,6 +242,35 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
         },
         core: {
           invoke: async (cmd, args) => {
+            if (cmd === "remote_manage") {
+              fixture.remote ||= {
+                enabled: false,
+                interfaces: [{ address: "127.0.0.1", name: "Local test" }],
+                clients: [],
+              };
+              if (args.operation === "enable")
+                Object.assign(fixture.remote, {
+                  enabled: true,
+                  controller: args.controller,
+                  endpoint: "https://127.0.0.1:1234",
+                  fingerprint: "AA:BB",
+                  pairingCode: "123456",
+                  pairingSeconds: 120,
+                });
+              if (args.operation === "disable")
+                Object.assign(fixture.remote, {
+                  enabled: false,
+                  clients: [],
+                  pairingCode: null,
+                });
+              if (args.operation === "revokeAll") {
+                fixture.remote.clients = [];
+                fixture.remote.pairingCode = null;
+              }
+              if (args.operation === "pair")
+                fixture.remote.pairingCode = "654321";
+              return structuredClone(fixture.remote);
+            }
             if (cmd === "game_status")
               return fixture.game || { enabled: false, connected: false };
             if (cmd === "game_configure") {
@@ -2061,6 +2091,18 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
     await page.waitForFunction(() => fixture.plugins.length === 0);
     await page.screenshot({ path: ".local/ui-extensions.png" });
     await page.locator("#extension-close").click();
+    await page.locator("#remote-open").click();
+    await page.locator("#remote-address").selectOption("127.0.0.1");
+    await page.locator("#remote-enable").click();
+    await page.waitForFunction(() => fixture.remote.enabled);
+    assert.match(await page.locator("#remote-code").innerText(), /123456/);
+    await page.locator("#remote-revokeAll").click();
+    await page.waitForFunction(() => !fixture.remote.pairingCode);
+    await page.locator("#remote-pair").click();
+    await page.waitForFunction(() => fixture.remote.pairingCode === "654321");
+    await page.locator("#remote-disable").click();
+    await page.waitForFunction(() => !fixture.remote.enabled);
+    await page.locator("#remote-close").click();
     await page.goto(`http://127.0.0.1:${server.address().port}/compact.html`);
     await page.waitForFunction(
       () => document.querySelector("#quick-power").disabled === false,

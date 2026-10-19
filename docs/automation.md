@@ -26,6 +26,8 @@ Rerun the CLI installer to update it. Desktop in-app updates update the desktop 
 
 Version 0.13 adds [routine controls](routines.md#cli--api-v1) for timers, cues and schedule overrides through this same authenticated API.
 
+Version 0.16 adds `dynamiclight color '#336699'` / `{"version":1,"command":{"command":"color","value":"#336699"}}`. This selects Solid mode and preserves stopped state. The separately paired [HTTPS phone remote](phone-remote.md) reuses a restricted subset of API v1; its cookies cannot authenticate the local CLI API.
+
 ```sh
 dynamiclight status --json
 dynamiclight power on

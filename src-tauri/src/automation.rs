@@ -170,10 +170,27 @@ fn dispatch(
     active: Arc<AtomicBool>,
     capture: bool,
 ) -> Result<Value, String> {
+    dispatch_to(
+        app,
+        command,
+        active,
+        capture,
+        app.state::<Handle>().inner(),
+        false,
+    )
+}
+pub(crate) fn dispatch_to(
+    app: &tauri::AppHandle,
+    command: Command,
+    active: Arc<AtomicBool>,
+    capture: bool,
+    handle: &Handle,
+    remote: bool,
+) -> Result<Value, String> {
     command.validate()?;
     let (action, allow_capture) = match command {
         Command::Routine { action } => {
-            let snapshot = app.state::<Handle>().request(Action::Automation {
+            let snapshot = handle.request(Action::Automation {
                 action: Box::new(Action::Routine {
                     command: action.command().into(),
                 }),
@@ -182,18 +199,20 @@ fn dispatch(
             })?;
             return serde_json::to_value(&snapshot.routines).map_err(|e| e.to_string());
         }
-        Command::Status {} => {
-            return app
-                .state::<Handle>()
-                .request(Action::Snapshot)
-                .map(|s| status(&s))
-        }
+        Command::Status {} => return handle.request(Action::Snapshot).map(|s| status(&s)),
         Command::Scenes {} => return Ok(metadata(&crate::scenes::starter_scenes().profiles)),
         Command::Profiles {} => {
             return Ok(metadata(
                 &app.state::<Store>().library.lock().unwrap().profiles,
             ))
         }
+        Command::Color { value } => (
+            Action::Adjust {
+                brightness: None,
+                color: Some(value),
+            },
+            false,
+        ),
         Command::Brightness { value } => (
             Action::Adjust {
                 brightness: Some(value),
@@ -246,10 +265,17 @@ fn dispatch(
             )
         }
     };
-    let snapshot = app.state::<Handle>().request(Action::Automation {
-        action: Box::new(action),
-        active,
-        allow_capture: capture && allow_capture,
+    let snapshot = handle.request(if remote {
+        Action::Remote {
+            action: Box::new(action),
+            active,
+        }
+    } else {
+        Action::Automation {
+            action: Box::new(action),
+            active,
+            allow_capture: capture && allow_capture,
+        }
     })?;
     let _ = app.emit("external-settings", &snapshot);
     Ok(status(&snapshot))

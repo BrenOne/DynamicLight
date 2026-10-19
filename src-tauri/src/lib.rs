@@ -27,6 +27,7 @@ mod platform;
 mod plugins;
 mod profiles;
 mod protocol;
+mod remote;
 mod routines;
 mod scenes;
 mod sequence;
@@ -180,6 +181,7 @@ pub fn run() {
             Some(vec!["--autostart"]),
         ))
         .invoke_handler(tauri::generate_handler![
+            remote::remote_manage,
             game::game_status,
             game::game_configure,
             game::game_export,
@@ -294,6 +296,7 @@ pub fn run() {
             profiles::init(app.handle()).map_err(std::io::Error::other)?;
             plugins::init(app.handle()).map_err(std::io::Error::other)?;
             game::init(app.handle());
+            remote::init(app.handle());
             automation::init(app.handle()).map_err(std::io::Error::other)?;
             routines::init(app.handle()).map_err(std::io::Error::other)?;
             ambient::init(app.handle()).map_err(std::io::Error::other)?;
@@ -349,6 +352,7 @@ pub fn run() {
         }
         if let tauri::RunEvent::ExitRequested { api, .. } = event {
             if !app.state::<AtomicBool>().swap(true, Ordering::SeqCst) {
+                remote::stop(app);
                 game::stop(app);
                 automation::stop(app);
                 if let Some(window) = app.get_webview_window("compact") {

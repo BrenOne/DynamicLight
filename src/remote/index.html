@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DynamicLight remote</title>
+    <link rel="stylesheet" href="/remote.css" />
+    <script defer src="/remote.js"></script>
+  </head>
+  <body>
+    <main>
+      <h1>DynamicLight</h1>
+      <p class="sub">Your local lighting remote</p>
+      <p id="status" role="status">Connecting…</p>
+      <form id="pair">
+        <h2>Pair this phone</h2>
+        <p>
+          Open Phone remote in the desktop app. Verify the certificate
+          fingerprint there before entering its code.
+        </p>
+        <label
+          >Phone name<input
+            id="name"
+            required
+            maxlength="50"
+            autocomplete="nickname"
+            placeholder="My phone" /></label
+        ><label
+          >Pairing code<input
+            id="code"
+            required
+            inputmode="numeric"
+            pattern="[0-9]{6}"
+            maxlength="6"
+            autocomplete="one-time-code" /></label
+        ><button>Pair</button>
+      </form>
+      <section id="controls" hidden>
+        <h2>Lighting</h2>
+        <p id="state"></p>
+        <div class="row">
+          <button id="on" type="button">Power on</button
+          ><button id="off" type="button">Power off</button>
+        </div>
+        <label
+          >Brightness <output id="level">50%</output
+          ><input
+            id="brightness"
+            type="range"
+            min="0"
+            max="100"
+            value="50" /></label
+        ><label
+          >Solid color<input id="color" type="color" value="#86b7ff" /></label
+        ><button id="set-color" type="button">Apply solid color</button
+        ><label>Saved profile<select id="profile"></select></label
+        ><button id="apply" type="button">Apply profile</button>
+        <p class="sub">
+          Screen and audio capture must be started on the desktop. Stop always
+          cancels lighting. Pairing expires after 24 hours, app restart, or
+          revocation.
+        </p>
+      </section>
+      <button id="retry" type="button">Reconnect</button>
+    </main>
+  </body>
+</html>

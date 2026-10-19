@@ -1,8 +1,6 @@
 {
   "updated": "2026-10-19",
-  "next": [
-    "INT-02"
-  ],
+  "next": [],
   "items": {
     "REL-01": {
       "status": "Implemented",
@@ -363,6 +361,16 @@
       "status": "Implemented",
       "delivered": "Versioned data-only plugin manifest and lifecycle, separate bounded effect compositions and game-event integrations, explicit capability consent, preview/install/enable/disable/remove UI and sample plugins. No executable plugin code or host access.",
       "remaining": "Physical output and assistive-technology validation; API v1 deliberately supports declarative programs only.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
+    },
+    "INT-02": {
+      "status": "Implemented",
+      "delivered": "Opt-in HTTPS remote bound to a chosen private IPv4/controller, expiring one-use pairing, per-client revocation, responsive phone controls and constrained versioned commands. TLS/Origin/auth/capture boundaries and native phone UI tested on loopback.",
+      "remaining": "Physical phone/browser certificate acceptance, private-network/firewall, USB and lifecycle validation; self-signed IP certificates require browser support.",
       "validation": [
         "QA-01",
         "PLAT-01",

@@ -111,6 +111,7 @@ pub struct TestBus {
     pub online: bool,
     pub connects: usize,
     pub writes: usize,
+    pub last_packet: Vec<u8>,
 }
 pub fn lighting_interface(interface: i32, usage_page: u16, path: &str) -> bool {
     // Reject the known keyboard interface even if its path/usage is unusual.
@@ -226,6 +227,7 @@ impl Controller {
             #[cfg(test)]
             if let Some(bus) = &mut self.test_bus {
                 bus.writes += 1;
+                bus.last_packet = packet.to_vec();
                 return write_reports(packet, |r| {
                     if bus.online {
                         Ok(r.len())

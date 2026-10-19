@@ -103,6 +103,7 @@ const delay = (ms) => new Promise((r) => setTimeout(r, ms));
       (await invoke("game_configure", { config: null })).enabled,
       false,
     );
+    await require("./remote-smoke.cjs")(invoke);
     const draft = structuredClone(original);
     draft.mode = "rainbow";
     draft.effect = "custom";

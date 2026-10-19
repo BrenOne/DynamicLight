@@ -1,5 +1,7 @@
 # Games and plugins
 
+First published in 0.16.0 together with the phone remote. The planned 0.15.0 release was withheld after final review found a Solid-mode extension output bug; packet-level regression coverage and its correction are included in 0.16.0.
+
 Open **Device → Games & plugins** and choose a controller. Start ordinary lighting before activating an effect. Extensions share that controller's existing single writer and comfort processing; they never start USB, screen or audio capture. Manual scene/brightness changes, Stop, calibration and suspension cancel active effect overlays. Disable or remove revokes active output and restores the ordinary scene. Effects are temporary and do not rewrite profiles.
 
 ## Counter-Strike 2

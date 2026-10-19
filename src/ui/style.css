@@ -1804,3 +1804,22 @@ dd {
 #ambient-availability {
   overflow-wrap: anywhere;
 }
+
+#remote-dialog pre,
+#extension-dialog pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+#remote-dialog label {
+  display: block;
+  margin: 12px 0;
+}
+#remote-dialog select {
+  display: block;
+  width: 100%;
+}
+#remote-code {
+  font-size: 1.3rem;
+  font-weight: 700;
+}

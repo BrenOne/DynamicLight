@@ -5,7 +5,7 @@ use dynamiclight_control::{
 };
 use std::path::PathBuf;
 
-const HELP: &str = "DynamicLight CLI\nUsage: dynamiclight [--json] [--connection FILE] COMMAND\n  status\n  routines status|start|pause|skip|cancel|cue|resume-rules|pause-schedules|resume-schedules\n  power on|off|toggle [--allow-capture]\n  brightness 0..100\n  scenes list\n  scenes apply ID [--allow-capture]\n  profiles list\n  profiles apply ID [--allow-capture]\n\nEnable Local automation in the desktop app's Settings first.\nCapture needs both the Settings permission and --allow-capture.\n--json prints the versioned API response; errors exit 1, usage errors exit 2.";
+const HELP: &str = "DynamicLight CLI\nUsage: dynamiclight [--json] [--connection FILE] COMMAND\n  status\n  routines status|start|pause|skip|cancel|cue|resume-rules|pause-schedules|resume-schedules\n  power on|off|toggle [--allow-capture]\n  brightness 0..100\n  color #RRGGBB\n  scenes list\n  scenes apply ID [--allow-capture]\n  profiles list\n  profiles apply ID [--allow-capture]\n\nEnable Local automation in the desktop app's Settings first.\nCapture needs both the Settings permission and --allow-capture.\n--json prints the versioned API response; errors exit 1, usage errors exit 2.";
 struct Options {
     command: Command,
     path: Option<PathBuf>,
@@ -47,6 +47,9 @@ fn parse(args: Vec<String>) -> Result<Options, String> {
                 "resume-schedules" => RoutineControl::ResumeSchedules,
                 _ => return Err("Unknown routine action".into()),
             },
+        },
+        ["color", value] if !capture => Command::Color {
+            value: (*value).into(),
         },
         ["status"] if !capture => Command::Status {},
         ["power", state] => Command::Power {
@@ -121,6 +124,13 @@ mod tests {
     }
     #[test]
     fn parses_commands_without_silent_capture_consent() {
+        assert!(matches!(
+            parse(args("color #12ABef")).unwrap().command,
+            Command::Color { .. }
+        ));
+        assert!(parse(args("color #12345g")).is_err());
+        assert!(parse(args("color red")).is_err());
+        assert!(parse(args("color #123456 --allow-capture")).is_err());
         assert!(matches!(
             parse(args("routines pause-schedules")).unwrap().command,
             Command::Routine {

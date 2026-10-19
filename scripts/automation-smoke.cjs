@@ -54,6 +54,10 @@ function request(connection, command, extra = {}) {
     const first = JSON.parse(fs.readFileSync(connectionFile));
     assert.equal(cli(['status']).data.connected, false);
     assert.equal(cli(['brightness','27']).data.brightness,27);
+    assert.equal(cli(['color','#335577']).data.mode,'solid');
+    const colored = await invoke('control',{action:{type:'snapshot'}});
+    assert.equal(colored.settings.color,'#335577');
+    assert(!colored.requested && !colored.capturing && !colored.status.connected);
     assert(cli(['scenes','list']).data.some(s => s.id === 'cinema'));
     assert(Array.isArray(cli(['profiles','list']).data));
     assert.match(cli(['scenes','apply','cinema'],1).error, /Capture requires/);
