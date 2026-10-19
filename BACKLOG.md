@@ -1,6 +1,6 @@
 # DynamicLight backlog
 
-Reviewed 2026-10-19: **3 future features**, **3 validation trackers**, **33 delivered features**. Next implementation batch: [#17](https://github.com/mskutin/DynamicLight/issues/17), [#24](https://github.com/mskutin/DynamicLight/issues/24), [#27](https://github.com/mskutin/DynamicLight/issues/27).
+Reviewed 2026-10-19: **1 future features**, **3 validation trackers**, **35 delivered features**. Next implementation batch: [#17](https://github.com/mskutin/DynamicLight/issues/17).
 
 [GitHub project](https://github.com/users/mskutin/projects/4) · [Open issues](https://github.com/mskutin/DynamicLight/issues)
 
@@ -23,8 +23,6 @@ P2 expands product capability; P3 covers exploratory features and integrations. 
 | Issue | Feature | Priority | Depends on |
 | --- | --- | --- | --- |
 | [#17](https://github.com/mskutin/DynamicLight/issues/17) | Add a paired phone remote on the local network | P3 | [#16](https://github.com/mskutin/DynamicLight/issues/16) |
-| [#24](https://github.com/mskutin/DynamicLight/issues/24) | Add game telemetry integrations | P3 | [#16](https://github.com/mskutin/DynamicLight/issues/16) |
-| [#27](https://github.com/mskutin/DynamicLight/issues/27) | Define a plugin system for effects and integrations | P3 | — |
 
 ## Delivered
 
@@ -54,8 +52,10 @@ These implementation issues are closed. Their outstanding physical checks are tr
 | [#21](https://github.com/mskutin/DynamicLight/issues/21) | Extract lighting palettes from images and wallpaper | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
 | [#22](https://github.com/mskutin/DynamicLight/issues/22) | Record and replay lighting sequences | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
 | [#23](https://github.com/mskutin/DynamicLight/issues/23) | Adapt brightness to an ambient-light sensor | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
+| [#24](https://github.com/mskutin/DynamicLight/issues/24) | Add game telemetry integrations | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
 | [#25](https://github.com/mskutin/DynamicLight/issues/25) | Add focus and break timers with lighting cues | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
 | [#26](https://github.com/mskutin/DynamicLight/issues/26) | Coordinate device handoff between Windows and Mac | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
+| [#27](https://github.com/mskutin/DynamicLight/issues/27) | Define a plugin system for effects and integrations | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
 | [#28](https://github.com/mskutin/DynamicLight/issues/28) | Make the monitor and LED preview interactive | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
 | [#29](https://github.com/mskutin/DynamicLight/issues/29) | Add a color wheel, temperature control, and saved palettes | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
 | [#30](https://github.com/mskutin/DynamicLight/issues/30) | Create a visual scene-card library | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |

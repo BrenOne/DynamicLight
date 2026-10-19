@@ -629,6 +629,9 @@
                 <p class="help">Match the LED count and route to your strip.</p>
               </div>
             </div>
+            <button id="extension-open" type="button">
+              Games &amp; plugins…
+            </button>
             <button id="controller-open" type="button">
               Controllers &amp; monitor layout…
             </button>
@@ -2142,6 +2145,80 @@
       </fieldset>
       <p id="controller-message" class="help" role="status"></p>
     </dialog>
+    <dialog
+      id="extension-dialog"
+      class="studio-dialog"
+      aria-labelledby="extension-title"
+    >
+      <div class="dialog-heading">
+        <h2 id="extension-title">Games &amp; plugins</h2>
+        <button id="extension-close" type="button">Close</button>
+      </div>
+      <label>Target strip<select id="extension-controller"></select></label>
+      <p class="help">
+        Start ordinary lighting first. Extensions never start a strip or grant
+        capture permission. Stop, manual scene changes, calibration and
+        suspension cancel active plugin effects.
+      </p>
+      <fieldset>
+        <legend>Counter-Strike 2 telemetry</legend>
+        <p class="help">
+          Opt-in Valve Game State Integration over loopback only. Choose events
+          and zones along the calibrated LED route. No process injection. Cues
+          respect quiet hours and comfort settings; the ordinary scene continues
+          underneath.
+        </p>
+        <div id="extension-rules" class="settings-grid"></div>
+        <button id="extension-game-enable" type="button">
+          Enable with these rules</button
+        ><button id="extension-game-disable" type="button">
+          Disable telemetry</button
+        ><button id="extension-game-export" type="button">
+          Export game setup
+        </button>
+        <p id="extension-game-status" role="status"></p>
+        <p class="help">
+          Copy the exported gamestate_integration_dynamiclight.cfg from
+          Downloads into Counter-Strike Global Offensive/game/csgo/cfg, then
+          restart the game. Each enable creates a new local endpoint and
+          credential: export and replace the setup again. Telemetry is disabled
+          on app restart. Remove the cfg to stop game posts. Ten seconds without
+          valid telemetry, leaving the game, or disabling restores the ordinary
+          scene. Spectated players are ignored.
+        </p>
+      </fieldset>
+      <fieldset>
+        <legend>Declarative plugins · API v1</legend>
+        <p class="help">
+          Up to 16 local JSON plugins, 32 KiB each. Effects use bounded
+          compositions; integrations receive only selected numeric game events.
+          Plugins cannot execute code, read files, use the network or capture,
+          or control USB directly. All plugins restart disabled.
+        </p>
+        <label
+          >Plugin JSON file<input
+            id="extension-file"
+            type="file"
+            accept=".json,application/json" /></label
+        ><button id="extension-sample" type="button">
+          Preview sample effect
+        </button>
+        <details>
+          <summary>Manifest and permissions preview</summary>
+          <pre id="extension-preview"></pre>
+        </details>
+        <button id="extension-install" type="button" disabled>
+          Install reviewed plugin
+        </button>
+        <label class="checkbox"
+          ><input id="extension-consent" type="checkbox" />Allow numeric game
+          events when enabling an integration plugin</label
+        >
+        <div id="extension-plugins"></div>
+      </fieldset>
+      <p id="extension-message" class="help" role="status"></p>
+    </dialog>
+    <script src="extensions.js"></script>
     <script src="ambient.js"></script>
     <script src="controllers.js"></script>
     <script src="routines.js"></script>

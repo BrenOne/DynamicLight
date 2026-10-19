@@ -1,9 +1,7 @@
 {
   "updated": "2026-10-19",
   "next": [
-    "INT-02",
-    "INT-03",
-    "INT-04"
+    "INT-02"
   ],
   "items": {
     "REL-01": {
@@ -345,6 +343,26 @@
       "status": "Implemented",
       "delivered": "0.14: Opt-in Windows LightSensor, Linux IIO and bounded external JSON lux providers; configurable brightness mapping/smoothing/fallback, source availability and manual override/resume.",
       "remaining": "Physical multi-strip, USB switch, OS sensor and assistive-technology validation. Supported source/platform scope is documented in docs/controller-routing.md.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
+    },
+    "INT-03": {
+      "status": "Implemented",
+      "delivered": "Opt-in Counter-Strike 2 GSI loopback receiver, bounded authenticated requests, active-player event mappings to temporary zones and immediate revocation/disconnect restoration. No process injection.",
+      "remaining": "Live Counter-Strike 2 and physical strip validation; each enable requires exporting fresh game setup.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
+    },
+    "INT-04": {
+      "status": "Implemented",
+      "delivered": "Versioned data-only plugin manifest and lifecycle, separate bounded effect compositions and game-event integrations, explicit capability consent, preview/install/enable/disable/remove UI and sample plugins. No executable plugin code or host access.",
+      "remaining": "Physical output and assistive-technology validation; API v1 deliberately supports declarative programs only.",
       "validation": [
         "QA-01",
         "PLAT-01",

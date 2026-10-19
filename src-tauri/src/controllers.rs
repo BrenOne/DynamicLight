@@ -134,6 +134,15 @@ impl Fleet {
             }
         })
     }
+    pub fn target(&self, key: &str) -> Result<Handle, String> {
+        self.model
+            .lock()
+            .unwrap()
+            .handles
+            .get(key)
+            .cloned()
+            .ok_or_else(|| "Controller no longer exists".into())
+    }
     fn selected(&self) -> Handle {
         let model = self.model.lock().unwrap();
         model.handles[&model.config.selected].clone()

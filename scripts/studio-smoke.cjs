@@ -68,6 +68,41 @@ const delay = (ms) => new Promise((r) => setTimeout(r, ms));
     assert(
       !snapshot.requested && !snapshot.capturing && !snapshot.status.connected,
     );
+    const sample = require("../examples/plugins/ocean-wave.json");
+    sample.id = "native-smoke-plugin";
+    const text = JSON.stringify(sample);
+    await invoke("plugin_manage", { operation: "preview", text });
+    let plugins = await invoke("plugin_manage", { operation: "install", text });
+    assert.equal(
+      plugins.find((p) => p.manifest.id === sample.id).enabled,
+      false,
+    );
+    await invoke("plugin_manage", { operation: "enable", id: sample.id });
+    await assert.rejects(
+      invoke("plugin_manage", {
+        operation: "activate",
+        id: sample.id,
+        controller: "primary",
+      }),
+      /Start ordinary lighting/,
+    );
+    await invoke("plugin_manage", { operation: "disable", id: sample.id });
+    await invoke("plugin_manage", { operation: "remove", id: sample.id });
+    const game = await invoke("game_configure", {
+      config: { controller: "primary", rules: [] },
+    });
+    assert(game.enabled && !game.connected);
+    const rejected = await fetch(game.endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ auth: { token: "incorrect" } }),
+    });
+    assert.equal(rejected.status, 400);
+    assert.equal((await invoke("game_status")).connected, false);
+    assert.equal(
+      (await invoke("game_configure", { config: null })).enabled,
+      false,
+    );
     const draft = structuredClone(original);
     draft.mode = "rainbow";
     draft.effect = "custom";
@@ -318,6 +353,19 @@ const delay = (ms) => new Promise((r) => setTimeout(r, ms));
     );
   } finally {
     if (page && isolated) {
+      await page
+        .evaluate(async () => {
+          await window.__TAURI__.core.invoke("game_configure", {
+            config: null,
+          });
+          await window.__TAURI__.core
+            .invoke("plugin_manage", {
+              operation: "remove",
+              id: "native-smoke-plugin",
+            })
+            .catch(() => {});
+        })
+        .catch(() => {});
       if (originalRoutines)
         await page
           .evaluate(

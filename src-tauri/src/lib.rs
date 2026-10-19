@@ -3,6 +3,7 @@ mod appearance;
 mod audio;
 mod automation;
 mod beat;
+mod bounded_http;
 mod capture;
 mod capture_source;
 #[cfg(target_os = "windows")]
@@ -13,6 +14,8 @@ mod device;
 mod diagnostics;
 mod effects;
 mod engine;
+mod extensions;
+mod game;
 mod handoff;
 mod lifecycle;
 #[cfg(target_os = "windows")]
@@ -21,6 +24,7 @@ mod lighting;
 #[cfg(target_os = "linux")]
 mod linux;
 mod platform;
+mod plugins;
 mod profiles;
 mod protocol;
 mod routines;
@@ -176,6 +180,10 @@ pub fn run() {
             Some(vec!["--autostart"]),
         ))
         .invoke_handler(tauri::generate_handler![
+            game::game_status,
+            game::game_configure,
+            game::game_export,
+            plugins::plugin_manage,
             ambient::ambient_sources,
             ambient::ambient_config,
             controllers::controller_devices,
@@ -284,6 +292,8 @@ pub fn run() {
             studio::init(app.handle()).map_err(std::io::Error::other)?;
             appearance::init(app.handle()).map_err(std::io::Error::other)?;
             profiles::init(app.handle()).map_err(std::io::Error::other)?;
+            plugins::init(app.handle()).map_err(std::io::Error::other)?;
+            game::init(app.handle());
             automation::init(app.handle()).map_err(std::io::Error::other)?;
             routines::init(app.handle()).map_err(std::io::Error::other)?;
             ambient::init(app.handle()).map_err(std::io::Error::other)?;
@@ -339,6 +349,7 @@ pub fn run() {
         }
         if let tauri::RunEvent::ExitRequested { api, .. } = event {
             if !app.state::<AtomicBool>().swap(true, Ordering::SeqCst) {
+                game::stop(app);
                 automation::stop(app);
                 if let Some(window) = app.get_webview_window("compact") {
                     let _ = compact::remember(&window);

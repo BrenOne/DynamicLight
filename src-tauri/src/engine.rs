@@ -20,6 +20,11 @@ use std::{
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 pub enum Action {
     #[serde(skip)]
+    Extension {
+        overlay: crate::extensions::Overlay,
+        cue: bool,
+    },
+    #[serde(skip)]
     AmbientConfig {
         config: Option<crate::ambient::Config>,
     },
@@ -213,6 +218,8 @@ struct CalibrationSession {
     started: Instant,
 }
 pub struct Engine {
+    extension: Option<crate::extensions::Overlay>,
+    external_cue: Option<crate::extensions::Overlay>,
     pub state: Snapshot,
     controller: Controller,
     path: PathBuf,
@@ -296,6 +303,8 @@ impl Engine {
             ambient,
             routine_restore: None,
             fade: None,
+            extension: None,
+            external_cue: None,
             path,
             desired: false,
             life: Lifecycle::default(),
@@ -510,6 +519,13 @@ impl Engine {
         }
     }
     pub fn system_event(&mut self, event: SystemEvent) {
+        if matches!(
+            event,
+            SystemEvent::Sleep(true) | SystemEvent::Locked(true) | SystemEvent::DisplayOff(true)
+        ) {
+            self.extension = None;
+            self.external_cue = None;
+        }
         let was_paused = !self.life.pause_reason(&self.state.settings).is_empty();
         match event {
             SystemEvent::Ready => {
@@ -768,6 +784,8 @@ impl Engine {
                     | Action::Shutdown
             )
         {
+            self.extension = None;
+            self.external_cue = None;
             self.routines.manual_override();
             self.routine_restore = None;
             self.fade = None;
@@ -787,6 +805,22 @@ impl Engine {
         }
         let persist = matches!(action, Action::Settings { .. });
         match action {
+            Action::Extension { overlay, cue } => {
+                if !overlay.live() {
+                    return Err("Extension has been revoked".into());
+                }
+                if !self.state.requested
+                    || self.state.calibrating
+                    || !self.state.pause_reason.is_empty()
+                {
+                    return Err("Start ordinary lighting and finish calibration before activating extensions".into());
+                }
+                if cue {
+                    self.external_cue = Some(overlay);
+                } else {
+                    self.extension = Some(overlay);
+                }
+            }
             Action::AmbientConfig { config } => {
                 if let Some(config) = config {
                     self.ambient
@@ -959,6 +993,7 @@ impl Engine {
                     }
                     Action::Toggle
                     | Action::Routine { .. }
+                    | Action::Extension { .. }
                     | Action::Power { on: false }
                     | Action::Adjust {
                         brightness: Some(_),
@@ -1433,6 +1468,16 @@ impl Engine {
         }
     }
     pub fn tick(&mut self) {
+        if !self.state.requested || self.state.calibrating || !self.state.pause_reason.is_empty() {
+            self.extension = None;
+            self.external_cue = None;
+        }
+        if self.extension.as_ref().is_some_and(|o| !o.live()) {
+            self.extension = None;
+        }
+        if self.external_cue.as_ref().is_some_and(|o| !o.live()) {
+            self.external_cue = None;
+        }
         if self
             .calibration
             .as_ref()
@@ -1493,6 +1538,30 @@ impl Engine {
                         })
                         .collect();
                 } else {
+                    if let Some(effect) = &self.extension {
+                        effect.render(
+                            &mut colors,
+                            self.state.settings.speed,
+                            self.state.settings.effect_reverse,
+                        );
+                    }
+                    use chrono::Timelike;
+                    let now = chrono::Local::now();
+                    if !self
+                        .routines
+                        .config
+                        .quiet((now.hour() * 60 + now.minute()) as u16)
+                    {
+                        if let Some(cue) = &self.external_cue {
+                            cue.render(
+                                &mut colors,
+                                self.state.settings.speed,
+                                self.state.settings.effect_reverse,
+                            );
+                        }
+                    } else {
+                        self.external_cue = None;
+                    }
                     self.routines.overlay(&mut colors);
                     let mut output_settings = self.state.settings.clone();
                     output_settings.brightness =
@@ -1824,6 +1893,82 @@ mod tests {
         .unwrap();
         assert!(!e.life.requested);
         assert_eq!(e.state.settings.color, "#00ff00");
+    }
+    #[test]
+    fn extensions_restore_scene_on_revocation_stop_and_suspend_and_obey_comfort() {
+        use std::sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let settings = Settings {
+            color: "#0000ff".into(),
+            brightness: 100,
+            max_brightness: 20,
+            smoothing: 0,
+            transition_limit: 0,
+            ..Default::default()
+        };
+        let mut e = simulated(settings.clone(), dir.path().join("settings.json"));
+        let guard = Arc::new(AtomicBool::new(true));
+        let cue = || {
+            crate::extensions::Overlay::cue(
+                crate::extensions::Rule {
+                    event: "damage".into(),
+                    color: "#ff0000".into(),
+                    seconds: 2,
+                    start: 0,
+                    end: 1000,
+                },
+                guard.clone(),
+            )
+            .unwrap()
+        };
+        assert!(e
+            .action(Action::Extension {
+                overlay: cue(),
+                cue: true
+            })
+            .is_err());
+        e.action(Action::Start).unwrap();
+        e.action(Action::Automation {
+            action: Box::new(Action::Extension {
+                overlay: cue(),
+                cue: true,
+            }),
+            active: guard.clone(),
+            allow_capture: false,
+        })
+        .unwrap();
+        e.tick();
+        assert!(e
+            .state
+            .colors
+            .iter()
+            .all(|c| c[0] <= 51 && c[0] > 0 && c[2] == 0));
+        assert_eq!(e.state.settings.color, settings.color);
+        guard.store(false, Ordering::Release);
+        e.tick();
+        assert!(e.state.colors.iter().all(|c| c[0] == 0 && c[2] > 0));
+        guard.store(true, Ordering::Release);
+        e.action(Action::Extension {
+            overlay: cue(),
+            cue: true,
+        })
+        .unwrap();
+        e.system_event(SystemEvent::Sleep(true));
+        assert!(e.external_cue.is_none());
+        e.system_event(SystemEvent::Sleep(false));
+        e.action(Action::Start).unwrap();
+        e.action(Action::Extension {
+            overlay: cue(),
+            cue: true,
+        })
+        .unwrap();
+        e.action(Action::Power { on: false }).unwrap();
+        e.tick();
+        assert!(e.external_cue.is_none());
+        assert!(!e.state.powered);
     }
     #[test]
     fn temporary_cues_preserve_scene_and_comfort_and_stop_cancels_fades() {

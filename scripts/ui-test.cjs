@@ -23,6 +23,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
         "routines.js",
         "controllers.js",
         "ambient.js",
+        "extensions.js",
         "library-tools.js",
         "ui-common.js",
         "icons.svg",
@@ -240,6 +241,34 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
         },
         core: {
           invoke: async (cmd, args) => {
+            if (cmd === "game_status")
+              return fixture.game || { enabled: false, connected: false };
+            if (cmd === "game_configure") {
+              fixture.game = {
+                enabled: !!args.config,
+                connected: false,
+                config: args.config,
+                endpoint: "http://127.0.0.1:2345/gsi",
+              };
+              return fixture.game;
+            }
+            if (cmd === "plugin_manage") {
+              fixture.plugins ||= [];
+              if (args.operation === "preview") return JSON.parse(args.text);
+              if (args.operation === "install")
+                fixture.plugins.push({
+                  manifest: JSON.parse(args.text),
+                  enabled: false,
+                });
+              if (args.operation === "enable" || args.operation === "disable")
+                fixture.plugins.find((p) => p.manifest.id === args.id).enabled =
+                  args.operation === "enable";
+              if (args.operation === "remove")
+                fixture.plugins = fixture.plugins.filter(
+                  (p) => p.manifest.id !== args.id,
+                );
+              return structuredClone(fixture.plugins);
+            }
             if (cmd === "controller_list") return controllerView();
             if (cmd === "controller_devices")
               return [{ id: "p-01", name: "Fixture strip", serial: false }];
@@ -1999,6 +2028,39 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
     );
     await page.screenshot({ path: ".local/ui-controller-layout.png" });
     await page.locator("#controller-close").click();
+
+    await page.locator("#extension-open").click();
+    await page.locator("#extension-damage-enabled").check();
+    await page.locator("#extension-damage-start").fill("250");
+    await page.locator("#extension-game-enable").click();
+    await page.waitForFunction(() => fixture.game?.enabled);
+    assert.equal(
+      await page.evaluate(() => fixture.game.config.rules[0].start),
+      250,
+    );
+    await page.locator("#extension-game-disable").click();
+    await page.waitForFunction(() => !fixture.game.enabled);
+    await page.locator("#extension-sample").click();
+    await page.locator("#extension-install").click();
+    await page.waitForFunction(() => fixture.plugins?.length === 1);
+    assert.equal(await page.evaluate(() => fixture.plugins[0].enabled), false);
+    await page
+      .locator("#extension-plugins")
+      .getByRole("button", { name: "Enable", exact: true })
+      .click();
+    await page.waitForFunction(() => fixture.plugins[0].enabled);
+    await page
+      .locator("#extension-plugins")
+      .getByRole("button", { name: "Disable", exact: true })
+      .click();
+    await page.waitForFunction(() => !fixture.plugins[0].enabled);
+    await page
+      .locator("#extension-plugins")
+      .getByRole("button", { name: "Remove", exact: true })
+      .click();
+    await page.waitForFunction(() => fixture.plugins.length === 0);
+    await page.screenshot({ path: ".local/ui-extensions.png" });
+    await page.locator("#extension-close").click();
     await page.goto(`http://127.0.0.1:${server.address().port}/compact.html`);
     await page.waitForFunction(
       () => document.querySelector("#quick-power").disabled === false,

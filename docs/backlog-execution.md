@@ -25,3 +25,5 @@ Capture/playback 0.12.0 published successfully: all 21 assets, 20 checksums and 
 Controller routing, visual layout, handoff and ambient sensors (#8, #34, #26, #23): implemented on `codex/controller-routing` for 0.14.0. Independent workers, strict interface bindings and duplicate-owner guard; draft diagram/form routing; group scale preserves individual levels; persistent USB release and portable calibration/scene import; opt-in Windows/IIO/external lux providers. Unit, strict lint, browser routing/sensor controls and isolated native Windows fleet/group/manual-override/import smoke checks passed. Final release checks and cross-platform CI pending. See `docs/controller-routing.md` for supported scope and physical validation still required.
 
 Next: paired LAN remote, supported game telemetry and isolated plugins (#17, #24, #27).
+
+Hardware batch #59 merged after all four builds passed; production 0.14.0 release is running. Games and declarative plugins (#24, #27) are implemented for 0.15.0; local final validation is in progress. The remaining implementation item is the paired LAN remote (#17).

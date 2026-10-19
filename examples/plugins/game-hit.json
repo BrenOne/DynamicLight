@@ -1,0 +1,22 @@
+{
+  "apiVersion": 1,
+  "id": "game-hit",
+  "name": "Game hit zone",
+  "version": "1.0.0",
+  "capabilities": [
+    "lighting",
+    "gameEvents"
+  ],
+  "program": {
+    "kind": "integration",
+    "rules": [
+      {
+        "event": "damage",
+        "color": "#ff5544",
+        "seconds": 2,
+        "start": 0,
+        "end": 250
+      }
+    ]
+  }
+}
