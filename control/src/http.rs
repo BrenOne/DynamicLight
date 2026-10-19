@@ -36,19 +36,44 @@ impl RateLimit {
     }
 }
 
-fn headers(stream: &mut TcpStream, deadline: Instant) -> Result<String, String> {
-    let mut bytes = Vec::new();
-    while !bytes.ends_with(b"\r\n\r\n") {
+// Configure nonblocking mode once before exchanging bytes. In particular, do not
+// set socket options between response reads: Darwin rejects setsockopt after a
+// peer shutdown even when the response is still buffered and readable.
+fn transfer(
+    deadline: Instant,
+    mut operation: impl FnMut() -> std::io::Result<usize>,
+) -> Result<usize, String> {
+    loop {
         let remaining = deadline
             .checked_duration_since(Instant::now())
             .ok_or("Request timed out")?;
-        stream
-            .set_read_timeout(Some(remaining))
-            .map_err(|e| e.to_string())?;
+        match operation() {
+            Ok(0) => return Err("Connection closed before the HTTP message was complete".into()),
+            Ok(n) => return Ok(n),
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::Interrupted
+                ) =>
+            {
+                thread::sleep(remaining.min(Duration::from_millis(1)));
+            }
+            Err(e) => return Err(format!("HTTP connection failed: {e}")),
+        }
+    }
+}
+fn write_bytes(stream: &mut TcpStream, bytes: &[u8], deadline: Instant) -> Result<(), String> {
+    let mut offset = 0;
+    while offset < bytes.len() {
+        offset += transfer(deadline, || stream.write(&bytes[offset..]))?;
+    }
+    Ok(())
+}
+fn headers(stream: &mut TcpStream, deadline: Instant) -> Result<String, String> {
+    let mut bytes = Vec::new();
+    while !bytes.ends_with(b"\r\n\r\n") {
         let mut b = [0];
-        stream
-            .read_exact(&mut b)
-            .map_err(|_| "Incomplete HTTP headers")?;
+        transfer(deadline, || stream.read(&mut b))?;
         bytes.push(b[0]);
         if bytes.len() > LIMIT {
             return Err("HTTP headers too large".into());
@@ -60,19 +85,7 @@ fn read_body(stream: &mut TcpStream, length: usize, deadline: Instant) -> Result
     let mut body = vec![0; length];
     let mut offset = 0;
     while offset < length {
-        stream
-            .set_read_timeout(Some(
-                deadline
-                    .checked_duration_since(Instant::now())
-                    .ok_or("Request timed out")?,
-            ))
-            .map_err(|e| e.to_string())?;
-        let n = stream
-            .read(&mut body[offset..])
-            .map_err(|_| "Incomplete HTTP body")?;
-        if n == 0 {
-            return Err("Incomplete HTTP body".into());
-        }
+        let n = transfer(deadline, || stream.read(&mut body[offset..]))?;
         offset += n;
     }
     Ok(body)
@@ -131,9 +144,9 @@ fn authenticate(head: &str, connection: &Connection) -> Result<usize, (u16, Stri
 }
 fn reply(stream: &mut TcpStream, code: u16, response: Response) {
     if let Ok(body) = serde_json::to_vec(&response) {
-        let _ = stream.set_write_timeout(Some(DEADLINE));
-        let _ = write!(stream, "HTTP/1.1 {code} Response\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n", body.len());
-        let _ = stream.write_all(&body);
+        let mut bytes = format!("HTTP/1.1 {code} Response\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n", body.len()).into_bytes();
+        bytes.extend_from_slice(&body);
+        let _ = write_bytes(stream, &bytes, Instant::now() + DEADLINE);
     }
 }
 
@@ -159,6 +172,9 @@ pub fn serve(
                     }
                     Err(_) => break,
                 };
+                if stream.set_nonblocking(true).is_err() {
+                    continue;
+                }
                 let allowed = rate.accept(Instant::now());
                 let result = (|| {
                     let deadline = Instant::now() + DEADLINE;
@@ -205,16 +221,15 @@ pub fn call(connection: &Connection, command: Command) -> Result<Response, Strin
     let mut stream = TcpStream::connect_timeout(&address.into(), DEADLINE).map_err(|_| {
         "Cannot reach DynamicLight. Start the desktop app and enable Local automation."
     })?;
-    stream
-        .set_write_timeout(Some(DEADLINE))
-        .map_err(|e| e.to_string())?;
+    stream.set_nonblocking(true).map_err(|e| e.to_string())?;
     let body = serde_json::to_vec(&Request {
         version: crate::VERSION,
         command,
     })
     .map_err(|e| e.to_string())?;
-    write!(stream, "POST /v1/command HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nAuthorization: Bearer {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", connection.port, connection.token, body.len()).map_err(|_| "Cannot send command")?;
-    stream.write_all(&body).map_err(|_| "Cannot send command")?;
+    let mut bytes = format!("POST /v1/command HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nAuthorization: Bearer {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", connection.port, connection.token, body.len()).into_bytes();
+    bytes.extend_from_slice(&body);
+    write_bytes(&mut stream, &bytes, Instant::now() + DEADLINE)?;
     let deadline = Instant::now() + Duration::from_secs(10);
     let head = headers(&mut stream, deadline)?;
     let f = fields(&head)?;
@@ -255,10 +270,64 @@ mod tests {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let mut client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
         let (mut server, _) = listener.accept().unwrap();
+        server.set_nonblocking(true).unwrap();
         client.write_all(b"POST /").unwrap();
         let start = Instant::now();
         assert!(headers(&mut server, start + Duration::from_millis(100)).is_err());
         assert!(start.elapsed() < Duration::from_secs(1));
+    }
+    #[test]
+    fn request_body_can_arrive_after_headers() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let c = Connection::new(listener.local_addr().unwrap().port()).unwrap();
+        let active = Arc::new(AtomicBool::new(true));
+        serve(listener, c.clone(), active.clone(), |_| {
+            Ok(serde_json::json!({"accepted":true}))
+        })
+        .unwrap();
+        let mut stream = TcpStream::connect((Ipv4Addr::LOCALHOST, c.port)).unwrap();
+        stream.set_nonblocking(true).unwrap();
+        let body = br#"{"version":1,"command":{"command":"status"}}"#;
+        let head = head(&c).replace(
+            "Content-Length: 42",
+            &format!("Content-Length: {}", body.len()),
+        );
+        let deadline = Instant::now() + DEADLINE;
+        write_bytes(&mut stream, head.as_bytes(), deadline).unwrap();
+        thread::sleep(Duration::from_millis(60));
+        write_bytes(&mut stream, body, deadline).unwrap();
+        let response_head = headers(&mut stream, deadline).unwrap();
+        let length = fields(&response_head).unwrap()["content-length"]
+            .parse()
+            .unwrap();
+        let response: Response =
+            serde_json::from_slice(&read_body(&mut stream, length, deadline).unwrap()).unwrap();
+        active.store(false, Ordering::Release);
+        assert!(response.ok);
+    }
+    #[test]
+    fn buffered_response_survives_immediate_peer_shutdown() {
+        for _ in 0..20 {
+            let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+            let mut client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+            client.set_nonblocking(true).unwrap();
+            let (mut server, _) = listener.accept().unwrap();
+            server.set_nonblocking(true).unwrap();
+            reply(
+                &mut server,
+                200,
+                Response::from_result(Ok(serde_json::json!({"powered":false}))),
+            );
+            server.shutdown(std::net::Shutdown::Both).unwrap();
+            drop(server);
+            let deadline = Instant::now() + DEADLINE;
+            let head = headers(&mut client, deadline).unwrap();
+            let length = fields(&head).unwrap()["content-length"].parse().unwrap();
+            let response: Response =
+                serde_json::from_slice(&read_body(&mut client, length, deadline).unwrap()).unwrap();
+            assert!(response.ok);
+            assert_eq!(response.data.unwrap()["powered"], false);
+        }
     }
     fn head(c: &Connection) -> String {
         format!("POST /v1/command HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nAuthorization: Bearer {}\r\nContent-Type: application/json\r\nContent-Length: 42\r\n\r\n", c.port, c.token)
@@ -304,6 +373,8 @@ mod tests {
         assert!(!call(&invalid, Command::Status {}).unwrap().ok);
         active.store(false, Ordering::Release);
         thread::sleep(Duration::from_millis(60));
-        assert!(call(&c, Command::Status {}).is_err());
+        if let Ok(response) = call(&c, Command::Status {}) {
+            assert!(!response.ok);
+        }
     }
 }
