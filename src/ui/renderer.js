@@ -236,6 +236,7 @@ function updateUI() {
             : "Computer audio follows your speakers. Microphone listens to your room.");
   if (runtime) renderRuntime(runtime);
   refreshEffectPreviews();
+  window.LibraryTools?.sync();
 }
 // Coalesce drag updates: at most one preview IPC in flight, then the newest value.
 // Disk writes happen after the user pauses, not on each animation frame.
@@ -271,6 +272,7 @@ async function save() {
       persist: true,
     });
     acceptSettings(result);
+    await window.LibraryTools?.remember(result);
     if (savingRevision === revision) $("save-state").textContent = "Saved";
     return result;
   } catch (error) {
@@ -576,6 +578,7 @@ async function init() {
   try { loginEnabled = await invoke("launch_at_login", { enabled: null }); }
   catch (error) { loginAvailable = false; notice(`Launch at login is unavailable: ${error}`, true); }
   await initProfiles();
+  window.LibraryTools.init();
   initCalibration();
   $("exclude-bars").onchange = e => { settings.excludeBars = e.target.checked; changed(["excludeBars"]); };
   ["red", "green", "blue"].forEach((c, i) => { $(c + "-balance").oninput = e => { settings.rgbBalance[i] = Number(e.target.value); changed(["rgbBalance"]); }; });
@@ -772,6 +775,7 @@ async function editLibrary(edit) {
   } catch (e) { $("profile-message").textContent = String(e); throw e; }
 }
 function renderProfiles() {
+  window.LibraryTools?.sync();
   lastScenePreviewKey = "";
   $("profile-list").replaceChildren();
   library.profiles.forEach((p, i) => {
@@ -847,7 +851,7 @@ $("diagnostic-export").onclick = () => diagnosticAction(async () => {
   const path = await invoke("export_diagnostics"); $("diagnostic-status").textContent = "Saved to " + path;
 });
 
-let sceneTimer, scenePreviewBusy = false, lastScenePreviewKey = "";
+let sceneTimer, scenePreviewBusy = false, scenePreviewDirty = false, lastScenePreviewKey = "";
 function sceneVisible(p, starter) {
   const filter = $("scene-filter").value;
   const query = $("scene-search").value.trim().toLowerCase();
@@ -864,7 +868,9 @@ function decorateScene(button,p) {
 }
 async function refreshScenePreviews() {
   clearTimeout(sceneTimer);
-  if (scenePreviewBusy || !document.querySelector(".profiles").open || document.hidden || !thumbnailsFocused) return;
+  if (scenePreviewBusy) { scenePreviewDirty = true; return; }
+  if (!document.querySelector(".profiles").open || document.hidden || !thumbnailsFocused) return;
+  scenePreviewDirty = false;
   scenePreviewBusy=true;
   try {
     const buttons=[...document.querySelectorAll(".scene-card .profile-apply")].filter(b => { const r=b.getBoundingClientRect(); return r.bottom>0 && r.top<innerHeight; });
@@ -878,12 +884,12 @@ async function refreshScenePreviews() {
     lastScenePreviewKey = reducedMotion.matches ? key : "";
     updateSceneSelection();
   } catch(e) { $("profile-message").textContent="Scene previews unavailable: "+String(e); }
-  finally { scenePreviewBusy=false; if(!reducedMotion.matches) sceneTimer=setTimeout(refreshScenePreviews,150); }
+  finally { scenePreviewBusy=false; if(scenePreviewDirty)lastScenePreviewKey=""; if(scenePreviewDirty || !reducedMotion.matches) sceneTimer=setTimeout(refreshScenePreviews,150); }
 }
 function updateSceneSelection() {
   if(!runtime) return;
   const common=["mode","brightness","smoothing"];
-  const keys={solid:["color"],rainbow:["effect","palette","color","speed","effectReverse"],music:["musicStyle","palette","color","audioSource","inputGain","sensitivity","noiseFloor","release","speed"],screen:["screenId","excludeBars","rgbBalance","saturation","gamma"],blend:["screenId","audioSource","blend","inputGain","sensitivity","noiseFloor","release","excludeBars","rgbBalance","saturation","gamma"]};
+  const keys={solid:["color"],rainbow:["effect","palette","customPalette","color","speed","effectReverse"],music:["musicStyle","palette","customPalette","color","audioSource","inputGain","sensitivity","noiseFloor","release","speed"],screen:["screenId","excludeBars","rgbBalance","saturation","gamma"],blend:["screenId","audioSource","blend","inputGain","sensitivity","noiseFloor","release","excludeBars","rgbBalance","saturation","gamma"]};
   for(const b of document.querySelectorAll(".scene-card .profile-apply")) {
     const s={...b.scene.settings, screenId:b.scene.source?.screenId ?? b.scene.settings.screenId ?? ""};
     const match=!runtime.calibrating && [...common,...keys[s.mode]].every(k=>JSON.stringify(s[k])===JSON.stringify(runtime.settings[k]));

@@ -156,6 +156,26 @@
       "status": "Validation",
       "delivered": "Windows and Linux packages build in CI; automated and isolated native smoke checks cover core behavior.",
       "remaining": "Physical Windows/Linux lifecycle, capture, USB and desktop checks; see the linked tracker."
+    },
+    "AUT-05": {
+      "status": "Implemented",
+      "delivered": "0.7 adds selected profile/palette exports, bounded versioned imports with conflict previews, copy/replace/skip, stale-preview rejection, legacy migration and pre-import backups. Imports leave lighting and local bindings/shortcuts unchanged.",
+      "remaining": "Physical file sharing and permission checks across Windows, macOS and Linux.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
+    },
+    "UI-02": {
+      "status": "Implemented",
+      "delivered": "0.7 adds a draft color wheel, keyboard HSL sliders, RGB/hex, approximate white temperature, Apply/Reset/Cancel, recent colors and named editable 1–8 color palettes used by native effects/music.",
+      "remaining": "Physical palette output and assistive-technology checks across platforms; RGB temperature is not measured white calibration.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
     }
   }
 }

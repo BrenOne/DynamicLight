@@ -1,10 +1,12 @@
-# Studio validation (0.5–0.6)
+# Studio validation (0.5–0.7)
 
 Physical checks are deferred at the user's request. Automated tests and successful packages are not evidence that a particular strip, desktop permission flow, or audio route works.
 
 Record results and defects in [Windows/Linux validation #45](https://github.com/mskutin/DynamicLight/issues/45), [macOS validation #38](https://github.com/mskutin/DynamicLight/issues/38), and [accessibility #37](https://github.com/mskutin/DynamicLight/issues/37). These trackers own remaining verification after implementation issues close. Include the tested build and environment; leave untested checks pending.
 
 After the settings refactor, also check interleaved Studio/tray/Quick-controls edits: changing color in Studio must preserve a newer Quick-controls brightness change, and idle saves must not undo the latest edit to the same field. Load existing profiles, update their display selection, restart, and confirm scene settings and local bindings survive while calibration, comfort limits and capture-resume preferences remain local.
+
+For scene sharing and color tools, export a selection on one platform and import it on another. Check copy/replace/skip conflicts, the pre-import backup, capacity errors and an intervening library edit. Verify imports never start capture or USB. Exercise color-wheel pointer controls, keyboard sliders, RGB/hex, Apply/Reset/Cancel, approximate temperature, palette color order/replacement/deletion, recent colors and persistence. Compare palette output on physical strips; the temperature control is not measured white calibration. In Quick controls, verify event-driven favorites/pin initialization and recovery from a transient failed brightness preview.
 
 ## Automated coverage
 

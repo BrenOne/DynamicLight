@@ -8,6 +8,7 @@ const items = JSON.parse(fs.readFileSync('docs/backlog.json', 'utf8'));
 const progress = JSON.parse(fs.readFileSync('docs/backlog-progress.json', 'utf8'));
 const output = 'docs/github-backlog.json';
 const state = fs.existsSync(output) ? JSON.parse(fs.readFileSync(output, 'utf8')) : { issues: {} };
+state.pending ||= {};
 fs.mkdirSync('.local', { recursive: true });
 const inputPath = path.resolve('.local/github-request.json');
 function gh(args) { return execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024, windowsHide: true }).trim(); }
@@ -54,13 +55,14 @@ if (statusField && !statusField.options.some(option => option.name === 'Backlog'
   fields = json(['project', 'field-list', String(state.project.number), '--owner', owner, '--format', 'json']).fields;
 }
 const existingIssues = json(['issue', 'list', '--repo', repo, '--state', 'all', '--limit', '1000', '--json', 'number,title,body,url']);
-const createdKeys = new Set();
+const createdKeys = new Set(Object.keys(state.pending));
 for (const item of items) {
   const matches = existingIssues.filter(issue => issue.body.includes(`<!-- backlog-key: ${item.key} -->`));
   if (matches.length > 1) throw new Error(`Duplicate issues for ${item.key}; reconcile manually.`);
   let issue = matches[0] || existingIssues.find(issue => issue.number === state.issues[item.key]?.number);
   if (!issue) {
     if (progress.items[item.key] || state.issues[item.key]) throw new Error(`Cannot recreate tracked work ${item.key}; reconcile its issue mapping manually.`);
+    state.pending[item.key] = true; save();
     const result = api(`repos/${repo}/issues`, { title: item.title, body: body(item), labels: ['enhancement', `area:${item.area}`, `priority:${item.priority.toLowerCase()}`, `phase:${item.phase.toLowerCase()}`] });
     issue = { number: result.number, url: result.html_url };
     createdKeys.add(item.key);
@@ -74,9 +76,9 @@ const projectItems = json(['project', 'item-list', String(state.project.number),
 for (const item of items) {
   const issue = state.issues[item.key];
   // Preserve live triage, including intentionally cleared fields and excluded/archived issues.
-  if (projectItems.some(entry => entry.content?.url === issue.url) || !createdKeys.has(item.key)) continue;
-  const projectItem = json(['project', 'item-add', String(state.project.number), '--owner', owner, '--url', issue.url, '--format', 'json']);
-  const assignments = [['Status', 'Backlog'], ['Priority', item.priority], ['Phase', item.phase]];
+  if (!createdKeys.has(item.key)) continue;
+  const projectItem = projectItems.find(entry => entry.content?.url === issue.url) || json(['project', 'item-add', String(state.project.number), '--owner', owner, '--url', issue.url, '--format', 'json']);
+  const assignments = [['Status', 'Backlog'], ['Priority', item.priority], ['Phase', item.phase]].filter(([name]) => !projectItem[name.toLowerCase()]);
   const variables = { project: state.project.id, item: projectItem.id };
   const declarations = ['$project:ID!', '$item:ID!'];
   const mutations = assignments.map(([name, value], index) => {
@@ -87,7 +89,8 @@ for (const item of items) {
     declarations.push(`$field${index}:ID!`, `$value${index}:String!`);
     return `f${index}:updateProjectV2ItemFieldValue(input:{projectId:$project,itemId:$item,fieldId:$field${index},value:{singleSelectOptionId:$value${index}}}){projectV2Item{id}}`;
   });
-  graphql(`mutation(${declarations.join(',')}){${mutations.join(' ')}}`, variables);
+  if (mutations.length) graphql(`mutation(${declarations.join(',')}){${mutations.join(' ')}}`, variables);
+  delete state.pending[item.key]; save();
   console.log(`Project: ${item.key}`);
 }
 save();

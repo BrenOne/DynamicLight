@@ -202,6 +202,7 @@ pub async fn export_diagnostics(app: tauri::AppHandle) -> Result<String, String>
         let snapshot = app.state::<Handle>().request(Action::Snapshot)?;
         let report = app.state::<Diagnostics>().report(&snapshot)?;
         let directory = app.path().download_dir().map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
         let file = tempfile::Builder::new()
             .prefix("DynamicLight-diagnostics-")
             .suffix(".txt")

@@ -9,7 +9,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
   const server = http.createServer((req, res) => {
     const name = req.url === "/" ? "index.html" : req.url.slice(1);
     if (
-      !["index.html", "style.css", "renderer.js", "icon.svg", "compact.html", "compact.css", "compact.js"].includes(name)
+      !["index.html", "style.css", "renderer.js", "library-tools.js", "icon.svg", "compact.html", "compact.css", "compact.js"].includes(name)
     ) {
       res.writeHead(404).end();
       return;
@@ -69,6 +69,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
         effect: "aurora",
         palette: "aurora",
         speed: 35,
+        customPalette: [],
         musicStyle: "spectrum",
         noiseFloor: 0,
         release: 40,
@@ -146,17 +147,28 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
                 ]),
               );
             }
-            if (cmd === "profile_library") { if (args.library) profileLibrary = { profiles: args.library.profiles.map(portableProfile) }; return structuredClone(profileLibrary); }
+            if (cmd === "profile_library") { if (args.library) profileLibrary = { ...structuredClone(args.library), profiles: args.library.profiles.map(portableProfile) }; return structuredClone(profileLibrary); }
+            if (cmd === "remember_color") { profileLibrary.recent_colors=[args.color,...(profileLibrary.recent_colors||[]).filter(c=>c!==args.color)].slice(0,12); return structuredClone(profileLibrary); }
+            if (cmd === 'export_profiles') { fixture.lastExport=args; return 'Downloads/DynamicLight-scenes-test.json'; }
+            if (cmd === 'preview_profile_import') {
+              const bundle=JSON.parse(args.text); if(bundle.version!==1||bundle.format!=='dynamiclight')throw Error('Unsupported scene file');
+              return {bundle,base:structuredClone(profileLibrary),conflicts:bundle.profiles.map(p=>profileLibrary.profiles.find(o=>o.id===p.id||o.name===p.name)?.name||null),palette_conflicts:bundle.palettes.map(p=>profileLibrary.palettes?.find(o=>o.id===p.id||o.name===p.name)?.name||null)};
+            }
+            if (cmd === 'import_profiles') {
+              if(JSON.stringify(args.expected)!==JSON.stringify(profileLibrary))throw Error('Your library changed. Choose the file again.');
+              for(const p of args.bundle.profiles){const i=profileLibrary.profiles.findIndex(o=>o.id===p.id||o.name===p.name);if(i>=0&&args.policy==='skip')continue;if(i>=0&&args.policy==='replace')profileLibrary.profiles[i]={...profileLibrary.profiles[i],settings:p.settings};else profileLibrary.profiles.push({...p,id:crypto.randomUUID(),name:p.name+(i>=0?' (2)':''),favorite:false,shortcut:'',source:{screenId:''}});}
+              return structuredClone(profileLibrary);
+            }
             if (cmd === "starter_scenes") return { profiles: [
               { id:'warm-desk',name:'Warm desk',favorite:false,shortcut:'',settings:{...initial,mode:'solid',brightness:28,color:'#ffbf80'} },
               { id:'cinema',name:'Cinema',favorite:false,shortcut:'',settings:{...initial,mode:'screen',brightness:35} },
               { id:'neon',name:'Neon',favorite:false,shortcut:'',settings:{...initial,mode:'rainbow',effect:'aurora',brightness:55} },
               { id:'ocean',name:'Ocean',favorite:false,shortcut:'',settings:{...initial,mode:'rainbow',effect:'aurora',palette:'ocean',brightness:40} }
             ].map(portableProfile) };
-            if (cmd === "scene_previews") { fixture.sceneCalls=(fixture.sceneCalls||0)+1; return args.settings.map(s=>Array.from({length:48},(_,i)=>[50+i*3,140,200])); }
+            if (cmd === "scene_previews") { fixture.sceneCalls=(fixture.sceneCalls||0)+1; if(fixture.sceneDelay)await new Promise(r=>setTimeout(r,fixture.sceneDelay)); return args.settings.map(s=>Array.from({length:48},(_,i)=>[50+i*3,140,200])); }
             if (cmd === "apply_starter") { state.settings = {...initial,mode:'rainbow',palette:'ocean'}; state.powered=true; state.requested=true; return structuredClone(state); }
             if (cmd === "compact_window") { if(args.operation==='pin')fixture.pinned=args.pinned; return !!fixture.pinned; }
-            if (cmd === "compact_control") { if(args.brightness!==null)state.settings.brightness=args.brightness; if(args.toggle)state.requested=state.powered=!state.requested; return structuredClone(state); }
+            if (cmd === "compact_control") { if(args.preview&&fixture.failBrightnessPreview){fixture.failBrightnessPreview=false;throw Error('Transient preview failure');} if(args.brightness!==null)state.settings.brightness=args.brightness; if(args.toggle)state.requested=state.powered=!state.requested; return structuredClone(state); }
             if (cmd === "apply_profile") { const p=profileLibrary.profiles.find(p => p.id === args.id); state.settings = { ...state.settings, ...structuredClone(p.settings), screenId:p.source.screenId }; state.requested = true; state.powered = true; return structuredClone(state); }
             if (cmd === "diagnostic_report") return { text: "DynamicLight test report: no private data", enabled: !!args.enabled };
             if (cmd === "export_diagnostics") return "Downloads/DynamicLight-diagnostics-test.txt";
@@ -614,6 +626,39 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
     await page.emulateMedia({reducedMotion:'reduce'}); await page.waitForTimeout(300);
     const sceneCalls=await page.evaluate(()=>fixture.sceneCalls);
     await page.waitForTimeout(400); assert.equal(await page.evaluate(()=>fixture.sceneCalls),sceneCalls);
+    await page.evaluate(()=>{fixture.sceneDelay=150;lastScenePreviewKey='';refreshScenePreviews();renderProfiles();});
+    await page.waitForFunction(()=>[...document.querySelectorAll('.scene-art')].some(c=>c.getContext('2d').getImageData(100,75,1,1).data[3]>0));
+    await page.evaluate(()=>{fixture.sceneDelay=0;});
+    await page.locator('[data-mode="solid"]').click();await page.waitForFunction(()=>!busy);
+    const oldColor=await page.evaluate(()=>settings.color);
+    await page.locator('#open-color-editor').click();
+    await page.locator('#color-hex').fill('#ffffff');await page.locator('#color-hex').dispatchEvent('input');
+    const wheel=await page.locator('#color-wheel').boundingBox();await page.mouse.click(wheel.x+wheel.width*.9,wheel.y+wheel.height*.5);
+    assert.notEqual(await page.locator('#color-hex').inputValue(),'#ffffff','The wheel can select a color starting from white');
+    await page.locator('#color-hex').fill('#123456');await page.locator('#color-hex').dispatchEvent('input');
+    assert.equal(await page.evaluate(()=>fixture.state.settings.color),oldColor,'Draft color never changes hardware');
+    await page.locator('#reset-color').click();assert.equal(await page.locator('#color-hex').inputValue(),oldColor);
+    await page.locator('#color-temperature').fill('2700');await page.locator('#color-temperature').dispatchEvent('input');
+    assert.match(await page.locator('#color-temperature-value').innerText(),/2700 K/);
+    await page.locator('#close-color-editor').click();assert.equal(await page.evaluate(()=>settings.color),oldColor);
+    await page.locator('#open-color-editor').click();await page.locator('#color-hex').fill('#123456');await page.locator('#color-hex').dispatchEvent('input');await page.locator('#apply-color').click();
+    await page.waitForFunction(()=>document.querySelector('#save-state').textContent==='Saved');
+    assert.equal(await page.evaluate(()=>fixture.state.settings.color),'#123456');assert(await page.locator('#recent-colors button').count());
+    await page.locator('[data-mode="rainbow"]').click();await page.waitForFunction(()=>!busy);await page.locator('[data-effect="aurora"]').click();await page.waitForFunction(()=>!busy);
+    await page.locator('#open-palette-editor').click();await page.locator('#color-hex').fill('#abcdef');await page.locator('#color-hex').dispatchEvent('input');await page.locator('#palette-add').click();await page.locator('#palette-left').click();
+    await page.locator('#palette-name').fill('Evening');await page.locator('#palette-save').click();await page.waitForFunction(()=>library.palettes?.length===1);
+    assert.equal(await page.evaluate(()=>library.palettes[0].colors[0]),'#abcdef');
+    await page.locator('#palette-apply').click();await page.waitForFunction(()=>fixture.state.settings.palette==='custom');assert.equal(await page.evaluate(()=>fixture.state.settings.customPalette[0]),'#abcdef');
+    await page.locator('.profiles').evaluate(d=>{d.open=true;});
+    await page.locator('#share-scenes').click();await page.locator('#export-save').click();await page.waitForFunction(()=>!!fixture.lastExport);
+    assert.equal((await page.evaluate(()=>fixture.lastExport.paletteIds)).length,1);assert.match(await page.locator('#export-status').innerText(),/Downloads/);await page.locator('#export-cancel').click();
+    const bundle=await page.evaluate(()=>({format:'dynamiclight',version:1,profiles:[{id:library.profiles[0].id,name:library.profiles[0].name,settings:library.profiles[0].settings}],palettes:[]}));
+    const upload=()=>page.locator('#scene-file').setInputFiles({name:'scenes.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(bundle))});
+    await upload();await page.waitForFunction(()=>document.querySelector('#import-dialog').open);assert.match(await page.locator('#import-items').innerText(),/matches/);
+    await page.evaluate(()=>window.__TAURI__.core.invoke('profile_library',{library:{...library,recent_colors:['#000000']}}));
+    await page.locator('#import-confirm').click();await page.waitForFunction(()=>document.querySelector('#import-status').textContent.includes('library changed'));await page.locator('#import-cancel').click();
+    await upload();await page.waitForFunction(()=>document.querySelector('#import-dialog').open);const profileCount=await page.evaluate(()=>library.profiles.length);await page.locator('#import-confirm').click();await page.waitForFunction(()=>!document.querySelector('#import-dialog').open);assert.equal(await page.evaluate(()=>library.profiles.length),profileCount+1);
+    await page.locator('#open-palette-editor').click();await page.screenshot({path:'.local/ui-color-tools.png'});for(const width of [390,540,1180]){await page.setViewportSize({width,height:1000});const geometry=await page.evaluate(()=>{const d=document.querySelector('#color-editor');return {client:d.clientWidth,scroll:d.scrollWidth,overflow:[...d.querySelectorAll('*')].filter(e=>e.getBoundingClientRect().right>d.getBoundingClientRect().right).map(e=>e.id||e.className||e.tagName)};});assert(geometry.scroll<=geometry.client,'Responsive color editor at '+width+': '+JSON.stringify(geometry));}await page.locator('#close-color-editor').click();
     await page.goto(`http://127.0.0.1:${server.address().port}/compact.html`);
     await page.waitForFunction(()=>document.querySelector('#quick-power').disabled===false);
     await page.setViewportSize({width:360,height:460});
@@ -623,6 +668,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
     await page.evaluate(()=>{ fixture.state.settings.brightness=74; });
     await page.waitForFunction(()=>!editingBrightness);
     assert.equal(await page.evaluate(()=>fixture.state.settings.brightness),74,'Quick-controls idle save preserves later edits');
+    await page.evaluate(()=>{fixture.failBrightnessPreview=true;});
+    await page.locator('#quick-brightness').fill('46');await page.locator('#quick-brightness').dispatchEvent('input');
+    await page.waitForFunction(()=>!editingBrightness);
+    assert.equal(await page.evaluate(()=>fixture.state.settings.brightness),46,'A failed preview retries the selected value at commit');
     await page.locator('#quick-power').click(); await page.waitForFunction(()=>fixture.state.requested);
     await page.locator('#quick-power').click(); await page.waitForFunction(()=>!fixture.state.requested);
     await page.evaluate(()=>{fixture.state.settings.brightness=57; fixture.state.recovering=true; fixture.state.requested=true;});

@@ -19,6 +19,7 @@ mod profiles;
 mod protocol;
 mod scenes;
 mod settings;
+mod sharing;
 mod tray;
 
 use engine::{Action, Handle, Snapshot};
@@ -169,6 +170,10 @@ pub fn run() {
             ,scenes::starter_scenes,
             scenes::apply_starter,
             scenes::scene_previews
+            ,sharing::preview_profile_import,
+            sharing::import_profiles,
+            sharing::export_profiles
+            ,sharing::remember_color
         ])
         .setup(|app| {
             let background = std::env::args().any(|arg| arg == "--autostart");
@@ -275,6 +280,10 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("Unable to start DynamicLight");
     app.run(|app, event| {
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::Reopen { .. } = event {
+            show(app);
+        }
         if let tauri::RunEvent::ExitRequested { api, .. } = event {
             if !app.state::<AtomicBool>().swap(true, Ordering::SeqCst) {
                 if let Some(window) = app.get_webview_window("compact") {

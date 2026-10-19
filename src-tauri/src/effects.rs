@@ -14,17 +14,21 @@ pub fn blend(colors: &[Rgb], bands: &[f32], strength: u8) -> Vec<Rgb> {
 }
 pub fn palette(s: &Settings, position: f32) -> Rgb {
     let stops = match s.palette.as_str() {
-        "ocean" => [[20, 60, 255], [0, 220, 220], [80, 160, 255]],
-        "sunset" => [[255, 55, 90], [255, 155, 45], [140, 45, 230]],
+        "ocean" => vec![[20, 60, 255], [0, 220, 220], [80, 160, 255]],
+        "sunset" => vec![[255, 55, 90], [255, 155, 45], [140, 45, 230]],
         "mono" => return lighting::hex(&s.color),
-        _ => [[80, 245, 180], [70, 110, 255], [210, 65, 245]],
+        "custom" if !s.custom_palette.is_empty() => {
+            s.custom_palette.iter().map(|c| lighting::hex(c)).collect()
+        }
+        _ => vec![[80, 245, 180], [70, 110, 255], [210, 65, 245]],
     };
-    let p = position.rem_euclid(1.0) * 3.0;
+    let p = position.rem_euclid(1.0) * stops.len() as f32;
     // Floating-point rem_euclid can round a tiny negative phase up to 1.0.
-    let i = p.floor() as usize % 3;
+    let i = p.floor() as usize % stops.len();
     std::array::from_fn(|c| {
-        (stops[i][c] as f32 * (1.0 - p.fract()) + stops[(i + 1) % 3][c] as f32 * p.fract()).round()
-            as u8
+        (stops[i][c] as f32 * (1.0 - p.fract())
+            + stops[(i + 1) % stops.len()][c] as f32 * p.fract())
+        .round() as u8
     })
 }
 pub fn animated(s: &Settings, seconds: f32) -> Vec<Rgb> {
@@ -96,6 +100,26 @@ pub fn envelope(previous: &mut Vec<f32>, incoming: &[f32], dt: f32, release: u8)
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn custom_palettes_wrap_and_support_one_to_eight_colors() {
+        let mut s = Settings {
+            palette: "custom".into(),
+            custom_palette: vec!["#102030".into()],
+            ..Default::default()
+        };
+        for phase in [-1.0, -0.00000001, 0.0, 0.5, 1.0] {
+            assert_eq!(palette(&s, phase), [16, 32, 48]);
+        }
+        s.custom_palette = vec!["#ff0000".into(), "#0000ff".into()];
+        assert_eq!(palette(&s, 0.0), [255, 0, 0]);
+        assert_eq!(palette(&s, 0.5), [0, 0, 255]);
+        assert_eq!(palette(&s, 0.25), [128, 0, 128]);
+        s.custom_palette = vec!["#010203".into(); 8];
+        s.validate().unwrap();
+        assert_eq!(animated(&s, 1.0).len(), s.count);
+        s.custom_palette.push("#010203".into());
+        assert!(s.validate().is_err());
+    }
     #[test]
     fn effect_direction_mirrors_animation_without_changing_strip_mapping() {
         for effect in ["rainbow", "aurora", "breath", "comet", "ember"] {

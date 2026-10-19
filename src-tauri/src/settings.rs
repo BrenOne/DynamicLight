@@ -24,6 +24,8 @@ pub struct Settings {
     pub off_on_quit: bool,
     pub effect: String,
     pub palette: String,
+    #[serde(default)]
+    pub custom_palette: Vec<String>,
     pub speed: u8,
     pub music_style: String,
     pub noise_floor: u8,
@@ -63,6 +65,7 @@ impl Default for Settings {
             off_on_quit: true,
             effect: "rainbow".into(),
             palette: "aurora".into(),
+            custom_palette: Vec::new(),
             speed: 35,
             music_style: "spectrum".into(),
             noise_floor: 0,
@@ -93,6 +96,15 @@ impl Settings {
             };
             memory.apply(&mut candidate);
             candidate.validate()?;
+        }
+        if self.custom_palette.len() > 8
+            || self
+                .custom_palette
+                .iter()
+                .any(|c| !crate::sharing::valid_color(c))
+            || (self.palette == "custom" && self.custom_palette.is_empty())
+        {
+            return Err("Use 1–8 valid colors for a custom palette".into());
         }
         if self.color.len() != 7
             || !self.color.starts_with('#')
@@ -128,7 +140,7 @@ impl Settings {
             return Err("Unknown lighting mode or audio source".into());
         }
         if !["rainbow", "aurora", "breath", "comet", "ember"].contains(&self.effect.as_str())
-            || !["aurora", "ocean", "sunset", "mono"].contains(&self.palette.as_str())
+            || !["aurora", "ocean", "sunset", "mono", "custom"].contains(&self.palette.as_str())
             || !["spectrum", "bass", "vu", "wave", "beat"].contains(&self.music_style.as_str())
         {
             return Err("Unknown effect, palette or music style".into());
@@ -216,6 +228,8 @@ pub struct ModeSettings {
     screen_id: String,
     effect: String,
     palette: String,
+    #[serde(default)]
+    custom_palette: Vec<String>,
     speed: u8,
     music_style: String,
     noise_floor: u8,
@@ -240,6 +254,7 @@ impl ModeSettings {
             screen_id: s.screen_id.clone(),
             effect: s.effect.clone(),
             palette: s.palette.clone(),
+            custom_palette: s.custom_palette.clone(),
             speed: s.speed,
             music_style: s.music_style.clone(),
             noise_floor: s.noise_floor,
@@ -263,6 +278,7 @@ impl ModeSettings {
         s.screen_id = self.screen_id.clone();
         s.effect = self.effect.clone();
         s.palette = self.palette.clone();
+        s.custom_palette = self.custom_palette.clone();
         s.speed = self.speed;
         s.music_style = self.music_style.clone();
         s.noise_floor = self.noise_floor;
@@ -291,6 +307,8 @@ pub struct SceneSettings {
     pub fps: u8,
     pub effect: String,
     pub palette: String,
+    #[serde(default)]
+    pub custom_palette: Vec<String>,
     pub speed: u8,
     pub music_style: String,
     pub noise_floor: u8,
@@ -315,6 +333,7 @@ impl SceneSettings {
             fps: s.fps,
             effect: s.effect.clone(),
             palette: s.palette.clone(),
+            custom_palette: s.custom_palette.clone(),
             speed: s.speed,
             music_style: s.music_style.clone(),
             noise_floor: s.noise_floor,
@@ -339,6 +358,7 @@ impl SceneSettings {
             fps: self.fps,
             effect: self.effect.clone(),
             palette: self.palette.clone(),
+            custom_palette: self.custom_palette.clone(),
             speed: self.speed,
             music_style: self.music_style.clone(),
             noise_floor: self.noise_floor,

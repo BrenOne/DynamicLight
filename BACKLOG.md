@@ -1,6 +1,6 @@
 # DynamicLight backlog
 
-Reviewed 2026-10-19: **22 future features**, **3 validation trackers**, **14 delivered features**. No implementation batch is currently active.
+Reviewed 2026-10-19: **20 future features**, **3 validation trackers**, **16 delivered features**. No implementation batch is currently active.
 
 [GitHub project](https://github.com/users/mskutin/projects/4) · [Open issues](https://github.com/mskutin/DynamicLight/issues)
 
@@ -11,8 +11,8 @@ Backlog means uncommitted future work. In Progress is reserved for active implem
 Physical testing remains deferred. Record results in these issues; do not mark unchecked scenarios passed based on builds or simulations.
 
 - **[#37](https://github.com/mskutin/DynamicLight/issues/37) — Validate accessibility across studio, Quick controls and tray.** Complete keyboard, contrast, scaling and Windows/macOS screen-reader validation.
-- **[#38](https://github.com/mskutin/DynamicLight/issues/38) — Validate macOS 0.6 releases on Intel and Apple Silicon.** Physical Mac USB, capture, permission, tray and lifecycle validation.
-- **[#45](https://github.com/mskutin/DynamicLight/issues/45) — Validate Windows and Linux 0.6 on physical hardware.** Physical Windows/Linux lifecycle, capture, USB and desktop checks; see the linked tracker.
+- **[#38](https://github.com/mskutin/DynamicLight/issues/38) — Validate macOS preview releases on Intel and Apple Silicon.** Physical Mac USB, capture, permission, tray and lifecycle validation.
+- **[#45](https://github.com/mskutin/DynamicLight/issues/45) — Validate Windows and Linux preview releases on physical hardware.** Physical Windows/Linux lifecycle, capture, USB and desktop checks; see the linked tracker.
 
 ## Future work
 
@@ -26,13 +26,11 @@ P2 expands product capability; P3 covers exploratory features and integrations. 
 | [#11](https://github.com/mskutin/DynamicLight/issues/11) | Build a custom lighting effects editor | P2 | — |
 | [#12](https://github.com/mskutin/DynamicLight/issues/12) | Control independent strip zones | P2 | — |
 | [#13](https://github.com/mskutin/DynamicLight/issues/13) | Capture a selected window or screen region | P2 | — |
-| [#18](https://github.com/mskutin/DynamicLight/issues/18) | Export and import portable profiles across platforms | P2 | — |
 | [#19](https://github.com/mskutin/DynamicLight/issues/19) | Add a neutral-white bias-lighting mode | P2 | — |
 | [#21](https://github.com/mskutin/DynamicLight/issues/21) | Extract lighting palettes from images and wallpaper | P2 | — |
 | [#22](https://github.com/mskutin/DynamicLight/issues/22) | Record and replay lighting sequences | P3 | — |
 | [#25](https://github.com/mskutin/DynamicLight/issues/25) | Add focus and break timers with lighting cues | P3 | — |
 | [#28](https://github.com/mskutin/DynamicLight/issues/28) | Make the monitor and LED preview interactive | P2 | — |
-| [#29](https://github.com/mskutin/DynamicLight/issues/29) | Add a color wheel, temperature control, and saved palettes | P2 | — |
 | [#34](https://github.com/mskutin/DynamicLight/issues/34) | Add drag-and-drop monitor and strip layout setup | P2 | [#8](https://github.com/mskutin/DynamicLight/issues/8) |
 | [#36](https://github.com/mskutin/DynamicLight/issues/36) | Add themes, accent colors, and layout density options | P2 | — |
 
@@ -47,7 +45,7 @@ P2 expands product capability; P3 covers exploratory features and integrations. 
 | [#17](https://github.com/mskutin/DynamicLight/issues/17) | Add a paired phone remote on the local network | P3 | [#16](https://github.com/mskutin/DynamicLight/issues/16) |
 | [#23](https://github.com/mskutin/DynamicLight/issues/23) | Adapt brightness to an ambient-light sensor | P3 | — |
 | [#24](https://github.com/mskutin/DynamicLight/issues/24) | Add game telemetry integrations | P3 | [#16](https://github.com/mskutin/DynamicLight/issues/16) |
-| [#26](https://github.com/mskutin/DynamicLight/issues/26) | Coordinate device handoff between Windows and Mac | P3 | [#18](https://github.com/mskutin/DynamicLight/issues/18) |
+| [#26](https://github.com/mskutin/DynamicLight/issues/26) | Coordinate device handoff between Windows and Mac | P3 | — |
 | [#27](https://github.com/mskutin/DynamicLight/issues/27) | Define a plugin system for effects and integrations | P3 | — |
 
 ## Delivered
@@ -64,7 +62,9 @@ These implementation issues are closed. Their outstanding physical checks are tr
 | [#6](https://github.com/mskutin/DynamicLight/issues/6) | Add bass, frequency-band, and beat-reactive music effects | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
 | [#7](https://github.com/mskutin/DynamicLight/issues/7) | Add connection diagnostics and redacted log export | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
 | [#14](https://github.com/mskutin/DynamicLight/issues/14) | Add brightness and flash comfort controls | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
+| [#18](https://github.com/mskutin/DynamicLight/issues/18) | Export and import portable profiles across platforms | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
 | [#20](https://github.com/mskutin/DynamicLight/issues/20) | Blend screen colors with music-reactive brightness | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
+| [#29](https://github.com/mskutin/DynamicLight/issues/29) | Add a color wheel, temperature control, and saved palettes | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
 | [#30](https://github.com/mskutin/DynamicLight/issues/30) | Create a visual scene-card library | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
 | [#31](https://github.com/mskutin/DynamicLight/issues/31) | Build focused mode-specific control panels | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
 | [#32](https://github.com/mskutin/DynamicLight/issues/32) | Add a compact floating lighting controller | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |

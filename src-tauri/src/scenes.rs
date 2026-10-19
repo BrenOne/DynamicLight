@@ -67,6 +67,7 @@ pub fn starter_scenes() -> Library {
                 source: SourceBinding::default(),
             })
             .collect(),
+        ..Default::default()
     }
 }
 #[tauri::command]

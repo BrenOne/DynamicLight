@@ -3,7 +3,7 @@ const $ = id => document.getElementById(id);
 const { invoke } = window.__TAURI__.core;
 const names = { solid: "Color", screen: "Screen", music: "Music", blend: "Screen + music", rainbow: "Effects" };
 let state, favorites = [], busy = false, brightnessTimer, editingBrightness = false, queue = Promise.resolve(), actionError = "";
-let brightnessPreview, brightnessDirty = false;
+let brightnessPreview, brightnessDirty = false, previewFailed = false, brightnessRevision = 0;
 function serialized(task) { const next = queue.catch(() => {}).then(task); queue = next; return next; }
 function statusText(id, text) { if ($(id).textContent !== text) $(id).textContent = text; }
 function render(s) {
@@ -38,10 +38,14 @@ async function flushBrightness() {
   clearTimeout(brightnessTimer);
   if (!editingBrightness) return;
   await brightnessPreview;
-  editingBrightness = false;
+  const commitRevision = brightnessRevision;
+  const brightness = previewFailed ? +$("quick-brightness").value : null;
   // Preview already applied the edit. Persist current worker state so a later
   // Studio/tray edit is not overwritten by this delayed commit.
-  render(await serialized(() => invoke("compact_control", { brightness: null, toggle: false })));
+  const next = await serialized(() => invoke("compact_control", { brightness, toggle: false }));
+  if (commitRevision === brightnessRevision) editingBrightness = false;
+  previewFailed = false; actionError = "";
+  render(next);
 }
 function previewBrightness() {
   brightnessDirty = true;
@@ -50,10 +54,12 @@ function previewBrightness() {
       brightnessDirty = false;
       const brightness = +$("quick-brightness").value;
       render(await serialized(() => invoke("compact_control", { brightness, toggle:false, preview:true })));
+      previewFailed = false;
     }
-  })().catch(e => {actionError=String(e);render(state);}).finally(() => {brightnessPreview=null;});
+  })().catch(e => {previewFailed=true;actionError=String(e);render(state);}).finally(() => {brightnessPreview=null;});
 }
 $("quick-brightness").oninput = () => {
+  brightnessRevision++;
   editingBrightness = true;
   $("quick-value").textContent = $("quick-brightness").value + "%";
   previewBrightness();

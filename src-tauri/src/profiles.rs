@@ -4,11 +4,15 @@ use crate::{
     settings::{save_json, SceneSettings, Settings, SourceBinding},
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, path::PathBuf, sync::Mutex};
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+    sync::Mutex,
+};
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Profile {
     pub id: String,
@@ -18,20 +22,23 @@ pub struct Profile {
     pub settings: SceneSettings,
     pub source: SourceBinding,
 }
-#[derive(Clone, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct Library {
     pub profiles: Vec<Profile>,
+    pub palettes: Vec<crate::sharing::Palette>,
+    pub recent_colors: Vec<String>,
 }
 pub struct Store {
     pub library: Mutex<Library>,
-    path: PathBuf,
+    pub(crate) path: PathBuf,
 }
 impl Library {
     pub fn validate(&self) -> Result<(), String> {
         if self.profiles.len() > 40 {
             return Err("Keep up to 40 profiles".into());
         }
+        crate::sharing::validate_colors(&self.palettes, &self.recent_colors)?;
         let mut ids = HashSet::new();
         let mut shortcuts = HashSet::new();
         for p in &self.profiles {
@@ -191,6 +198,54 @@ pub fn init(app: &tauri::AppHandle) -> Result<(), String> {
     }
     Ok(())
 }
+pub(crate) fn replace_library(
+    app: &tauri::AppHandle,
+    old: &mut Library,
+    next: Library,
+    path: &Path,
+) -> Result<(), String> {
+    next.validate()?;
+    // Register additions before touching old bindings or the saved file.
+    let unchanged = |p: &Profile| {
+        old.profiles
+            .iter()
+            .any(|o| o.id == p.id && o.shortcut == p.shortcut)
+    };
+    let additions: Vec<_> = next
+        .profiles
+        .iter()
+        .filter(|p| !p.shortcut.is_empty() && !unchanged(p))
+        .collect();
+    let mut added: Vec<&Profile> = vec![];
+    for p in additions {
+        if let Err(e) = register(app, p) {
+            for p in added {
+                unregister(app, p.shortcut.as_str());
+            }
+            return Err(e);
+        }
+        added.push(p);
+    }
+    if let Err(e) = save_json(&next, path) {
+        for p in added {
+            unregister(app, p.shortcut.as_str());
+        }
+        return Err(e);
+    }
+    for p in &old.profiles {
+        if !p.shortcut.is_empty()
+            && !next
+                .profiles
+                .iter()
+                .any(|n| n.id == p.id && n.shortcut == p.shortcut)
+        {
+            unregister(app, p.shortcut.as_str());
+        }
+    }
+    *old = next;
+    let _ = app.emit("profiles-changed", &*old);
+    Ok(())
+}
 #[tauri::command]
 pub async fn profile_library(
     app: tauri::AppHandle,
@@ -200,46 +255,7 @@ pub async fn profile_library(
         let store = app.state::<Store>();
         let mut old = store.library.lock().map_err(|e| e.to_string())?;
         if let Some(next) = library {
-            next.validate()?;
-            // Register additions before touching old bindings or the saved file.
-            let unchanged = |p: &Profile| {
-                old.profiles
-                    .iter()
-                    .any(|o| o.id == p.id && o.shortcut == p.shortcut)
-            };
-            let additions: Vec<_> = next
-                .profiles
-                .iter()
-                .filter(|p| !p.shortcut.is_empty() && !unchanged(p))
-                .collect();
-            let mut added: Vec<&Profile> = vec![];
-            for p in additions {
-                if let Err(e) = register(&app, p) {
-                    for p in added {
-                        unregister(&app, p.shortcut.as_str());
-                    }
-                    return Err(e);
-                }
-                added.push(p);
-            }
-            if let Err(e) = save_json(&next, &store.path) {
-                for p in added {
-                    unregister(&app, p.shortcut.as_str());
-                }
-                return Err(e);
-            }
-            for p in &old.profiles {
-                if !p.shortcut.is_empty()
-                    && !next
-                        .profiles
-                        .iter()
-                        .any(|n| n.id == p.id && n.shortcut == p.shortcut)
-                {
-                    unregister(&app, p.shortcut.as_str());
-                }
-            }
-            *old = next;
-            let _ = app.emit("profiles-changed", &*old);
+            replace_library(&app, &mut old, next, &store.path)?;
         }
         Ok(old.clone())
     })
@@ -271,12 +287,18 @@ mod tests {
         let mut b = profile();
         b.id = "two".into();
         assert!(Library {
-            profiles: vec![a.clone(), b]
+            profiles: vec![a.clone(), b],
+            ..Default::default()
         }
         .validate()
         .is_err());
         a.name = "\n".into();
-        assert!(Library { profiles: vec![a] }.validate().is_err());
+        assert!(Library {
+            profiles: vec![a],
+            ..Default::default()
+        }
+        .validate()
+        .is_err());
     }
     #[test]
     fn legacy_profiles_migrate_without_exporting_local_preferences() {
@@ -337,6 +359,7 @@ mod tests {
         let path = dir.path().join("profiles.json");
         let library = Library {
             profiles: vec![profile()],
+            ..Default::default()
         };
         save_json(&library, &path).unwrap();
         let loaded: Library = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();

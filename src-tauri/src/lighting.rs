@@ -142,6 +142,8 @@ pub fn sample_tracked(
     }
     let (left, top) = crop.update(data, width, height, stride, settings.exclude_bars);
     let (cw, ch) = (width - 2 * left, height - 2 * top);
+    // LED edge allocation follows the physical display. Cropping changes where
+    // each LED samples the picture, not which physical LEDs belong to an edge.
     positions(settings.count, settings.sides, width as f32 / height as f32)
         .iter()
         .map(|&(x, y)| {
@@ -211,6 +213,42 @@ pub fn reorder(colors: &[Rgb], reverse: bool, offset: usize) -> Vec<Rgb> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cropping_keeps_the_physical_edge_allocation() {
+        let (w, h) = (256usize, 128usize);
+        let mut pixels = vec![0; w * h * 4];
+        for y in 16..112 {
+            for x in 0..w {
+                let rgb = if y < 25 {
+                    [0, 220, 0]
+                } else if x < 16 {
+                    [220, 0, 0]
+                } else if x > w - 17 {
+                    [0, 0, 220]
+                } else {
+                    [80, 80, 80]
+                };
+                pixels[(y * w + x) * 4..(y * w + x) * 4 + 3].copy_from_slice(&rgb);
+            }
+        }
+        let mut crop = Crop {
+            active: (0, 16),
+            candidate: (0, 16),
+            size: (w as u32, h as u32),
+            since: Some(std::time::Instant::now() - std::time::Duration::from_secs(1)),
+        };
+        let s = Settings {
+            count: 16,
+            exclude_bars: true,
+            ..Default::default()
+        };
+        let colors = sample_tracked(&pixels, w as u32, h as u32, w * 4, false, &s, &mut crop);
+        // A 2:1 monitor has four LEDs on each vertical edge. Reallocating for
+        // cropped content would incorrectly turn the fourth left LED green.
+        assert!(colors[3][0] > colors[3][1]);
+        assert!(colors[4][1] > colors[4][0]);
+        assert!(colors[12][2] > colors[12][1]);
+    }
     #[test]
     fn letterbox_requires_stability_and_black_frames_keep_crop() {
         let (w, h) = (256, 128);

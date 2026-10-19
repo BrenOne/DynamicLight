@@ -5,11 +5,11 @@ const vm = require('node:vm');
 const source = fs.readFileSync('scripts/publish-backlog.cjs', 'utf8');
 const project = { id: 'project', number: 4, title: 'DynamicLight Roadmap', url: 'https://example.test/project' };
 const item = key => ({ key, title: key, summary: key, criteria: ['Verify behavior'], area: 'ui', priority: 'P2', phase: 'Studio' });
-function run({ items, issues, mappings = {}, members = [], progress = {} }) {
+function run({ items, issues, mappings = {}, members = [], progress = {}, pending = {} }) {
   const files = new Map(Object.entries({
     'docs/backlog.json': JSON.stringify(items),
     'docs/backlog-progress.json': JSON.stringify({ items: progress }),
-    'docs/github-backlog.json': JSON.stringify({ project, issues: mappings })
+    'docs/github-backlog.json': JSON.stringify({ project, issues: mappings, pending })
   }));
   const writes = [];
   const fields = [
@@ -52,4 +52,9 @@ const resolved = writes.find(w => w.args.includes('PATCH'));
 assert.match(resolved.payload.body, /Depends on unfinished work: #\d+/);
 assert.equal(writes.filter(w => w.args.slice(0, 2).join(' ') === 'project item-add').length, 2);
 assert.equal(writes.filter(w => w.args[1] === 'graphql').length, 2);
+const resumed = run({ items:[item('OLD')],issues:existing,mappings:{OLD:{number:1,url:existing[0].url}},pending:{OLD:true} });
+assert.equal(resumed.filter(w=>w.args.slice(0,2).join(' ')==='project item-add').length,1,'An interrupted publication resumes missing membership');
+const partial = run({ items:[item('OLD')],issues:existing,mappings:{OLD:{number:1,url:existing[0].url}},pending:{OLD:true},members:[{id:'member',content:{url:existing[0].url},status:'In Progress',priority:'P1'}] });
+assert.equal(partial.filter(w=>w.args.slice(0,2).join(' ')==='project item-add').length,0);
+assert.equal(partial.find(w=>w.args[1]==='graphql').payload.variables.value0,'studio','Resume initializes only the missing field');
 console.log('Backlog publisher: existing triage preserved; missing/duplicate identities rejected; new dependencies and project items published.');

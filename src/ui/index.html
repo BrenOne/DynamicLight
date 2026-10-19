@@ -58,6 +58,7 @@
           <button id="profile-save" class="secondary">Save current settings</button>
         </div>
         <p class="help">Selecting a profile starts lighting. Screen and audio profiles may request capture permission. Strip layout and startup preferences stay unchanged.</p>
+        <div class="library-actions"><button id="share-scenes" class="secondary">Export…</button><button id="import-scenes" class="secondary">Import…</button><input id="scene-file" type="file" accept=".json,application/json" hidden /><span id="sharing-status" class="help" role="status"></span></div>
         <div class="scene-toolbar"><label for="scene-search">Find a scene<input id="scene-search" type="search" placeholder="Name or mode" /></label><label for="scene-filter">Show<select id="scene-filter"><option value="all">All scenes</option><option value="favorites">Favorites</option><option value="saved">Saved profiles</option><option value="starters">Starter scenes</option></select></label></div>
         <p class="help">Thumbnails are examples, not captured content. The main LED preview shows current output.</p>
         <div id="profile-list" class="scene-grid"></div><div id="starter-list" class="scene-grid"></div><p id="scene-empty" class="help" hidden>No matching scenes.</p>
@@ -283,7 +284,7 @@
                   aria-label="White"
                 ></button>
               </div>
-              <p id="color-help" class="help"></p>
+              <p id="color-help" class="help"></p><button id="open-color-editor" class="secondary">Color & palettes…</button><div id="recent-colors" class="color-chips" aria-label="Recent colors"></div>
             </div>
             <div id="palette-controls" hidden>
               <label for="palette">Color palette</label
@@ -291,9 +292,9 @@
                 <option value="aurora">Aurora · mint / violet</option>
                 <option value="ocean">Ocean · blue / cyan</option>
                 <option value="sunset">Sunset · coral / gold</option>
-                <option value="mono">Custom color</option>
+                <option value="mono">Custom color</option><option value="custom">Custom palette</option>
               </select>
-              <p id="palette-help" class="help"></p>
+              <p id="palette-help" class="help"></p><button id="open-palette-editor" class="secondary">Edit palettes…</button>
             </div>
             <div id="speed-controls" hidden>
               <label for="speed"
@@ -436,6 +437,45 @@
       <div class="input-row"><button id="diagnostic-copy" class="power">Copy report</button><button id="diagnostic-export" class="secondary">Save to Downloads</button><button id="diagnostic-clear" class="secondary">Clear history</button><button id="diagnostic-close" class="secondary">Close</button></div>
       <p id="diagnostic-status" class="help" role="status"></p>
     </dialog>
+        <dialog id="color-editor" aria-labelledby="color-editor-title">
+      <div class="section-title"><h2 id="color-editor-title">Color & palettes</h2><button id="close-color-editor" class="text-button">Cancel</button></div>
+      <p class="help">Preview here. Apply when ready.</p>
+      <div class="color-editor-grid">
+        <canvas id="color-wheel" width="240" height="240" aria-label="Color wheel; use the hue and saturation sliders for keyboard control" role="img"></canvas>
+        <div class="color-fields">
+          <label>Hex<input id="color-hex" required maxlength="7" pattern="#[0-9a-fA-F]{6}" spellcheck="false" /></label>
+          <div class="rgb-fields"><label>Red<input id="color-red" required type="number" min="0" max="255" /></label><label>Green<input id="color-green" required type="number" min="0" max="255" /></label><label>Blue<input id="color-blue" required type="number" min="0" max="255" /></label></div>
+          <label>Hue <output id="color-hue-value"></output><input id="color-hue" type="range" min="0" max="359" /></label>
+          <label>Saturation <output id="color-sat-value"></output><input id="color-sat" type="range" min="0" max="100" /></label>
+          <label>Lightness <output id="color-light-value"></output><input id="color-light" type="range" min="0" max="100" /></label>
+        </div>
+      </div>
+      <label>White temperature <output id="color-temperature-value">6500 K</output><input id="color-temperature" type="range" min="1800" max="10000" step="100" value="6500" /></label>
+      <p class="help">Temperature is an RGB approximation. It does not calibrate your strip to a measured white point.</p>
+      <canvas id="color-preview" width="560" height="36" aria-label="Draft color preview" role="img"></canvas>
+      <div class="library-actions"><button id="reset-color" class="secondary">Reset color</button><button id="apply-color">Apply color</button></div>
+      <details id="saved-palettes"><summary>Saved palettes</summary>
+        <div class="input-row"><label>Palette<select id="saved-palette"><option value="">New palette</option></select></label><label>Name<input id="palette-name" maxlength="50" placeholder="Palette name" /></label></div>
+        <div id="palette-colors" class="color-chips" aria-label="Palette colors"></div>
+        <div class="library-actions"><button id="palette-add" class="secondary">Add draft color</button><button id="palette-replace" class="secondary">Replace selected color</button><button id="palette-left" class="secondary">Move left</button><button id="palette-right" class="secondary">Move right</button><button id="palette-remove" class="secondary">Remove color</button></div>
+        <div class="library-actions"><button id="palette-save" class="secondary">Save palette</button><button id="palette-delete" class="text-button">Delete palette</button><button id="palette-apply">Use palette</button></div>
+        <p id="palette-status" class="help" role="status"></p>
+      </details>
+    </dialog>
+    <dialog id="export-dialog" aria-labelledby="export-title">
+      <h2 id="export-title">Export scenes & palettes</h2><p class="help">Choose what to share. Device bindings, shortcuts and startup preferences stay on this computer.</p>
+      <div id="export-items" class="transfer-list"></div><p id="export-status" class="help" role="status"></p>
+      <div class="library-actions"><button id="export-cancel" class="secondary">Close</button><button id="export-save">Save to Downloads</button></div>
+    </dialog>
+    <dialog id="import-dialog" aria-labelledby="import-title">
+      <h2 id="import-title">Import scenes & palettes</h2><p class="help">Review the file before importing. Lighting stays as it is; a backup of your current library is saved first.</p>
+      <div id="import-items" class="transfer-list"></div>
+      <label>When an ID or name matches<select id="import-policy"><option value="copy">Keep both (add a copy)</option><option value="replace">Replace the matching scene or palette</option><option value="skip">Skip matching items</option></select></label>
+      <p class="help">Replacing a scene keeps its local display, shortcut and favorite setting. New scenes use the primary display and have no shortcut.</p>
+      <p id="import-status" class="help" role="status"></p><div class="library-actions"><button id="import-cancel" class="secondary">Cancel</button><button id="import-confirm">Import</button></div>
+    </dialog>
+
+    <script src="library-tools.js"></script>
     <script src="renderer.js"></script>
     <dialog id="calibration-dialog" aria-labelledby="calibration-title">
       <h2 id="calibration-title">Calibrate your strip</h2>

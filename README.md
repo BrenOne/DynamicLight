@@ -40,9 +40,13 @@ Effect thumbnails animate using the same native patterns as the strip, including
 
 Tune music with input gain, sensitivity, a noise gate, and fade-out controls. Choose an Aurora, Ocean, Sunset, or custom-color palette. Changes reach the lighting engine while you drag; settings save when you pause.
 
+Use **Color & palettes** for a color wheel, RGB/hex input, approximate white temperature, and named palettes of up to eight colors. Preview changes before applying them. Custom palettes work with music, Aurora, Breathe, and Comet.
+
 Open **Profiles & scenes** to browse starter scenes or save settings for work, films, or games. Apply a profile in one click, add it to tray favorites, or assign a shortcut such as `Control+Shift+1` (`Command+Shift+1` on Mac). Selecting a capture profile starts its screen/audio source and may request OS permission. Profiles preserve your strip layout, brightness limits, and startup preferences.
 
 Search by name or mode, filter favorites, or choose **Save a copy** to customize Warm desk, Cinema, Neon, or Ocean. Scene thumbnails are simulated examples; they never start screen or audio capture.
+
+Use **Export** to share selected profiles and palettes, or **Import** to review a scene file and keep both, replace, or skip matching items. Device bindings and shortcuts stay local. Importing saves a backup and leaves the current lighting alone.
 
 Open **Quick controls** from the header or tray for a small window with Start/Stop, live brightness, favorites, and Retry. You can keep it on top or return to the studio. Closing it leaves lighting running.
 
