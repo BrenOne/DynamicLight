@@ -46,6 +46,7 @@
         <header class="app-header">
           <div class="header-context">
             <span class="app-location" id="view-title">Control</span>
+            <span id="controller-selected-label" class="help">Main strip</span>
             <div class="status">
               <i id="status-dot"></i
               ><span id="status-label" role="status">Not connected</span>
@@ -628,6 +629,9 @@
                 <p class="help">Match the LED count and route to your strip.</p>
               </div>
             </div>
+            <button id="controller-open" type="button">
+              Controllers &amp; monitor layout…
+            </button>
             <details id="setup" class="setup" open="">
               <span id="connection-message">Choose a mode to start.</span>
 
@@ -1036,7 +1040,7 @@
           id="color-temperature"
           type="range"
           min="1800"
-          max="10000"
+          max="100000"
           step="100"
           value="6500"
       /></label>
@@ -1346,7 +1350,7 @@
               id="studio-repeats"
               type="number"
               min="0"
-              max="10000" /></label
+              max="100000" /></label
           ><label
             >Speed (50 = original)<input
               id="studio-speed"
@@ -1438,7 +1442,7 @@
               id="studio-kelvin"
               type="number"
               min="2700"
-              max="10000" /></label
+              max="100000" /></label
           ><label
             >Brightness %<input
               id="studio-brightness"
@@ -1880,6 +1884,266 @@
       </button>
       <p id="routine-message" class="help" role="status"></p>
     </dialog>
+    <dialog id="controller-dialog" aria-labelledby="controller-title">
+      <div class="dialog-heading">
+        <h2 id="controller-title">Controllers &amp; monitor layout</h2>
+        <button id="controller-close" type="button">Close</button>
+      </div>
+      <p class="help">
+        Each strip has its own mode, calibration, display binding and routines.
+        Main, Quick controls, tray and CLI commands control the selected strip.
+        Up to eight controllers may run independently.
+      </p>
+      <div class="input-row">
+        <label>Controller<select id="controller-selected"></select></label
+        ><button id="controller-control" type="button">
+          Control this strip</button
+        ><button id="controller-refresh" type="button">
+          Refresh devices &amp; discard drafts
+        </button>
+      </div>
+      <p id="controller-state" class="help" role="status"></p>
+      <fieldset>
+        <legend>USB bindings</legend>
+        <label
+          >Available lighting interface<select id="controller-usb"></select
+        ></label>
+        <div class="input-row">
+          <button id="controller-bind" type="button">
+            Bind selected controller (stops it)</button
+          ><label
+            >New controller name<input
+              id="controller-name"
+              maxlength="50"
+              value="Additional strip" /></label
+          ><button id="controller-add" type="button">Add controller</button
+          ><button id="controller-remove" type="button">
+            Stop &amp; remove selected controller
+          </button>
+        </div>
+        <p class="help">
+          Bind the main strip before adding another. Only supported lighting
+          interfaces are listed. Serial identities survive port changes when
+          available; controllers without unique serials may need rebinding after
+          a port or host change. Close other lighting apps before starting.
+        </p>
+      </fieldset>
+      <fieldset>
+        <legend>Preview routing</legend>
+        <canvas
+          id="controller-canvas"
+          width="640"
+          height="330"
+          tabindex="0"
+          role="img"
+          aria-label="Monitor and LED route preview. Drag displays or use arrow keys for the selected display; all values also have form controls."
+        ></canvas>
+        <div class="input-row">
+          <label
+            >Move display in diagram<select
+              id="controller-monitor"
+            ></select></label
+          ><label
+            >Horizontal position<input
+              id="controller-x"
+              type="number"
+              min="-100000"
+              max="100000"
+              value="0" /></label
+          ><label
+            >Vertical position<input
+              id="controller-y"
+              type="number"
+              min="-100000"
+              max="100000"
+              value="0"
+          /></label>
+        </div>
+        <div class="input-row">
+          <label
+            >Route selected strip to<select
+              id="controller-display"
+            ></select></label
+          ><label
+            >LED count<input
+              id="controller-count"
+              type="number"
+              min="1"
+              max="127"
+              value="65" /></label
+          ><label
+            >Edge coverage<select id="controller-sides">
+              <option value="3">Left, top, right</option>
+              <option value="4">All four edges</option>
+            </select></label
+          ><label
+            >First LED offset<input
+              id="controller-offset"
+              type="number"
+              min="0"
+              max="126"
+              value="0" /></label
+          ><label class="checkbox"
+            ><input id="controller-reverse" type="checkbox" /> Reverse
+            route</label
+          >
+        </div>
+        <p class="help">
+          The larger dot marks the first physical LED. Dragging changes this
+          diagram only. Mappings and route values remain drafts until Apply;
+          closing discards them. The Studio editor offers individual LED/edge
+          selection and zone previews for the selected strip.
+        </p>
+        <div class="input-row">
+          <button id="controller-apply" class="power" type="button">
+            Apply mappings &amp; routes</button
+          ><button id="controller-studio" type="button">
+            Open selected strip Studio (discard draft)
+          </button>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Group controls</legend>
+        <div class="input-row">
+          <button id="controller-start-all" type="button">
+            Start all configured modes</button
+          ><button id="controller-stop-all" type="button">
+            Stop all strips</button
+          ><label
+            >Scale each strip's brightness %<input
+              id="controller-gain"
+              type="number"
+              min="0"
+              max="100"
+              value="100" /></label
+          ><button id="controller-gain-apply" type="button">
+            Apply group scale
+          </button>
+        </div>
+        <p class="help">
+          Group scaling preserves individual brightness values. Start all
+          explicitly starts each configured mode, including screen/audio
+          capture. One unavailable controller does not stop the others. Changes
+          here are immediate.
+        </p>
+      </fieldset>
+      <fieldset>
+        <legend>Windows / Mac / Linux USB handoff</legend>
+        <p class="help">
+          Physical USB switching or unplugging is required. DynamicLight does
+          not transfer USB ownership over the network. Release stops this strip,
+          closes its USB handle and pauses its automatic rules. Group Start
+          skips released strips; explicit Start takes control again.
+        </p>
+        <button id="controller-handoff-export" type="button">
+          Release controlled strip &amp; export handoff
+        </button>
+        <label
+          >Preview handoff file<input
+            id="controller-handoff-file"
+            type="file"
+            accept=".json,application/json"
+        /></label>
+        <p id="controller-handoff-preview" class="help"></p>
+        <button id="controller-handoff-import" type="button">
+          Apply previewed profile to controlled strip (stopped)
+        </button>
+        <p class="help">
+          Import retains this computer's USB/display bindings and comfort
+          limits. Select a compatible USB interface, then Start when ready;
+          reconnect recovery applies the profile when the strip appears. Capture
+          needs fresh consent; Replay also needs its matching RGB sequence file.
+        </p>
+      </fieldset>
+      <fieldset id="ambient-panel">
+        <legend>Ambient brightness for the controlled strip</legend>
+        <label class="checkbox"
+          ><input id="ambient-enabled" type="checkbox" /> Adapt brightness to an
+          ambient-light sensor</label
+        >
+        <label>Sensor source<select id="ambient-source"></select></label
+        ><button id="ambient-refresh" type="button">
+          Refresh sensors &amp; discard sensor draft
+        </button>
+        <p id="ambient-availability" class="help"></p>
+        <div class="input-row">
+          <label
+            >Dark-room lux<input
+              id="ambient-lowLux"
+              type="number"
+              min="0"
+              max="99999"
+              step="0.1"
+              value="0" /></label
+          ><label
+            >Bright-room lux<input
+              id="ambient-highLux"
+              type="number"
+              min="0.1"
+              max="100000"
+              step="0.1"
+              value="500" /></label
+          ><label
+            >Minimum brightness %<input
+              id="ambient-minimum"
+              type="number"
+              min="0"
+              max="100"
+              value="10" /></label
+          ><label
+            >Maximum brightness %<input
+              id="ambient-maximum"
+              type="number"
+              min="0"
+              max="100"
+              value="60" /></label
+          ><label
+            >Unavailable-sensor fallback %<input
+              id="ambient-fallback"
+              type="number"
+              min="0"
+              max="100"
+              value="35" /></label
+          ><label
+            >Smoothing seconds<input
+              id="ambient-smoothing"
+              type="number"
+              min="1"
+              max="120"
+              value="5"
+          /></label>
+        </div>
+        <p class="help">
+          Manual brightness changes override the sensor until Resume sensor,
+          Save sensor settings or an app restart. Group scaling and comfort
+          limits still apply. Sensor changes never start lighting. macOS uses
+          the external sensor input; supported Windows and Linux IIO sensors
+          appear above.
+        </p>
+        <div class="input-row">
+          <button id="ambient-save" type="button">Save sensor settings</button
+          ><button id="ambient-resume" type="button">Resume sensor</button>
+        </div>
+        <p id="ambient-status" class="help" role="status"></p>
+        <details>
+          <summary>External sensor input</summary>
+          <p class="help">
+            A local sensor tool can atomically write a JSON object containing
+            lux and a Unix timestamp in seconds, refreshed at least every 30
+            seconds, to:
+          </p>
+          <p id="ambient-file" class="help"></p>
+          <code>{"lux":120,"timestamp":1792400000}</code>
+          <p class="help">
+            Use the current timestamp. The file is limited to 1 KiB. No network
+            connection or executable plugin is needed.
+          </p>
+        </details>
+      </fieldset>
+      <p id="controller-message" class="help" role="status"></p>
+    </dialog>
+    <script src="ambient.js"></script>
+    <script src="controllers.js"></script>
     <script src="routines.js"></script>
     <script src="sequences.js"></script>
     <script src="capture-sources.js"></script>

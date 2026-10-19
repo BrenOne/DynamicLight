@@ -1,10 +1,9 @@
 {
   "updated": "2026-10-19",
   "next": [
-    "HW-02",
-    "UI-07",
-    "REL-04",
-    "HW-03"
+    "INT-02",
+    "INT-03",
+    "INT-04"
   ],
   "items": {
     "REL-01": {
@@ -306,6 +305,46 @@
       "status": "Implemented",
       "delivered": "0.13: Explicit offline-profile app rules with ordered precedence, local foreground matching, previous scene restore, atomic manual overrides and unavailable-platform/permission reporting.",
       "remaining": "Physical OS foreground, hardware transitions and accessibility validation; supported scope and policies in docs/routines.md.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
+    },
+    "HW-02": {
+      "status": "Implemented",
+      "delivered": "0.14: Up to eight independent lighting/capture workers, explicit supported-interface bindings, persistent per-controller scenes/calibration/routines, ownership claims, grouped power and brightness scaling, and isolated recovery.",
+      "remaining": "Physical multi-strip, USB switch, OS sensor and assistive-technology validation. Supported source/platform scope is documented in docs/controller-routing.md.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
+    },
+    "UI-07": {
+      "status": "Implemented",
+      "delivered": "0.14: OS monitor arrangement, explicit per-controller mapping, draggable/keyboard/form diagram placement, calibrated LED/edge/count/offset/direction drafts, first-LED preview and existing Studio route/zone editor.",
+      "remaining": "Physical multi-strip, USB switch, OS sensor and assistive-technology validation. Supported source/platform scope is documented in docs/controller-routing.md.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
+    },
+    "REL-04": {
+      "status": "Implemented",
+      "delivered": "0.14: Persistent release state, off/USB closure and automatic-rule pause, portable compatible scene/calibration handoff preview/import, preserved local bindings/comfort and explicit Start to reclaim ownership.",
+      "remaining": "Physical multi-strip, USB switch, OS sensor and assistive-technology validation. Supported source/platform scope is documented in docs/controller-routing.md.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
+    },
+    "HW-03": {
+      "status": "Implemented",
+      "delivered": "0.14: Opt-in Windows LightSensor, Linux IIO and bounded external JSON lux providers; configurable brightness mapping/smoothing/fallback, source availability and manual override/resume.",
+      "remaining": "Physical multi-strip, USB switch, OS sensor and assistive-technology validation. Supported source/platform scope is documented in docs/controller-routing.md.",
       "validation": [
         "QA-01",
         "PLAT-01",

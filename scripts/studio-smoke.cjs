@@ -21,7 +21,9 @@ const delay = (ms) => new Promise((r) => setTimeout(r, ms));
     page,
     isolated = false,
     original,
-    originalRoutines;
+    originalRoutines,
+    originalAmbient,
+    originalGroup;
   try {
     for (let i = 0; i < 60; i++) {
       if (child.exitCode !== null) throw Error("Test app exited");
@@ -61,6 +63,8 @@ const delay = (ms) => new Promise((r) => setTimeout(r, ms));
     const snapshot = await invoke("control", { action: { type: "snapshot" } });
     original = snapshot.settings;
     originalRoutines = await invoke("routines_config", { config: null });
+    originalAmbient = (await invoke("ambient_config", { config: null })).config;
+    originalGroup = snapshot.groupBrightness;
     assert(
       !snapshot.requested && !snapshot.capturing && !snapshot.status.connected,
     );
@@ -227,6 +231,88 @@ const delay = (ms) => new Promise((r) => setTimeout(r, ms));
         !routineState.capturing,
     );
     await invoke("control", { action: { type: "routine", command: "cancel" } });
+    const fleet = await invoke("controller_list");
+    assert.equal(fleet.controllers.length, 1);
+    const beforeGroup = await invoke("control", {
+      action: { type: "snapshot" },
+    });
+    const groupView = await invoke("controller_group", {
+      operation: "brightness",
+      value: 25,
+    });
+    assert.equal(groupView.controllers[0].state.groupBrightness, 25);
+    const grouped = await invoke("control", { action: { type: "snapshot" } });
+    assert.equal(grouped.settings.brightness, beforeGroup.settings.brightness);
+    assert.equal(grouped.groupBrightness, 25);
+    const sensor = {
+      ...originalAmbient,
+      enabled: true,
+      source: "external",
+      fallback: 22,
+      smoothing: 2,
+    };
+    await invoke("ambient_config", { config: sensor });
+    await invoke("control", {
+      action: {
+        type: "patchSettings",
+        patch: { brightness: 13 },
+        persist: false,
+      },
+    });
+    const overridden = await invoke("control", {
+      action: { type: "snapshot" },
+    });
+    assert(overridden.ambient.manualOverride);
+    await invoke("control", { action: { type: "ambientResume" } });
+    const resumed = await invoke("control", { action: { type: "snapshot" } });
+    assert(
+      !resumed.ambient.manualOverride &&
+        !resumed.requested &&
+        !resumed.status.connected &&
+        !resumed.capturing,
+    );
+    await assert.rejects(
+      invoke("ambient_config", {
+        config: { ...sensor, minimum: 90, maximum: 10 },
+      }),
+    );
+    const scene = structuredClone(resumed.settings);
+    for (const key of [
+      "deviceId",
+      "count",
+      "sides",
+      "reverse",
+      "offset",
+      "screenId",
+      "captureSource",
+      "offOnSleep",
+      "offOnDisplaySleep",
+      "offOnLock",
+      "restoreOnStart",
+      "resumeCapture",
+      "offOnQuit",
+      "maxBrightness",
+      "transitionLimit",
+      "minimumGlow",
+      "modeSettings",
+    ])
+      delete scene[key];
+    const handoff = JSON.stringify({
+      format: "dynamiclight-handoff",
+      version: 1,
+      vendor: 0x1a86,
+      product: 0xfe07,
+      scene,
+      count: resumed.settings.count,
+      sides: resumed.settings.sides,
+      offset: 3,
+      reverse: true,
+    });
+    const preview = await invoke("handoff_preview", { text: handoff });
+    assert.equal(preview.offset, 3);
+    const imported = await invoke("handoff_import", { text: handoff });
+    assert.equal(imported.settings.offset, 3);
+    assert(!imported.requested && !imported.status.connected);
     console.log(
       "Native studio passed: bounded frames, invalid effect rejection, editor Apply while off, native persistence, RGB recording/offline setup, cross-window appearance; no USB/capture.",
     );
@@ -248,6 +334,25 @@ const delay = (ms) => new Promise((r) => setTimeout(r, ms));
                 action: { type: "settings", settings },
               }),
             original,
+          )
+          .catch(() => {});
+      if (originalAmbient)
+        await page
+          .evaluate(
+            (config) =>
+              window.__TAURI__.core.invoke("ambient_config", { config }),
+            originalAmbient,
+          )
+          .catch(() => {});
+      if (originalGroup !== undefined)
+        await page
+          .evaluate(
+            (value) =>
+              window.__TAURI__.core.invoke("controller_group", {
+                operation: "brightness",
+                value,
+              }),
+            originalGroup,
           )
           .catch(() => {});
       await page

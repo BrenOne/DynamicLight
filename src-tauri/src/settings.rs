@@ -4,6 +4,7 @@ use std::{io::Write, path::Path};
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 pub struct Settings {
+    pub device_id: String,
     pub color: String,
     pub brightness: u8,
     pub count: usize,
@@ -51,6 +52,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            device_id: String::new(),
             color: "#9b72ff".into(),
             brightness: 38,
             count: 65,
@@ -95,6 +97,14 @@ impl Default for Settings {
 }
 impl Settings {
     pub fn validate(&self) -> Result<(), String> {
+        if self.device_id.len() > 4096
+            || !self
+                .device_id
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit() || b == b'-' || b == b's' || b == b'p')
+        {
+            return Err("Invalid controller binding".into());
+        }
         self.capture_source.validate()?;
         self.studio.validate()?;
         self.replay.validate()?;

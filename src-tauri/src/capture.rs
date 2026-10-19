@@ -5,6 +5,11 @@ use xcap::Monitor;
 pub struct Screen {
     pub id: String,
     pub name: String,
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+    pub primary: bool,
 }
 pub fn screens() -> Result<Vec<Screen>, String> {
     check_session()?;
@@ -13,6 +18,11 @@ pub fn screens() -> Result<Vec<Screen>, String> {
         .iter()
         .map(|m| {
             Ok(Screen {
+                x: m.x().unwrap_or(0),
+                y: m.y().unwrap_or(0),
+                width: m.width().unwrap_or(1920),
+                height: m.height().unwrap_or(1080),
+                primary: m.is_primary().unwrap_or(false),
                 id: m.id().map_err(|e| e.to_string())?.to_string(),
                 name: format!(
                     "{} · {} × {}",

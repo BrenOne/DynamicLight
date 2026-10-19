@@ -20,4 +20,8 @@ Capture/playback merged via #57 after all four platform builds passed. Productio
 
 Scheduling, temporary cues, focus timers and application rules (#10, #15, #25, #9): implemented on `codex/lighting-routines` for 0.13.0, with additive authenticated API/CLI controls. Local unit, strict lint, browser and isolated native Windows timer/off-state checks completed; final validation and cross-platform release pending. Details and deliberately supported platform/capture scope are in `docs/routines.md`.
 
-Next: multiple controllers, visual layout, handoff and ambient sensors (#8, #34, #26, #23).
+Capture/playback 0.12.0 published successfully: all 21 assets, 20 checksums and four production updater signatures verified. Routine batch #58 merged after all four builds passed; 0.13.0 published with the same complete asset/hash/signature verification. A fast-click timer busy-state issue found by Linux CI was fixed before merge.
+
+Controller routing, visual layout, handoff and ambient sensors (#8, #34, #26, #23): implemented on `codex/controller-routing` for 0.14.0. Independent workers, strict interface bindings and duplicate-owner guard; draft diagram/form routing; group scale preserves individual levels; persistent USB release and portable calibration/scene import; opt-in Windows/IIO/external lux providers. Unit, strict lint, browser routing/sensor controls and isolated native Windows fleet/group/manual-override/import smoke checks passed. Final release checks and cross-platform CI pending. See `docs/controller-routing.md` for supported scope and physical validation still required.
+
+Next: paired LAN remote, supported game telemetry and isolated plugins (#17, #24, #27).

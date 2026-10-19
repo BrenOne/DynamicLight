@@ -20,6 +20,32 @@ use std::{
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 pub enum Action {
     #[serde(skip)]
+    AmbientConfig {
+        config: Option<crate::ambient::Config>,
+    },
+    #[serde(skip)]
+    AmbientReading {
+        source: String,
+        result: Result<f32, String>,
+    },
+    AmbientResume,
+    #[serde(skip)]
+    ExportHandoff {
+        path: PathBuf,
+    },
+    #[serde(skip)]
+    ImportHandoff {
+        profile: crate::handoff::Profile,
+    },
+    #[serde(skip)]
+    BindController {
+        id: String,
+    },
+    #[serde(skip)]
+    GroupBrightness {
+        value: u8,
+    },
+    #[serde(skip)]
     RoutinesConfig {
         config: Option<crate::routines::Config>,
     },
@@ -105,6 +131,9 @@ pub enum Action {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
+    pub ambient: crate::ambient::Status,
+    pub handoff_released: bool,
+    pub group_brightness: u8,
     pub routines: crate::routines::Status,
     #[serde(skip)]
     pub routines_config: crate::routines::Config,
@@ -141,11 +170,19 @@ pub struct Message {
 }
 #[derive(Clone)]
 pub struct Handle {
+    pub(crate) fleet: Option<std::sync::Arc<crate::controllers::Fleet>>,
     tx: SyncSender<Message>,
     events: mpsc::Sender<(SystemEvent, SyncSender<()>)>,
 }
 impl Handle {
+    pub(crate) fn with_fleet(mut self, fleet: std::sync::Arc<crate::controllers::Fleet>) -> Self {
+        self.fleet = Some(fleet);
+        self
+    }
     pub fn request(&self, action: Action) -> Result<Snapshot, String> {
+        if let Some(fleet) = &self.fleet {
+            return fleet.request(action);
+        }
         let (tx, rx) = mpsc::sync_channel(1);
         self.tx
             .try_send(Message { action, reply: tx })
@@ -158,6 +195,10 @@ impl Handle {
         self.system_event(SystemEvent::Sleep(sleeping), sleeping);
     }
     pub fn system_event(&self, event: SystemEvent, wait: bool) {
+        if let Some(fleet) = &self.fleet {
+            fleet.system_event(event, wait);
+            return;
+        }
         let (tx, rx) = mpsc::sync_channel(1);
         // Lifecycle messages must not be dropped when UI edits fill the command queue.
         if self.events.send((event, tx)).is_ok() && wait {
@@ -196,16 +237,30 @@ pub struct Engine {
     calibration: Option<CalibrationSession>,
     sequences: crate::sequence::Deck,
     routines: crate::routines::Runtime,
+    ambient: crate::ambient::Runtime,
     routine_restore: Option<(SceneSettings, SourceBinding, bool)>,
     fade: Option<(Instant, Duration, bool)>,
 }
 impl Engine {
     pub fn new(settings: Settings, path: PathBuf, warning: String) -> Self {
-        let controller = Controller::new();
+        let mut controller = Controller::new();
+        controller.bind(settings.device_id.clone());
+        let group_brightness = std::fs::read(path.with_file_name("group-level.json"))
+            .ok()
+            .and_then(|b| serde_json::from_slice::<u8>(&b).ok())
+            .filter(|v| *v <= 100)
+            .unwrap_or(100);
         let sequences = crate::sequence::Deck::load(path.with_file_name("lighting-sequence.json"));
         let routines = crate::routines::Runtime::load(path.with_file_name("routines.json"));
+        let ambient = crate::ambient::Runtime::load(path.with_file_name("ambient.json"));
         Self {
             state: Snapshot {
+                ambient: ambient.status.clone(),
+                handoff_released: std::fs::read(path.with_file_name("handoff-released.json"))
+                    .ok()
+                    .and_then(|b| serde_json::from_slice(&b).ok())
+                    .unwrap_or(false),
+                group_brightness,
                 routines: routines.status.clone(),
                 routines_config: routines.config.clone(),
                 settings,
@@ -238,6 +293,7 @@ impl Engine {
             controller,
             sequences,
             routines,
+            ambient,
             routine_restore: None,
             fade: None,
             path,
@@ -371,6 +427,11 @@ impl Engine {
         .save(&self.intent_path())
     }
     fn restore(&mut self) {
+        if self.state.handoff_released {
+            self.state.status.message =
+                "Released for USB handoff. Press Start to take control again.".into();
+            return;
+        }
         if self.state.settings.mode == "replay" {
             if let Err(error) = self.sequences.validate_playback(&self.state.settings) {
                 self.state.error = error;
@@ -618,9 +679,13 @@ impl Engine {
         if settings.mode == "replay" {
             self.sequences.validate_playback(&settings)?;
         }
+        if settings.device_id != self.state.settings.device_id {
+            self.action(Action::Power { on: false })?;
+        }
         if persist {
             settings.save(&self.path)?;
         }
+        self.controller.bind(settings.device_id.clone());
         if settings.mode != self.state.settings.mode
             || settings.audio_source != self.state.settings.audio_source
             || settings.screen_id != self.state.settings.screen_id
@@ -652,28 +717,57 @@ impl Engine {
         Ok(())
     }
     pub fn action(&mut self, action: Action) -> Result<Snapshot, String> {
+        let manual_brightness = match &action {
+            Action::Settings { settings } | Action::PreviewSettings { settings } => {
+                settings.brightness != self.state.settings.brightness
+            }
+            Action::PatchSettings { patch, .. } => patch
+                .0
+                .get("brightness")
+                .is_some_and(|v| v.as_u64() != Some(u64::from(self.state.settings.brightness))),
+            Action::Adjust {
+                brightness: Some(_),
+                ..
+            }
+            | Action::PreviewBrightness { .. } => true,
+            _ => false,
+        };
+        if manual_brightness {
+            self.ambient.manual();
+        }
         // A manual change atomically invalidates any pending app-rule restore/fade.
         // Internal routine changes call apply_settings directly on this worker.
-        if matches!(
-            action,
-            Action::Start
-                | Action::StartMode { .. }
-                | Action::SelectMode { .. }
-                | Action::PreviewBrightness { .. }
-                | Action::ApplyProfile { .. }
-                | Action::Adjust { .. }
-                | Action::Toggle
-                | Action::CalibrationStart
-                | Action::Disconnect
-                | Action::PatchSettings { .. }
-                | Action::Settings { .. }
-                | Action::PreviewSettings { .. }
-                | Action::Power { .. }
-                | Action::StartCapture
-                | Action::StopCapture
-                | Action::PrepareUpdate
-                | Action::Shutdown
-        ) {
+        let changed = match &action {
+            Action::Settings { settings } | Action::PreviewSettings { settings } => {
+                settings != &self.state.settings
+            }
+            Action::PatchSettings { patch, .. } => patch
+                .apply(&self.state.settings)
+                .is_ok_and(|s| s != self.state.settings),
+            _ => true,
+        };
+        if changed
+            && matches!(
+                action,
+                Action::Start
+                    | Action::StartMode { .. }
+                    | Action::SelectMode { .. }
+                    | Action::PreviewBrightness { .. }
+                    | Action::ApplyProfile { .. }
+                    | Action::Adjust { .. }
+                    | Action::Toggle
+                    | Action::CalibrationStart
+                    | Action::Disconnect
+                    | Action::PatchSettings { .. }
+                    | Action::Settings { .. }
+                    | Action::PreviewSettings { .. }
+                    | Action::Power { .. }
+                    | Action::StartCapture
+                    | Action::StopCapture
+                    | Action::PrepareUpdate
+                    | Action::Shutdown
+            )
+        {
             self.routines.manual_override();
             self.routine_restore = None;
             self.fade = None;
@@ -693,6 +787,84 @@ impl Engine {
         }
         let persist = matches!(action, Action::Settings { .. });
         match action {
+            Action::AmbientConfig { config } => {
+                if let Some(config) = config {
+                    self.ambient
+                        .configure(config, self.state.settings.brightness)?;
+                }
+            }
+            Action::AmbientReading { source, result } => self.ambient.reading(&source, result),
+            Action::AmbientResume => self.ambient.resume(self.state.settings.brightness),
+            Action::ExportHandoff { path } => {
+                if self.state.calibrating {
+                    return Err("Finish calibration before handoff".into());
+                }
+                crate::settings::save_json(
+                    &crate::handoff::Profile::capture(&self.state.settings),
+                    &path,
+                )?;
+                let mut config = self.routines.config.clone();
+                config.paused = true;
+                config.apps_enabled = false;
+                self.routines.configure(config)?;
+                crate::settings::save_json(
+                    &true,
+                    &self.path.with_file_name("handoff-released.json"),
+                )?;
+                self.state.handoff_released = true;
+                let stopped = self.action(Action::Power { on: false });
+                self.controller.close(
+                    "Released for USB handoff. Switch/unplug USB; Start takes control again.",
+                );
+                stopped?;
+            }
+            Action::ImportHandoff { profile } => {
+                if self.state.calibrating {
+                    return Err("Finish calibration before handoff import".into());
+                }
+                profile.validate()?;
+                let source = SourceBinding {
+                    screen_id: self.state.settings.screen_id.clone(),
+                    capture_source: self.state.settings.capture_source.clone(),
+                };
+                let mut settings =
+                    crate::profiles::scene(&profile.scene, &source, &self.state.settings);
+                settings.count = profile.count;
+                settings.sides = profile.sides;
+                settings.offset = profile.offset;
+                settings.reverse = profile.reverse;
+                settings.validate()?;
+                if settings.mode == "replay" {
+                    self.sequences.validate_playback(&settings)?;
+                }
+                self.action(Action::Power { on: false })?;
+                self.apply_settings(settings, true)?;
+                self.routines.status.scene_revision += 1;
+            }
+            Action::BindController { id } => {
+                if self.state.calibrating {
+                    return Err("Finish calibration before rebinding".into());
+                }
+                let settings = Settings {
+                    device_id: id.clone(),
+                    ..self.state.settings.clone()
+                };
+                settings.validate()?;
+                self.action(Action::Power { on: false })?;
+                self.controller.bind(id);
+                self.apply_settings(settings, true)?;
+            }
+            Action::GroupBrightness { value } => {
+                if self.state.calibrating {
+                    return Err("Finish calibration before grouped brightness changes".into());
+                }
+                if value > 100 {
+                    return Err("Group brightness must be 0–100".into());
+                }
+                crate::settings::save_json(&value, &self.path.with_file_name("group-level.json"))?;
+                self.state.group_brightness = value;
+                self.last_solid = None;
+            }
             Action::RoutinesConfig { config } => {
                 if let Some(config) = config {
                     config.validate()?;
@@ -884,11 +1056,23 @@ impl Engine {
             }
             Action::CalibrationEnd { apply } => self.end_calibration(apply, true)?,
             Action::Start => {
+                if self.state.handoff_released {
+                    crate::settings::save_json(
+                        &false,
+                        &self.path.with_file_name("handoff-released.json"),
+                    )?;
+                    self.state.handoff_released = false;
+                }
                 if let Err(e) = self.start_requested() {
                     self.state.error = e;
                 }
             }
             Action::Connect => {
+                if self.state.handoff_released {
+                    return Err(
+                        "Released for handoff. Press Start to take control explicitly.".into(),
+                    );
+                }
                 self.state.error.clear();
                 self.desired = true;
                 self.retry = Instant::now();
@@ -907,6 +1091,11 @@ impl Engine {
                 self.apply_settings(settings, persist)?;
             }
             Action::Power { on } => {
+                if on && self.state.handoff_released {
+                    return Err(
+                        "Released for handoff. Press Start to take control explicitly.".into(),
+                    );
+                }
                 if !on {
                     self.end_calibration(false, false)?;
                 }
@@ -967,6 +1156,7 @@ impl Engine {
         Ok(self.state.clone())
     }
     fn sync_routines(&mut self) {
+        self.state.ambient = self.ambient.status.clone();
         self.routines.status.paused = self.routines.config.paused;
         self.routines.status.watch_apps =
             self.routines.config.apps_enabled && !self.routines.config.app_rules.is_empty();
@@ -1008,8 +1198,9 @@ impl Engine {
         Ok(())
     }
     fn tick_routines(&mut self) {
-        let available =
-            !self.state.calibrating && self.life.pause_reason(&self.state.settings).is_empty();
+        let available = !self.state.handoff_released
+            && !self.state.calibrating
+            && self.life.pause_reason(&self.state.settings).is_empty();
         self.routines.tick_timer(
             Instant::now(),
             available,
@@ -1304,6 +1495,14 @@ impl Engine {
                 } else {
                     self.routines.overlay(&mut colors);
                     let mut output_settings = self.state.settings.clone();
+                    output_settings.brightness =
+                        self.ambient.brightness(output_settings.brightness, dt);
+                    output_settings.brightness = (u16::from(output_settings.brightness)
+                        * u16::from(self.state.group_brightness)
+                        / 100) as u8;
+                    output_settings.minimum_glow = (u16::from(output_settings.minimum_glow)
+                        * u16::from(self.state.group_brightness)
+                        / 100) as u8;
                     if let Some((start, length, off)) = self.fade {
                         let fraction =
                             (start.elapsed().as_secs_f32() / length.as_secs_f32()).clamp(0.0, 1.0);
@@ -1427,8 +1626,8 @@ pub fn start(
                             engine.state.error = e.clone();
                             engine.state.status = engine.controller.status.clone();
                         }
-                        let _ = msg.reply.send(result);
                         emit(&engine.state);
+                        let _ = msg.reply.send(result);
                         if quitting {
                             break;
                         }
@@ -1474,7 +1673,11 @@ pub fn start(
             }
         })
         .expect("start lighting worker");
-    Handle { tx, events }
+    Handle {
+        tx,
+        events,
+        fleet: None,
+    }
 }
 fn missed_slots(late: Duration, period: Duration) -> u64 {
     (late.as_nanos() / period.as_nanos().max(1)).min(u64::MAX as u128) as u64
@@ -1482,6 +1685,79 @@ fn missed_slots(late: Duration, period: Duration) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn controllers_keep_independent_settings_and_group_gain_without_overwriting_levels() {
+        let dir = tempfile::tempdir().unwrap();
+        let settings = Settings {
+            color: "#ffffff".into(),
+            brightness: 80,
+            smoothing: 0,
+            transition_limit: 0,
+            ..Default::default()
+        };
+        let mut first = simulated(settings.clone(), dir.path().join("first/settings.json"));
+        let mut second = simulated(
+            Settings {
+                brightness: 40,
+                ..settings
+            },
+            dir.path().join("second/settings.json"),
+        );
+        first.action(Action::Start).unwrap();
+        second.action(Action::Start).unwrap();
+        first.action(Action::GroupBrightness { value: 50 }).unwrap();
+        second
+            .action(Action::GroupBrightness { value: 50 })
+            .unwrap();
+        first.tick();
+        second.tick();
+        assert_eq!(first.state.settings.brightness, 80);
+        assert_eq!(second.state.settings.brightness, 40);
+        assert!(first.state.colors[0][0] > second.state.colors[0][0]);
+        first.controller.test_bus.as_mut().unwrap().online = false;
+        first.tick();
+        second.tick();
+        assert!(second.state.status.connected);
+        assert!(second.life.requested);
+        let saved: u8 = serde_json::from_slice(
+            &std::fs::read(dir.path().join("second/group-level.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(saved, 50);
+    }
+    #[test]
+    fn handoff_closes_usb_pauses_rules_and_requires_explicit_start_after_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let settings = Settings {
+            restore_on_start: true,
+            ..Default::default()
+        };
+        let mut e = simulated(settings.clone(), path.clone());
+        e.action(Action::Start).unwrap();
+        let export = dir.path().join("handoff.json");
+        e.action(Action::ExportHandoff {
+            path: export.clone(),
+        })
+        .unwrap();
+        assert!(!e.life.requested && !e.controller.status.connected && e.state.handoff_released);
+        assert!(e.routines.config.paused && !e.routines.config.apps_enabled);
+        assert!(e.action(Action::Connect).is_err());
+        let text = std::fs::read_to_string(export).unwrap();
+        let profile = crate::handoff::Profile::parse(&text).unwrap();
+        assert!(
+            !text.contains("deviceId")
+                && !text.contains("screenId")
+                && !text.contains("resumeCapture")
+        );
+        let mut next = simulated(settings, path);
+        next.restore();
+        assert!(!next.life.requested && next.state.handoff_released);
+        next.action(Action::ImportHandoff { profile }).unwrap();
+        assert!(!next.life.requested);
+        next.action(Action::Start).unwrap();
+        assert!(next.life.requested && !next.state.handoff_released);
+    }
     #[test]
     fn application_rules_restore_scene_but_never_overwrite_manual_changes_or_off() {
         let dir = tempfile::tempdir().unwrap();
@@ -1512,6 +1788,11 @@ mod tests {
         })
         .unwrap();
         assert_eq!(e.state.settings.color, "#ff0000");
+        e.action(Action::PatchSettings {
+            patch: SettingsPatch::default(),
+            persist: true,
+        })
+        .unwrap();
         e.action(Action::Foreground {
             result: Ok("Other".into()),
         })

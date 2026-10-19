@@ -21,6 +21,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
         "capture-sources.js",
         "sequences.js",
         "routines.js",
+        "controllers.js",
+        "ambient.js",
         "library-tools.js",
         "ui-common.js",
         "icons.svg",
@@ -133,6 +135,32 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
       let listener;
       let calibrationOriginal;
       let profileLibrary = { profiles: [] };
+      let controllerPositions = {};
+      const controllerView = () => ({
+        selected: "primary",
+        positions: structuredClone(controllerPositions),
+        controllers: [
+          { key: "primary", name: "Main strip", state: structuredClone(state) },
+        ],
+      });
+      const ambientState = () =>
+        (state.ambient ||= {
+          config: {
+            enabled: false,
+            source: "external",
+            lowLux: 0,
+            highLux: 500,
+            minimum: 10,
+            maximum: 60,
+            fallback: 35,
+            smoothing: 5,
+          },
+          lux: null,
+          available: false,
+          manualOverride: false,
+          brightness: 35,
+          message: "No sensor reading; fixed fallback",
+        });
       let routineConfig = {
         paused: true,
         schedules: [],
@@ -212,6 +240,42 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
         },
         core: {
           invoke: async (cmd, args) => {
+            if (cmd === "controller_list") return controllerView();
+            if (cmd === "controller_devices")
+              return [{ id: "p-01", name: "Fixture strip", serial: false }];
+            if (cmd === "controller_manage") return controllerView();
+            if (cmd === "controller_routes") {
+              for (const r of args.routes) {
+                const { key, ...patch } = r;
+                Object.assign(state.settings, patch);
+              }
+              controllerPositions = structuredClone(args.positions);
+              return controllerView();
+            }
+            if (cmd === "controller_group") {
+              if (args.operation === "brightness")
+                state.groupBrightness = args.value;
+              if (args.operation === "stop")
+                state.powered = state.requested = false;
+              return controllerView();
+            }
+            if (cmd === "ambient_config") {
+              const s = ambientState();
+              if (args.config) s.config = structuredClone(args.config);
+              return structuredClone(s);
+            }
+            if (cmd === "ambient_sources")
+              return {
+                sources: [
+                  {
+                    id: "external",
+                    name: "Fixture external sensor",
+                    available: false,
+                    message: "No sample",
+                  },
+                ],
+                externalFile: "/fixture/ambient-input.json",
+              };
             if (cmd === "routines_config") {
               if (args.config) routineConfig = structuredClone(args.config);
               return structuredClone(routineConfig);
@@ -1898,6 +1962,43 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
       "Palette extraction ignores transparent pixels",
     );
     await page.setViewportSize({ width: 1120, height: 780 });
+    await page.locator('[data-view="device"]').click();
+    await page.locator("#controller-open").click();
+    await page.locator("#controller-count").fill("68");
+    await page.locator("#controller-offset").fill("7");
+    await page.locator("#controller-reverse").check();
+    await page.locator("#controller-canvas").focus();
+    await page.keyboard.press("ArrowRight");
+    assert.equal(await page.locator("#controller-x").inputValue(), "50");
+    await page.locator("#controller-apply").click();
+    await page.waitForFunction(() =>
+      /Mappings applied/.test(
+        document.querySelector("#controller-message").textContent,
+      ),
+    );
+    assert.equal(await page.evaluate(() => fixture.state.settings.count), 68);
+    const individualLevel = await page.evaluate(
+      () => fixture.state.settings.brightness,
+    );
+    await page.locator("#controller-gain").fill("50");
+    await page.locator("#controller-gain-apply").click();
+    await page.waitForFunction(() => fixture.state.groupBrightness === 50);
+    assert.equal(
+      await page.evaluate(() => fixture.state.settings.brightness),
+      individualLevel,
+    );
+    await page.locator("#ambient-enabled").check();
+    await page.locator("#ambient-fallback").fill("22");
+    await page.locator("#ambient-save").click();
+    await page.waitForFunction(
+      () => fixture.state.ambient.config.fallback === 22,
+    );
+    assert.equal(
+      await page.evaluate(() => fixture.state.ambient.config.enabled),
+      true,
+    );
+    await page.screenshot({ path: ".local/ui-controller-layout.png" });
+    await page.locator("#controller-close").click();
     await page.goto(`http://127.0.0.1:${server.address().port}/compact.html`);
     await page.waitForFunction(
       () => document.querySelector("#quick-power").disabled === false,

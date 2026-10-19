@@ -9,11 +9,102 @@ pub struct Status {
     pub message: String,
 }
 pub struct Controller {
+    target: String,
+    lease: Option<Lease>,
     #[cfg(test)]
     pub test_bus: Option<TestBus>,
     device: Option<HidDevice>,
     sequence: u8,
     pub status: Status,
+}
+static CLAIMED: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+    std::sync::LazyLock::new(Default::default);
+impl Drop for Controller {
+    fn drop(&mut self) {
+        self.close("Closed");
+    }
+}
+struct Lease(String);
+impl Lease {
+    fn claim(key: String) -> Result<Self, String> {
+        if !CLAIMED.lock().unwrap().insert(key.clone()) {
+            Err("This USB interface already belongs to another controller. Check routing.".into())
+        } else {
+            Ok(Self(key))
+        }
+    }
+}
+impl Drop for Lease {
+    fn drop(&mut self) {
+        CLAIMED.lock().unwrap().remove(&self.0);
+    }
+}
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Choice {
+    #[serde(skip)]
+    pub aliases: Vec<String>,
+    pub id: String,
+    pub name: String,
+    pub serial: bool,
+}
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+fn supported(d: &hidapi::DeviceInfo) -> bool {
+    d.vendor_id() == protocol::VID
+        && d.product_id() == protocol::PID
+        && lighting_interface(
+            d.interface_number(),
+            d.usage_page(),
+            &d.path().to_string_lossy(),
+        )
+}
+fn identity(d: &hidapi::DeviceInfo, all: &[&hidapi::DeviceInfo]) -> String {
+    if let Some(serial) = d.serial_number().filter(|s| !s.is_empty()) {
+        if all
+            .iter()
+            .filter(|x| x.serial_number() == Some(serial))
+            .count()
+            == 1
+        {
+            return format!("s-{}", hex(serial.as_bytes()));
+        }
+    }
+    format!("p-{}", hex(d.path().to_bytes()))
+}
+fn aliases(preferred: &str, path: &[u8]) -> Vec<String> {
+    let local = format!("p-{}", hex(path));
+    if local == preferred {
+        vec![local]
+    } else {
+        vec![local, preferred.into()]
+    }
+}
+pub fn choices() -> Result<Vec<Choice>, String> {
+    let api = HidApi::new().map_err(|e| e.to_string())?;
+    let all: Vec<_> = api.device_list().filter(|d| supported(d)).collect();
+    Ok(all
+        .iter()
+        .enumerate()
+        .take(32)
+        .map(|(i, d)| {
+            let id = identity(d, &all);
+            Choice {
+                aliases: aliases(&id, d.path().to_bytes()),
+                serial: id.starts_with("s-"),
+                id,
+                name: format!(
+                    "{} · {}",
+                    d.product_string().unwrap_or("ROBOBLOQ strip"),
+                    d.serial_number()
+                        .filter(|s| !s.is_empty())
+                        .map(|s| s.chars().take(40).collect())
+                        .unwrap_or_else(|| format!("USB interface {}", i + 1))
+                ),
+            }
+        })
+        .collect())
 }
 #[cfg(test)]
 pub struct TestBus {
@@ -42,6 +133,8 @@ fn write_reports(
 impl Controller {
     pub fn new() -> Self {
         Self {
+            target: String::new(),
+            lease: None,
             #[cfg(test)]
             test_bus: None,
             device: None,
@@ -58,12 +151,20 @@ impl Controller {
     }
     pub fn close(&mut self, message: &str) {
         self.device = None;
+        self.lease = None;
         self.status = Status {
             connected: false,
             message: message.into(),
         };
     }
+    pub fn bind(&mut self, target: String) {
+        if self.target != target {
+            self.close("Controller binding changed");
+            self.target = target;
+        }
+    }
     pub fn connect(&mut self) -> Result<(), String> {
+        self.close("Connecting");
         let result: Result<(), String> = (|| {
             #[cfg(test)]
             if let Some(bus) = &mut self.test_bus {
@@ -78,18 +179,23 @@ impl Controller {
                 return Ok(());
             }
             let api = HidApi::new().map_err(|e| e.to_string())?;
-            let target = api
-                .device_list()
+            let all: Vec<_> = api.device_list().filter(|d| supported(d)).collect();
+            if self.target.is_empty() && all.len() > 1 {
+                return Err(
+                    "Several strips found. Bind this controller in Device setup before starting."
+                        .into(),
+                );
+            }
+            let target = all
+                .iter()
+                .copied()
                 .find(|d| {
-                    d.vendor_id() == protocol::VID
-                        && d.product_id() == protocol::PID
-                        && lighting_interface(
-                            d.interface_number(),
-                            d.usage_page(),
-                            &d.path().to_string_lossy(),
-                        )
+                    self.target.is_empty()
+                        || aliases(&identity(d, &all), d.path().to_bytes()).contains(&self.target)
                 })
                 .ok_or("No compatible strip found. Check USB and close SyncLight.")?;
+            let key = hex(target.path().to_bytes());
+            self.lease = Some(Lease::claim(key)?);
             self.device = Some(target.open_device(&api).map_err(|e| {
                 #[cfg(target_os = "linux")]
                 { format!("Cannot open the strip: {e}. Install the DynamicLight USB permission rule, then unplug and reconnect the strip. See docs/linux.md.") }
@@ -156,6 +262,23 @@ impl Controller {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn claims_are_exclusive_and_released_on_drop() {
+        let first = Lease::claim("fixture-interface".into()).unwrap();
+        assert!(Lease::claim("fixture-interface".into()).is_err());
+        let other = Lease::claim("other-fixture-interface".into()).unwrap();
+        drop(first);
+        assert!(Lease::claim("fixture-interface".into()).is_ok());
+        drop(other);
+    }
+    #[test]
+    fn path_bindings_remain_valid_when_another_duplicate_serial_disconnects() {
+        let before = aliases("p-6162", b"ab");
+        let after = aliases("s-3132", b"ab");
+        assert!(before.contains(&"p-6162".into()));
+        assert!(after.contains(&"p-6162".into()));
+        assert!(after.contains(&"s-3132".into()));
+    }
     #[test]
     fn never_open_keyboard() {
         assert!(lighting_interface(0, 0xff00, "x"));

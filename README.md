@@ -67,3 +67,5 @@ Studio tools: [effects, zones, bias lighting, image palettes and appearance](doc
 Capture tools: [window/region sources](docs/capture-sources.md) and [RGB sequence recording/replay](docs/rgb-sequences.md).
 
 [Lighting routines](docs/routines.md): local-time schedules, application rules, temporary cues and focus/break timers, with CLI controls.
+
+[Controller routing](docs/controller-routing.md): independent strips, monitor layout, grouped controls, USB handoff and ambient-light sensors.

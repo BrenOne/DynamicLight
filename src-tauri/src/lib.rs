@@ -1,3 +1,4 @@
+mod ambient;
 mod appearance;
 mod audio;
 mod automation;
@@ -7,10 +8,12 @@ mod capture_source;
 #[cfg(target_os = "windows")]
 mod capture_windows;
 mod compact;
+mod controllers;
 mod device;
 mod diagnostics;
 mod effects;
 mod engine;
+mod handoff;
 mod lifecycle;
 #[cfg(target_os = "windows")]
 mod lifecycle_windows;
@@ -173,6 +176,16 @@ pub fn run() {
             Some(vec!["--autostart"]),
         ))
         .invoke_handler(tauri::generate_handler![
+            ambient::ambient_sources,
+            ambient::ambient_config,
+            controllers::controller_devices,
+            controllers::controller_list,
+            controllers::controller_manage,
+            controllers::controller_group,
+            controllers::controller_routes,
+            handoff::handoff_preview,
+            handoff::handoff_export,
+            handoff::handoff_import,
             routines::routines_config,
             routines::routine_apps,
             appearance::appearance,
@@ -250,7 +263,7 @@ pub fn run() {
             app.manage(diagnostics.clone());
             let preview = Arc::new(AtomicBool::new(!background));
             app.manage(Preview(preview.clone()));
-            let handle = engine::start(settings, path, warning, move |snapshot| {
+            let handle = controllers::start(settings, path, warning, move |snapshot| {
                 diagnostics.observe(snapshot);
                 // Never synchronously query the GUI thread from the lighting
                 // worker: the GUI may be waiting for a suspend acknowledgement.
@@ -273,6 +286,7 @@ pub fn run() {
             profiles::init(app.handle()).map_err(std::io::Error::other)?;
             automation::init(app.handle()).map_err(std::io::Error::other)?;
             routines::init(app.handle()).map_err(std::io::Error::other)?;
+            ambient::init(app.handle()).map_err(std::io::Error::other)?;
             tray::init(app.handle())?;
             if let Some(window) = app.get_webview_window("main") {
                 if !background {

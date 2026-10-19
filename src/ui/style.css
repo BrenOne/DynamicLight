@@ -1757,3 +1757,50 @@ dd {
 #sequence-status {
   overflow-wrap: anywhere;
 }
+#controller-dialog {
+  width: min(740px, calc(100vw - 32px));
+}
+#controller-selected-label {
+  font-size: 10px;
+  max-width: 160px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#controller-dialog fieldset {
+  margin-block: 14px;
+  min-width: 0;
+}
+#controller-dialog label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-block: 8px;
+  min-width: 0;
+}
+#controller-dialog label.checkbox {
+  flex-direction: row;
+  align-items: center;
+}
+#controller-dialog .input-row {
+  flex-wrap: wrap;
+}
+#controller-dialog input:not([type="checkbox"]),
+#controller-dialog select {
+  min-width: 0;
+  max-width: 100%;
+}
+#controller-canvas {
+  width: 100%;
+  height: auto;
+  touch-action: none;
+}
+#controller-message,
+#controller-state {
+  overflow-wrap: anywhere;
+}
+#ambient-file,
+#ambient-status,
+#ambient-availability {
+  overflow-wrap: anywhere;
+}
