@@ -766,6 +766,19 @@
             </details>
             <p id="lifecycle-warning" class="help" role="status" hidden=""></p>
             <fieldset class="updates-card">
+              <legend>Local automation</legend>
+              <label class="checkbox"><input id="automation-enabled" type="checkbox" /> Enable local API and CLI controls</label>
+              <p class="hint">Allows apps running as your user to control DynamicLight using a private credential. The desktop app must stay open.</p>
+              <label class="checkbox"><input id="automation-capture" type="checkbox" disabled /> Allow automation to start screen and audio capture</label>
+              <p class="hint">Capture also needs explicit consent on each command and existing system permission. Comfort limits still apply.</p>
+              <p id="automation-status" role="status" aria-live="polite">Local automation is off.</p>
+              <div id="automation-connection" hidden>
+                <p>Endpoint: <code id="automation-endpoint"></code></p>
+                <p>Private connection file: <code id="automation-file"></code></p>
+              </div>
+              <button id="automation-rotate" type="button" class="secondary" disabled>Rotate credential</button>
+            </fieldset>
+            <fieldset class="updates-card">
               <legend>App updates</legend>
               <label class="checkbox"><input id="update-automatic" type="checkbox" /> Automatically check for updates</label>
               <p class="help">Checks GitHub after startup and every six hours. Downloads and installation only start when you choose. No lighting, screen, audio or profile data is sent.</p>
@@ -1177,6 +1190,7 @@
     </dialog>
     <script src="ui-common.js"></script>
     <script src="updates.js"></script>
+    <script src="automation.js"></script>
     <script src="library-tools.js"></script>
     <script src="renderer.js"></script>
   </body>

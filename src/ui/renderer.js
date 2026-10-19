@@ -342,7 +342,7 @@ function changed(keys) {
 async function run(action) {
   if (busy) return;
   busy = true;
-  document.querySelectorAll("input, select").forEach((input) => {
+  document.querySelectorAll("input:not([id^=automation-]), select").forEach((input) => {
     input.disabled = true;
   });
   const controls = ["connect", "power", "refresh-screens", "retry"];
@@ -362,7 +362,7 @@ async function run(action) {
     notice(String(error), true);
   } finally {
     busy = false;
-    document.querySelectorAll("input, select").forEach((input) => {
+    document.querySelectorAll("input:not([id^=automation-]), select").forEach((input) => {
       input.disabled = false;
     });
     controls.forEach((id) => {
@@ -674,6 +674,7 @@ async function init() {
   await initProfiles();
   window.LibraryTools.init();
   window.Updates.init({ save, showSettings: () => showView("settings") });
+  window.Automation.init();
   initCalibration();
   $("exclude-bars").onchange = (e) => {
     settings.excludeBars = e.target.checked;

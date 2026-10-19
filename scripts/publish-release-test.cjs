@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { bundles, updates } = require('./release.cjs');
+const { bundles, updates, cli } = require('./release.cjs');
 const signingFixture = require('./signing-fixture.cjs');
 const { publishRelease } = require('./publish-release.cjs');
 
@@ -14,6 +14,8 @@ function harness(t, options = {}) {
   const tag = `v${value}`;
   const sha = 'a'.repeat(40);
   const files = {
+    'control/Cargo.toml': `[package]\nname = "dynamiclight-control"\nversion = "${value}"\n`,
+    'control/Cargo.lock': `[[package]]\nname = "dynamiclight-control"\nversion = "${value}"\n`,
     'package.json': JSON.stringify({ version: value }),
     'src-tauri/tauri.conf.json': JSON.stringify({ version: value }),
     'src-tauri/Cargo.toml': `[package]\nname = "dynamiclight"\nversion = "${value}"\n`,
@@ -43,7 +45,7 @@ function harness(t, options = {}) {
     if (args[0] === 'release' && args[1] === 'upload') {
       if (state.uploadFailure) return fail(503);
       const uploads = args.slice(3, args.indexOf('--clobber'));
-      assert.equal(uploads.length, 17);
+      assert.equal(uploads.length, 21);
       assert.ok(uploads.every(file => fs.existsSync(file)));
       return ok(null);
     }
@@ -83,7 +85,7 @@ function harness(t, options = {}) {
     run(overrides = {}) {
       const directory = path.join(root, `assets-${attempt++}`);
       fs.mkdirSync(directory);
-      const names = Object.values(bundles).flat().map(b => b[2]);
+      const names = [...Object.values(bundles).flat().map(b => b[2]), ...Object.values(cli)];
       for (const name of options.incomplete ? names.slice(1) : names) fs.writeFileSync(path.join(directory, name), 'package');
       if (!options.incomplete) for (const [, , , name] of Object.values(updates)) {
         const file = path.join(directory, name);

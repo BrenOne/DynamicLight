@@ -58,8 +58,8 @@ Windows NSIS installations, writable macOS `.app` installations (copy out of the
 
 The updater uses a dedicated signing key embedded in the app. This verification is separate from Windows Authenticode and macOS Developer ID/notarization; the preview packages still lack those OS signatures. PR artifacts use disposable signing keys and cannot accept production updates; install a GitHub Release for normal use.
 
-## Uninstall and future command-line controls
+## Command-line controls and uninstall
 
 Use Windows **Installed apps**, delete `~/Applications/DynamicLight.app` on Mac, or follow [Linux uninstall instructions](linux.md). Saved preferences are retained.
 
-These commands install the desktop app. They do not provide commands to control lighting, alter PATH, or install a background service. The local automation API and command-line lighting controls remain tracked in [#16](https://github.com/mskutin/DynamicLight/issues/16).
+Add `--cli` in Bash or `-Cli` in PowerShell to install the standalone CLI in `~/.local/bin` or `%LOCALAPPDATA%\DynamicLightCLI\bin`. Controls require the desktop app running with **Settings → Local automation** enabled. Installers do not alter PATH or install a background service. See the [automation guide](automation.md) for commands, examples, and CLI updates/uninstallation.

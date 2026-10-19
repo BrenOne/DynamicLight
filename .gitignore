@@ -11,6 +11,7 @@ dist/
 .DS_Store
 Thumbs.db
 src-tauri/target/
+control/target/
 src-tauri/gen/
 src-tauri/icons/android/
 src-tauri/icons/ios/

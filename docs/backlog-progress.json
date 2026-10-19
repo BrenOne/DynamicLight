@@ -176,6 +176,16 @@
         "PLAT-01",
         "UI-10"
       ]
+    },
+    "INT-01": {
+      "status": "Implemented",
+      "delivered": "Opt-in authenticated loopback API v1 and standalone Windows/macOS/Linux CLI for status, power, brightness, scenes and profiles; private rotating credentials, bounded and rate-limited requests, capture consent and engine comfort guards, terminal installers and adapter examples.",
+      "remaining": "Physical Stream Deck, capture permission and installed CLI validation on macOS/Linux; phone and game adapters remain separate backlog features.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
     }
   }
 }

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Installs the desktop app. Automation/CLI commands are tracked in issue #16.
+# Installs the desktop app, or the standalone CLI with --cli.
 set -euo pipefail
 
 fail() { printf 'DynamicLight: %s\n' "$*" >&2; exit 1; }
 version=latest
 appimage=false
+cli=false
 download_only=false
 directory=$PWD
 while [ "$#" -gt 0 ]; do
@@ -14,9 +15,11 @@ while [ "$#" -gt 0 ]; do
       case "$1" in --version) version=${2#v} ;; --directory) directory=$2 ;; esac
       shift 2 ;;
     --appimage) appimage=true; shift ;;
+    --cli) cli=true; shift ;;
     --download-only) download_only=true; shift ;;
     --help)
-      echo 'Usage: bash install.sh [--version VERSION] [--appimage] [--download-only] [--directory DIR]'
+      echo 'Usage: bash install.sh [--version VERSION] [--appimage | --cli] [--download-only] [--directory DIR]'
+      echo '--cli installs command-line controls in ~/.local/bin; requires the desktop app running with Local automation enabled.'
       echo 'Installs for the current user on macOS; uses apt on Linux, or --appimage for a user-local app.'
       echo '--directory selects the download destination with --download-only.'
       exit 0 ;;
@@ -41,6 +44,14 @@ case "$os:$arch" in
   *) fail "No desktop package for $os/$arch. See https://github.com/mskutin/DynamicLight/releases" ;;
 esac
 if "$appimage" && [ "$os" != Linux ]; then fail '--appimage is only supported on Linux'; fi
+if "$cli"; then
+  "$appimage" && fail '--cli and --appimage cannot be combined'
+  case "$asset" in
+    *macos-arm64*) asset=dynamiclight-cli-macos-arm64 ;;
+    *macos-x64*) asset=dynamiclight-cli-macos-x64 ;;
+    *linux-x64*) asset=dynamiclight-cli-linux-x64 ;;
+  esac
+fi
 command -v curl >/dev/null || fail 'Install curl first'
 if command -v sha256sum >/dev/null; then hash_command=sha256sum
 elif command -v shasum >/dev/null; then hash_command=shasum
@@ -82,7 +93,20 @@ if "$download_only"; then
   exit 0
 fi
 
-# Never launch the app, change capture consent, or create a CLI/PATH shim.
+if "$cli"; then
+  [ "$(id -u)" != 0 ] || fail 'Run the CLI installer as your normal user, without sudo'
+  destination="$HOME/.local/bin"
+  mkdir -p "$destination"
+  staged=$(mktemp "$destination/.dynamiclight.XXXXXX")
+  if ! install -m 755 "$scratch/$asset" "$staged" || ! mv -f "$staged" "$destination/dynamiclight"; then
+    rm -f -- "$staged"; fail 'Could not install CLI'
+  fi
+  printf 'Installed DynamicLight CLI %s at %s/dynamiclight\n' "$version" "$destination"
+  echo 'Add ~/.local/bin to PATH if needed. Enable Local automation in desktop Settings, then run dynamiclight status.'
+  exit 0
+fi
+
+# Never launch the desktop app or change capture consent.
 case "$os" in
   Darwin)
     [ "$(id -u)" != 0 ] || fail 'Run this installer as your normal user, without sudo'

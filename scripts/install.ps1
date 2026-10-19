@@ -1,8 +1,9 @@
-# Installs the desktop app; command-line lighting controls are tracked in #16.
+# Installs the desktop app, or standalone command-line controls with -Cli.
 [CmdletBinding()]
 param(
     [string]$Version = 'latest',
     [switch]$DownloadOnly,
+    [switch]$Cli,
     [string]$Directory = (Get-Location).Path
 )
 $ErrorActionPreference = 'Stop'
@@ -14,6 +15,7 @@ $scratch = Join-Path ([IO.Path]::GetTempPath()) ('dynamiclight-install-' + [guid
 $null = New-Item -ItemType Directory -Path $scratch
 $releases = 'https://github.com/mskutin/DynamicLight/releases'
 $asset = 'dynamiclight-desktop-windows-x64-setup.exe'
+if ($Cli) { $asset = 'dynamiclight-cli-windows-x64.exe' }
 try {
     if ($Version -eq 'latest') {
         $versionFile = Join-Path $scratch 'version.txt'
@@ -37,6 +39,17 @@ try {
         $null = New-Item -ItemType Directory -Force -Path $Directory
         Copy-Item -LiteralPath $installer -Destination (Join-Path $Directory $asset)
         Write-Host "Verified DynamicLight $Version downloaded to $Directory"
+    } elseif ($Cli) {
+        $destination = Join-Path $env:LOCALAPPDATA 'DynamicLightCLI\bin'
+        $null = New-Item -ItemType Directory -Force -Path $destination
+        $target = Join-Path $destination 'dynamiclight.exe'
+        $staged = Join-Path $destination ('dynamiclight-' + [guid]::NewGuid() + '.tmp')
+        try {
+            Copy-Item -LiteralPath $installer -Destination $staged
+            Move-Item -LiteralPath $staged -Destination $target -Force
+        } finally { if (Test-Path -LiteralPath $staged) { Remove-Item -LiteralPath $staged -Force } }
+        Write-Host "Installed DynamicLight CLI $Version at $target"
+        Write-Host "Add $destination to PATH if needed. Enable Local automation in desktop Settings, then run dynamiclight status."
     } else {
         # Tauri NSIS: silent per-user install. Omit /R so the app is not launched.
         $process = Start-Process -FilePath $installer -ArgumentList '/S' -Wait -PassThru -WindowStyle Hidden

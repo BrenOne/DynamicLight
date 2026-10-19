@@ -14,6 +14,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
         "style.css",
         "renderer.js",
         "updates.js",
+        "automation.js",
         "library-tools.js",
         "ui-common.js",
         "icons.svg",
@@ -179,6 +180,13 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
         },
         core: {
           invoke: async (cmd, args) => {
+            if (cmd === "automation_status") return structuredClone(fixture.automation || {enabled:false,allowCapture:false,endpoint:null,connectionFile:"private/session.json",message:""});
+            if (cmd === "automation_configure") {
+              if (fixture.failAutomation) throw Error("Automation settings could not be saved");
+              fixture.automation = { ...args, endpoint:args.enabled ? "http://127.0.0.1:12345/v1/command" : null, connectionFile:"private/session.json", message:"" };
+              fixture.automationChanges = (fixture.automationChanges || 0) + 1;
+              return structuredClone(fixture.automation);
+            }
             if (cmd === "update_status") return structuredClone(fixture.update);
             if (cmd === "update_check") {
               fixture.update.phase = fixture.update.version ? "available" : "current";
@@ -1367,6 +1375,23 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
     await page.setViewportSize({ width: 1120, height: 780 });
     await page.locator('.app-sidebar [data-view="settings"]').click();
     await page.locator('#update-check').click();
+    assert.equal(await page.locator('#automation-enabled').isChecked(), false);
+    assert.equal(await page.locator('#automation-capture').isEnabled(), false);
+    await page.locator('#automation-enabled').check();
+    await page.waitForFunction(() => fixture.automation?.enabled);
+    assert.equal(await page.locator('#automation-capture').isChecked(), false);
+    await page.locator('#automation-capture').check();
+    await page.waitForFunction(() => fixture.automation?.allowCapture);
+    await page.locator('#automation-rotate').click();
+    await page.waitForFunction(() => fixture.automationChanges === 3);
+    await page.evaluate(() => { fixture.failAutomation = true; });
+    await page.locator('#automation-enabled').click();
+    await page.waitForFunction(() => document.querySelector('#automation-enabled').checked);
+    assert.match(await page.locator('#automation-status').textContent(), /could not be saved/);
+    await page.evaluate(() => { fixture.failAutomation = false; });
+    await page.locator('#automation-enabled').uncheck();
+    await page.waitForFunction(() => !fixture.automation.enabled);
+    assert.equal(await page.locator('#automation-rotate').isEnabled(), false);
     await page.waitForFunction(() => document.querySelector('#update-status').textContent.includes('up to date'));
     await page.locator('#update-automatic').uncheck();
     await page.waitForFunction(() => !fixture.update.automatic);

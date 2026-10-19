@@ -1,4 +1,4 @@
-// The desktop release contract. CLI assets for #16 can be added independently.
+// Desktop/updater and standalone CLI assets have separate stable names.
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -20,6 +20,12 @@ const updates = {
   'x86_64-apple-darwin': ['darwin-x86_64', 'macos', '.app.tar.gz', 'dynamiclight-desktop-macos-x64.app.tar.gz'],
   'x86_64-unknown-linux-gnu': ['linux-x86_64', 'appimage', '.AppImage', 'dynamiclight-desktop-linux-x64.AppImage'],
 };
+const cli = {
+  'x86_64-pc-windows-msvc': 'dynamiclight-cli-windows-x64.exe',
+  'aarch64-apple-darwin': 'dynamiclight-cli-macos-arm64',
+  'x86_64-apple-darwin': 'dynamiclight-cli-macos-x64',
+  'x86_64-unknown-linux-gnu': 'dynamiclight-cli-linux-x64',
+};
 const minisign = process.env.MINISIGN || (process.platform === 'win32' ? path.resolve(__dirname, '../.local/minisign/minisign-win64/x86_64/minisign.exe') : 'minisign');
 function verifySignature(file, signature, publicKey, version) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dynamiclight-verify-'));
@@ -40,7 +46,9 @@ function version(root, tag) {
   const value = JSON.parse(read('package.json')).version;
   const cargoVersion = read('src-tauri/Cargo.toml').match(/^version = "([^"]+)"/m)?.[1];
   const lockVersion = read('src-tauri/Cargo.lock').match(/\[\[package\]\]\r?\nname = "dynamiclight"\r?\nversion = "([^"]+)"/)?.[1];
-  if (!versionPattern.test(value) || [cargoVersion, lockVersion, JSON.parse(read('src-tauri/tauri.conf.json')).version].some(v => v !== value)) {
+  const cliVersion = read('control/Cargo.toml').match(/^version = "([^"]+)"/m)?.[1];
+  const cliLockVersion = read('control/Cargo.lock').match(/\[\[package\]\]\r?\nname = "dynamiclight-control"\r?\nversion = "([^"]+)"/)?.[1];
+  if (!versionPattern.test(value) || [cargoVersion, lockVersion, cliVersion, cliLockVersion, JSON.parse(read('src-tauri/tauri.conf.json')).version].some(v => v !== value)) {
     throw new Error('Versions must agree in package.json, Cargo.toml, Cargo.lock and tauri.conf.json');
   }
   if (tag && tag !== `v${value}`) throw new Error(`Release tag ${tag} must match v${value}`);
@@ -64,11 +72,14 @@ function stage(root, target, output) {
   if (matches.length !== 1) throw new Error(`Expected one updater ${extension} in ${source}`);
   fs.copyFileSync(path.join(source, matches[0]), path.join(output, name));
   fs.copyFileSync(path.join(source, `${matches[0]}.sig`), path.join(output, `${name}.sig`));
+  const binary = path.join(root, 'control/target', target, 'release', target.includes('windows') ? 'dynamiclight.exe' : 'dynamiclight');
+  if (!fs.statSync(binary).size) throw new Error(`Empty CLI: ${binary}`);
+  fs.copyFileSync(binary, path.join(output, cli[target]));
 }
 
 function assemble(root, output, tag) {
   const value = version(root, tag);
-  const expected = [...new Set([...Object.values(bundles).flat().map(bundle => bundle[2]), ...Object.values(updates).flatMap(u => [u[3], `${u[3]}.sig`])])].sort();
+  const expected = [...new Set([...Object.values(bundles).flat().map(bundle => bundle[2]), ...Object.values(updates).flatMap(u => [u[3], `${u[3]}.sig`]), ...Object.values(cli)])].sort();
   const actual = fs.readdirSync(output).sort();
   if (JSON.stringify(expected) !== JSON.stringify(actual)) throw new Error('Release must contain exactly one package for every supported platform');
   for (const name of expected) if (!fs.statSync(path.join(output, name)).size) throw new Error(`Empty package: ${name}`);
@@ -93,7 +104,7 @@ function assemble(root, output, tag) {
   fs.writeFileSync(path.join(output, 'SHA256SUMS'), checksums);
 }
 
-module.exports = { bundles, updates, version, stage, assemble, minisign, verifySignature };
+module.exports = { bundles, updates, cli, version, stage, assemble, minisign, verifySignature };
 if (require.main === module) {
   const [command, argument, output] = process.argv.slice(2);
   const root = path.resolve(__dirname, '..');

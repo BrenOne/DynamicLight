@@ -4,14 +4,14 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { bundles, updates, version, stage, assemble, verifySignature } = require('./release.cjs');
+const { bundles, updates, cli, version, stage, assemble, verifySignature } = require('./release.cjs');
 const signingFixture = require('./signing-fixture.cjs');
 const root = path.resolve(__dirname, '..');
 
 function fixture(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dynamiclight-release-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  for (const file of ['package.json', 'src-tauri/Cargo.toml', 'src-tauri/Cargo.lock', 'src-tauri/tauri.conf.json', 'scripts/install.sh', 'scripts/install.ps1', 'src-tauri/linux/69-dynamiclight.rules', 'docs/release-notes.md']) {
+  for (const file of ['control/Cargo.toml', 'control/Cargo.lock', 'package.json', 'src-tauri/Cargo.toml', 'src-tauri/Cargo.lock', 'src-tauri/tauri.conf.json', 'scripts/install.sh', 'scripts/install.ps1', 'src-tauri/linux/69-dynamiclight.rules', 'docs/release-notes.md']) {
     fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
     fs.copyFileSync(path.join(root, file), path.join(dir, file));
   }
@@ -46,11 +46,15 @@ test('stages all platform bundles and hashes exactly the complete release', t =>
     const file = path.join(source, `upstream-versioned-name${ext}`);
     fs.writeFileSync(file, `fixture ${target} ${ext}`);
     sign(file);
+    const binary = path.join(dir, 'control/target', target, 'release', target.includes('windows') ? 'dynamiclight.exe' : 'dynamiclight');
+    fs.mkdirSync(path.dirname(binary), { recursive: true });
+    fs.writeFileSync(binary, 'CLI fixture');
     stage(dir, target, output);
+    assert.ok(fs.existsSync(path.join(output, cli[target])));
   }
   assemble(dir, output, `v${version(dir)}`);
   const checksums = fs.readFileSync(path.join(output, 'SHA256SUMS'), 'utf8').trim().split('\n');
-  assert.equal(checksums.length, 16);
+  assert.equal(checksums.length, 20);
   const manifest = JSON.parse(fs.readFileSync(path.join(output, 'latest.json')));
   assert.equal(manifest.version, version(dir));
   assert.equal(Object.keys(manifest.platforms).length, 4);

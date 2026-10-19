@@ -1,4 +1,5 @@
 mod audio;
+mod automation;
 mod beat;
 mod capture;
 #[cfg(target_os = "windows")]
@@ -166,6 +167,8 @@ pub fn run() {
             quit,
             platform_name,
             app_version,
+            automation::automation_status,
+            automation::automation_configure,
             updates::update_status,
             updates::update_check,
             updates::update_install,
@@ -246,6 +249,7 @@ pub fn run() {
             app.manage(AtomicBool::new(false));
             updates::init(app.handle()).map_err(std::io::Error::other)?;
             profiles::init(app.handle()).map_err(std::io::Error::other)?;
+            automation::init(app.handle()).map_err(std::io::Error::other)?;
             tray::init(app.handle())?;
             if let Some(window) = app.get_webview_window("main") {
                 if !background {
@@ -298,6 +302,7 @@ pub fn run() {
         }
         if let tauri::RunEvent::ExitRequested { api, .. } = event {
             if !app.state::<AtomicBool>().swap(true, Ordering::SeqCst) {
+                automation::stop(app);
                 if let Some(window) = app.get_webview_window("compact") {
                     let _ = compact::remember(&window);
                 }

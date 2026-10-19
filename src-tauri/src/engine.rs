@@ -19,6 +19,12 @@ use std::{
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 pub enum Action {
+    #[serde(skip)]
+    Automation {
+        action: Box<Action>,
+        active: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        allow_capture: bool,
+    },
     Snapshot,
     SelectMode {
         mode: String,
@@ -598,6 +604,44 @@ impl Engine {
         }
         let persist = matches!(action, Action::Settings { .. });
         match action {
+            Action::Automation {
+                action,
+                active,
+                allow_capture,
+            } => {
+                // Check consent on the worker, against the exact settings this command
+                // will use. A renderer edit cannot race a preflight snapshot.
+                if !active.load(std::sync::atomic::Ordering::Acquire) {
+                    return Err("Automation session revoked".into());
+                }
+                if self.calibration.is_some() && !matches!(*action, Action::Power { on: false }) {
+                    return Err("Finish or cancel strip calibration first".into());
+                }
+                let target = match action.as_ref() {
+                    Action::Start => Some(self.state.settings.clone()),
+                    Action::Toggle if !self.life.requested => Some(self.state.settings.clone()),
+                    Action::ApplyProfile { scene, source } => {
+                        Some(crate::profiles::scene(scene, source, &self.state.settings))
+                    }
+                    Action::Toggle
+                    | Action::Power { on: false }
+                    | Action::Adjust {
+                        brightness: Some(_),
+                        color: None,
+                    } => None,
+                    _ => return Err("Unsupported automation action".into()),
+                };
+                if let Some(target) = target {
+                    if matches!(target.mode.as_str(), "screen" | "music" | "blend") {
+                        if !allow_capture {
+                            return Err("Capture requires permission in Settings and --allow-capture on this command".into());
+                        }
+                        // Remote commands cannot trigger a new OS permission prompt.
+                        crate::platform::check_capture_permission(&target)?;
+                    }
+                }
+                return self.action(*action);
+            }
             Action::Snapshot => {}
             Action::PatchSettings { patch, persist } => {
                 let settings = patch.apply(&self.state.settings)?;
@@ -1116,6 +1160,112 @@ fn missed_slots(late: Duration, period: Duration) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn automated(action: Action, active: bool) -> Action {
+        Action::Automation {
+            action: Box::new(action),
+            active: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(active)),
+            allow_capture: false,
+        }
+    }
+    #[test]
+    fn automation_checks_current_capture_mode_and_revocation_before_side_effects() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut e = simulated(Settings::default(), dir.path().join("settings.json"));
+        for mode in ["screen", "music", "blend"] {
+            e.action(Action::SelectMode { mode: mode.into() }).unwrap();
+            let before = e.state.settings.clone();
+            for action in [Action::Start, Action::Toggle] {
+                assert!(e
+                    .action(automated(action, true))
+                    .err()
+                    .unwrap()
+                    .contains("Capture requires"));
+                assert_eq!(e.state.settings, before);
+                assert!(!e.life.requested && !e.state.capturing && !e.desired);
+            }
+        }
+        let p = crate::scenes::starter_scenes()
+            .profiles
+            .into_iter()
+            .find(|p| p.id == "cinema")
+            .unwrap();
+        e.action(Action::SelectMode {
+            mode: "solid".into(),
+        })
+        .unwrap();
+        assert!(e
+            .action(automated(
+                Action::ApplyProfile {
+                    scene: p.settings,
+                    source: p.source
+                },
+                true
+            ))
+            .is_err());
+        assert_eq!(e.state.settings.mode, "solid");
+        assert!(e
+            .action(automated(Action::Start, false))
+            .err()
+            .unwrap()
+            .contains("revoked"));
+        assert_eq!(e.controller.test_bus.as_ref().unwrap().connects, 0);
+        assert!(serde_json::from_str::<Action>(r#"{"type":"automation"}"#).is_err());
+    }
+    #[test]
+    fn automation_preserves_comfort_limits_and_calibration_and_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut e = simulated(
+            Settings {
+                mode: "solid".into(),
+                max_brightness: 15,
+                transition_limit: 70,
+                ..Default::default()
+            },
+            dir.path().join("settings.json"),
+        );
+        e.action(automated(Action::Start, true)).unwrap();
+        e.action(automated(
+            Action::Adjust {
+                brightness: Some(100),
+                color: None,
+            },
+            true,
+        ))
+        .unwrap();
+        let p = crate::scenes::starter_scenes()
+            .profiles
+            .into_iter()
+            .find(|p| p.id == "warm-desk")
+            .unwrap();
+        e.action(automated(
+            Action::ApplyProfile {
+                scene: p.settings,
+                source: p.source,
+            },
+            true,
+        ))
+        .unwrap();
+        assert_eq!(
+            (
+                e.state.settings.max_brightness,
+                e.state.settings.transition_limit
+            ),
+            (15, 70)
+        );
+        e.action(Action::CalibrationStart).unwrap();
+        assert!(e
+            .action(automated(
+                Action::Adjust {
+                    brightness: Some(50),
+                    color: None
+                },
+                true
+            ))
+            .is_err());
+        e.action(automated(Action::Power { on: false }, true))
+            .unwrap();
+        assert!(!e.state.calibrating && !e.state.requested && !e.state.capturing);
+    }
     #[test]
     fn update_preparation_releases_device_preserves_saved_intent_and_allows_retry() {
         let dir = tempfile::tempdir().unwrap();

@@ -7,7 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
-const { bundles } = require('./release.cjs');
+const { bundles, cli } = require('./release.cjs');
 const root = path.resolve(__dirname, '..');
 const windows = process.platform === 'win32';
 
@@ -16,7 +16,7 @@ function fixture(t, scenario = {}) {
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   fs.mkdirSync(path.join(dir, 'bin'));
   fs.mkdirSync(path.join(dir, 'home'));
-  const names = [...Object.values(bundles).flat().map(b => b[2]), '69-dynamiclight.rules'];
+  const names = [...Object.values(bundles).flat().map(b => b[2]), ...Object.values(cli), '69-dynamiclight.rules'];
   const checksums = names.map(name => {
     const contents = `package ${name}`;
     fs.writeFileSync(path.join(dir, name), contents);
@@ -39,6 +39,7 @@ function run(t, scenario = {}) {
     const harness = path.join(dir, 'harness.ps1');
     fs.writeFileSync(harness, `\uFEFF
 $ErrorActionPreference = 'Stop'
+$env:LOCALAPPDATA = Join-Path $env:FIXTURE 'home'
 $env:OS = 'Windows_NT'
 $env:PROCESSOR_ARCHITEW6432 = ''
 $env:PROCESSOR_ARCHITECTURE = '${scenario.arch || 'AMD64'}'
@@ -54,7 +55,7 @@ function Start-Process {
     Set-Content -LiteralPath (Join-Path $env:FIXTURE 'installed') -Value $FilePath
     return [pscustomobject]@{ ExitCode = [int]$env:INSTALL_EXIT }
 }
-& '${path.join(root, 'scripts/install.ps1').replaceAll("'", "''")}' ${scenario.install ? '' : '-DownloadOnly'} -Directory (Join-Path $env:FIXTURE 'downloads') ${scenario.version ? `-Version '${scenario.version}'` : ''}
+& '${path.join(root, 'scripts/install.ps1').replaceAll("'", "''")}' ${scenario.cli ? '-Cli' : ''} ${scenario.install ? '' : '-DownloadOnly'} -Directory (Join-Path $env:FIXTURE 'downloads') ${scenario.version ? `-Version '${scenario.version}'` : ''}
 `);
     result = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', harness], { env, encoding: 'utf8' });
   } else {
@@ -89,6 +90,7 @@ fi`,
     if (!scenario.install) args.push('--download-only');
     if (scenario.version) args.push('--version', scenario.version);
     if (scenario.appimage) args.push('--appimage');
+    if (scenario.cli) args.push('--cli');
     result = spawnSync('bash', args, { env, encoding: 'utf8' });
   }
   assert.ifError(result.error);
@@ -109,6 +111,21 @@ test('explicit prerelease uses the exact requested tag', t => {
   const result = run(t, { version: 'v0.8.0-beta.1' });
   assert.equal(result.status, 0, result.log);
   assert.ok(fs.readFileSync(path.join(result.dir, 'urls'), 'utf8').trim().split(/\r?\n/).every(url => url.includes('/download/v0.8.0-beta.1/')));
+});
+
+test('CLI downloads separately and installs in a per-user bin directory', t => {
+  const download = run(t, { cli: true });
+  assert.equal(download.status, 0, download.log);
+  const name = windows ? 'dynamiclight-cli-windows-x64.exe' : 'dynamiclight-cli-linux-x64';
+  assert.deepEqual(fs.readdirSync(path.join(download.dir, 'downloads')), [name]);
+  const install = run(t, { cli: true, install: true });
+  assert.equal(install.status, 0, install.log);
+  const binary = path.join(install.dir, 'home', windows ? 'DynamicLightCLI/bin/dynamiclight.exe' : '.local/bin/dynamiclight');
+  assert.equal(fs.readFileSync(binary, 'utf8'), `package ${name}`);
+  assert.ok(!fs.existsSync(path.join(install.dir, 'installed')));
+  const corrupt = run(t, { cli: true, install: true, corrupt: true });
+  assert.notEqual(corrupt.status, 0, corrupt.log);
+  assert.ok(!fs.existsSync(path.join(corrupt.dir, 'home', windows ? 'DynamicLightCLI' : '.local/bin')));
 });
 
 for (const scenario of [{ corrupt: true }, { missing: true }, { duplicate: true }, { network: true }, { arch: 'armv7' }, { version: '../../bad' }]) {

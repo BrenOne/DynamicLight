@@ -1,6 +1,6 @@
 # DynamicLight backlog
 
-Reviewed 2026-10-19: **20 future features**, **3 validation trackers**, **16 delivered features**. No implementation batch is currently active.
+Reviewed 2026-10-19: **19 future features**, **3 validation trackers**, **17 delivered features**. No implementation batch is currently active.
 
 [GitHub project](https://github.com/users/mskutin/projects/4) · [Open issues](https://github.com/mskutin/DynamicLight/issues)
 
@@ -41,7 +41,6 @@ P2 expands product capability; P3 covers exploratory features and integrations. 
 | [#8](https://github.com/mskutin/DynamicLight/issues/8) | Support multiple monitors and independent LED controllers | P2 | — |
 | [#9](https://github.com/mskutin/DynamicLight/issues/9) | Switch profiles automatically for selected applications | P2 | — |
 | [#15](https://github.com/mskutin/DynamicLight/issues/15) | Show temporary notification accents | P3 | — |
-| [#16](https://github.com/mskutin/DynamicLight/issues/16) | Expose a local automation API and command-line controls | P2 | — |
 | [#17](https://github.com/mskutin/DynamicLight/issues/17) | Add a paired phone remote on the local network | P3 | [#16](https://github.com/mskutin/DynamicLight/issues/16) |
 | [#23](https://github.com/mskutin/DynamicLight/issues/23) | Adapt brightness to an ambient-light sensor | P3 | — |
 | [#24](https://github.com/mskutin/DynamicLight/issues/24) | Add game telemetry integrations | P3 | [#16](https://github.com/mskutin/DynamicLight/issues/16) |
@@ -62,6 +61,7 @@ These implementation issues are closed. Their outstanding physical checks are tr
 | [#6](https://github.com/mskutin/DynamicLight/issues/6) | Add bass, frequency-band, and beat-reactive music effects | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
 | [#7](https://github.com/mskutin/DynamicLight/issues/7) | Add connection diagnostics and redacted log export | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
 | [#14](https://github.com/mskutin/DynamicLight/issues/14) | Add brightness and flash comfort controls | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
+| [#16](https://github.com/mskutin/DynamicLight/issues/16) | Expose a local automation API and command-line controls | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
 | [#18](https://github.com/mskutin/DynamicLight/issues/18) | Export and import portable profiles across platforms | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
 | [#20](https://github.com/mskutin/DynamicLight/issues/20) | Blend screen colors with music-reactive brightness | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |
 | [#29](https://github.com/mskutin/DynamicLight/issues/29) | Add a color wheel, temperature control, and saved palettes | [#45](https://github.com/mskutin/DynamicLight/issues/45), [#38](https://github.com/mskutin/DynamicLight/issues/38), [#37](https://github.com/mskutin/DynamicLight/issues/37) |

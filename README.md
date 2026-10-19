@@ -23,6 +23,8 @@ Prefer the terminal? See [installation options](docs/installation.md). Developme
 
 Starting with 0.9.0, **Settings → App updates** checks for new releases automatically and offers **Install and restart** on Windows, macOS, and Linux AppImage. Updates are cryptographically verified before installation. Debian packages use the terminal installer/package manager. Install 0.9.0 manually once if you have an older version. Automatic checks can be disabled.
 
+Starting with 0.10.0, enable **Settings → Local automation** to control the running app from scripts. Install the CLI using `bash install.sh --cli` or `install.ps1 -Cli`, then run `dynamiclight status`, `dynamiclight brightness 35`, or `dynamiclight scenes apply warm-desk`. See the [CLI and local API guide](docs/automation.md) for capture consent, Stream Deck, and integration examples.
+
 ## Start lighting
 
 1. Plug in your strip and close SyncLight.

@@ -1577,3 +1577,4 @@ dd {
 #update-status { overflow-wrap: anywhere; }
 #update-progress { width: 100%; accent-color: var(--accent); }
 .footer-end { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+#automation-file { overflow-wrap: anywhere; }

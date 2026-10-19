@@ -76,7 +76,9 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: |
+            src-tauri
+            control
           key: ${{ matrix.target }}
           cache-on-failure: true
       - run: npm install --global pnpm@11.25.0
@@ -94,6 +96,14 @@ jobs:
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       - run: pnpm test
       - run: pnpm check
+      - name: Test and build standalone CLI
+        run: |
+          cargo fmt --manifest-path control/Cargo.toml -- --check
+          cargo test --locked --manifest-path control/Cargo.toml
+          cargo clippy --locked --manifest-path control/Cargo.toml --all-targets -- -D warnings
+          cargo build --locked --manifest-path control/Cargo.toml --release --target ${{ matrix.target }}
+        env:
+          MACOSX_DEPLOYMENT_TARGET: '13.0'
       - name: Verify Linux audio and USB rules
         if: runner.os == 'Linux'
         run: |
