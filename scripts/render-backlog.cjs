@@ -19,7 +19,7 @@ for (const [key, value] of Object.entries(progress.items)) {
 const delivered = items.filter(item => status(item) === 'Implemented');
 const validation = items.filter(item => status(item) === 'Validation');
 const backlog = items.filter(item => status(item) === 'Backlog');
-let md = `# DynamicLight backlog\n\nReviewed ${progress.updated}: **${backlog.length} future features**, **${validation.length} validation trackers**, **${delivered.length} delivered features**. No implementation batch is currently active.\n\n[GitHub project](${links.project.url}) · [Open issues](https://github.com/mskutin/DynamicLight/issues)\n\n`;
+let md = `# DynamicLight backlog\n\nReviewed ${progress.updated}: **${backlog.length} future features**, **${validation.length} validation trackers**, **${delivered.length} delivered features**. ${progress.next?.length ? `Next implementation batch: ${progress.next.map(issueLink).join(", ")}.` : "No implementation batch is currently active."}\n\n[GitHub project](${links.project.url}) · [Open issues](https://github.com/mskutin/DynamicLight/issues)\n\n`;
 md += 'Backlog means uncommitted future work. In Progress is reserved for active implementation. Validation tracks remaining checks and fixes; Done records delivered implementation with verification handed off explicitly. CI builds do not establish physical hardware or accessibility results.\n\n';
 md += '## Validation\n\nPhysical testing remains deferred. Record results in these issues; do not mark unchecked scenarios passed based on builds or simulations.\n\n';
 for (const item of validation) md += `- **${issueLink(item.key)} — ${item.title}.** ${progress.items[item.key].remaining}\n`;

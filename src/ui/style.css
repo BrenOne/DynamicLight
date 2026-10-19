@@ -1,5 +1,5 @@
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   --bg: #f6f5f9;
   --panel: #ffffff;
   --nav: #eeedf4;
@@ -1550,31 +1550,152 @@ dd {
   }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #141419;
-    --panel: #1b1b22;
-    --nav: #18181f;
-    --raised: #25242e;
-    --border: #34333f;
-    --line: #34333f;
-    --muted: #aba6bb;
-    --text: #f0edf6;
-    --accent: #c0a0f1;
-    --accent-text: #211529;
-    --accent-soft: #332840;
-    --mint: #94dcc2;
-    --stage: #191820;
-    --track: #3d394b;
-    --error: #ffb5ab;
-    --error-bg: #382322;
-  }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #141419;
+  --panel: #1b1b22;
+  --nav: #18181f;
+  --raised: #25242e;
+  --border: #34333f;
+  --line: #34333f;
+  --muted: #aba6bb;
+  --text: #f0edf6;
+  --accent: #c0a0f1;
+  --accent-text: #211529;
+  --accent-soft: #332840;
+  --mint: #94dcc2;
+  --stage: #191820;
+  --track: #3d394b;
+  --error: #ffb5ab;
+  --error-bg: #382322;
 }
 /* Updates use the same local settings surface on every platform. */
-.updates-card { margin-block: 20px; min-width: 0; }
-.updates-card .input-row { flex-wrap: wrap; }
-#update-notes { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 12px; }
-#update-status { overflow-wrap: anywhere; }
-#update-progress { width: 100%; accent-color: var(--accent); }
-.footer-end { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
-#automation-file { overflow-wrap: anywhere; }
+.updates-card {
+  margin-block: 20px;
+  min-width: 0;
+}
+.updates-card .input-row {
+  flex-wrap: wrap;
+}
+#update-notes {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  font-size: 12px;
+}
+#update-status {
+  overflow-wrap: anywhere;
+}
+#update-progress {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.footer-end {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+#automation-file {
+  overflow-wrap: anywhere;
+}
+
+:root[data-accent="blue"] {
+  --accent: #205fac;
+  --accent-soft: #e0edff;
+}
+:root[data-accent="green"] {
+  --accent: #176b49;
+  --accent-soft: #dcf2e7;
+}
+:root[data-accent="rose"] {
+  --accent: #a12d60;
+  --accent-soft: #fbe2ed;
+}
+:root[data-theme="dark"][data-accent="blue"] {
+  --accent: #a3c9ff;
+  --accent-soft: #21354f;
+}
+:root[data-theme="dark"][data-accent="green"] {
+  --accent: #8edbb7;
+  --accent-soft: #193b2c;
+}
+:root[data-theme="dark"][data-accent="rose"] {
+  --accent: #ffabc9;
+  --accent-soft: #482438;
+}
+.appearance-card {
+  margin-bottom: 20px;
+}
+:root[data-density="compact"] .page-view {
+  padding: 20px;
+}
+:root[data-density="compact"] .settings-grid {
+  gap: 12px;
+}
+:root[data-density="compact"] .quick-controls {
+  padding: 12px 14px 0;
+  gap: 10px;
+}
+:root[data-density="compact"] button {
+  min-height: 32px;
+  padding-block: 5px;
+}
+
+.studio-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-block: 12px;
+}
+#studio-dialog {
+  width: min(850px, calc(100vw - 32px));
+}
+#studio-dialog fieldset {
+  margin-block: 16px;
+  min-width: 0;
+}
+#studio-dialog label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-block: 8px;
+  min-width: 0;
+}
+#studio-dialog label.checkbox {
+  flex-direction: row;
+  align-items: center;
+}
+#studio-dialog input:not([type="checkbox"]):not([type="color"]),
+#studio-dialog select {
+  width: 100%;
+  min-width: 0;
+}
+#studio-dialog .input-row {
+  flex-wrap: wrap;
+}
+#studio-dialog .input-row label {
+  flex: 1 1 120px;
+}
+#studio-preview {
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  margin-block: 12px;
+}
+#studio-leds {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+  gap: 5px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 5px;
+}
+#studio-leds [aria-pressed="true"] {
+  color: var(--accent-text);
+  background: var(--accent);
+}
+#studio-selection {
+  overflow-wrap: anywhere;
+}

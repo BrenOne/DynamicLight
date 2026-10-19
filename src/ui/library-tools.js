@@ -38,7 +38,7 @@ window.LibraryTools = (() => {
   function renderPalette() {
     el('palette-colors').replaceChildren(...colors.map((color,i)=>chip(color,`Color ${i+1}: ${color}`,()=>{selected=i;setDraft(color);renderPalette();},i===selected)));
     el('palette-add').disabled=colors.length>=8;el('palette-remove').disabled=colors.length<=1;el('palette-left').disabled=selected<=0;el('palette-right').disabled=selected>=colors.length-1;
-    const canUse=settings.mode==='music'||settings.mode==='rainbow'&&!['rainbow','ember'].includes(settings.effect);
+    const canUse=settings.mode==='music'||settings.mode==='rainbow'&&!['rainbow','ember','custom'].includes(settings.effect);
     el('palette-apply').disabled=!canUse;el('palette-delete').disabled=!paletteId;
     el('palette-status').textContent=canUse?'1–8 colors. Order controls the gradient.':'Save a palette here; choose Music, Aurora, Breathe or Comet to use it.';
   }
@@ -60,6 +60,14 @@ window.LibraryTools = (() => {
   async function dialogTask(button,status,task) {button.disabled=true;try{await task();}catch(e){el(status).textContent=String(e);}finally{button.disabled=false;}}
   function init() {
     lastColor=settings.color;sync();
+    const imageLabel=document.createElement('label');imageLabel.textContent='Extract palette from a local image';
+    const imageInput=document.createElement('input');imageInput.id='palette-image';imageInput.type='file';imageInput.accept='image/png,image/jpeg,image/webp,image/bmp';imageLabel.append(imageInput);
+    const wallpaper=document.createElement('button');wallpaper.id='palette-wallpaper';wallpaper.type='button';wallpaper.textContent='Use Windows wallpaper';
+    const help=document.createElement('p');help.className='help';help.textContent='Images stay on this computer. Up to 20 MiB / 40 megapixels. Suggestions are editable; save or apply when ready.';
+    el('saved-palettes').append(imageLabel,wallpaper,help);
+    const imported=values=>{colors=values;paletteId='';selected=0;el('palette-name').value='';setDraft(colors[0]);sync();renderPalette();el('palette-status').textContent='Image palette ready. Edit, reorder, save, or apply it.';};
+    imageInput.onchange=async e=>{try{if(e.target.files[0])imported(await ImagePalette.read(e.target.files[0]));}catch(error){el('palette-status').textContent=String(error);}finally{e.target.value='';}};
+    wallpaper.onclick=()=>dialogTask(wallpaper,'palette-status',async()=>{const bytes=await invoke('wallpaper_image');imported(await ImagePalette.read(new Blob([new Uint8Array(bytes)])));});
     el('open-color-editor').onclick=()=>open(false);el('open-palette-editor').onclick=()=>open(true);
     el('close-color-editor').onclick=()=>el('color-editor').close();
     el('reset-color').onclick=()=>setDraft(original);

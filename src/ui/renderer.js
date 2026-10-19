@@ -36,6 +36,7 @@ const effectLabels = {
   breath: "Breathe",
   comet: "Comet",
   ember: "Ember",
+  custom: "Custom",
 };
 const ranges = {
   brightness: "brightness",
@@ -241,10 +242,12 @@ function updateUI() {
   $("palette-controls").hidden = !["music", "rainbow"].includes(settings.mode);
   const fixedPalette =
     settings.mode === "rainbow" &&
-    ["rainbow", "ember"].includes(settings.effect);
+    ["rainbow", "ember", "custom"].includes(settings.effect);
   $("palette").disabled = busy || fixedPalette;
   $("palette-help").textContent = fixedPalette
-    ? "Fixed colors for this effect."
+    ? settings.effect === "custom"
+      ? "Edit colors in the custom effects editor."
+      : "Fixed colors for this effect."
     : "";
   $("color-control").hidden =
     ["screen", "blend"].includes(settings.mode) ||
@@ -342,9 +345,13 @@ function changed(keys) {
 async function run(action) {
   if (busy) return;
   busy = true;
-  document.querySelectorAll("input:not([id^=automation-]), select").forEach((input) => {
-    input.disabled = true;
-  });
+  document
+    .querySelectorAll(
+      "input:not([id^=automation-]):not([id^=studio-]), select:not([id^=appearance-]):not([id^=studio-])",
+    )
+    .forEach((input) => {
+      input.disabled = true;
+    });
   const controls = ["connect", "power", "refresh-screens", "retry"];
   controls.forEach((id) => {
     $(id).disabled = true;
@@ -362,9 +369,13 @@ async function run(action) {
     notice(String(error), true);
   } finally {
     busy = false;
-    document.querySelectorAll("input:not([id^=automation-]), select").forEach((input) => {
-      input.disabled = false;
-    });
+    document
+      .querySelectorAll(
+        "input:not([id^=automation-]):not([id^=studio-]), select:not([id^=appearance-]):not([id^=studio-])",
+      )
+      .forEach((input) => {
+        input.disabled = false;
+      });
     controls.forEach((id) => {
       $(id).disabled = false;
     });
@@ -400,7 +411,13 @@ function drawSpectrum(bands) {
     ctx.fillStyle = `hsl(${155 + i * 2.7} 65% ${50 + v * 16}%)`;
     ctx.globalAlpha = 0.25 + v * 0.75;
     ctx.beginPath();
-    ctx.roundRect(i * step + (step - barWidth) / 2, height - h, barWidth, h, Math.min(3, h / 2));
+    ctx.roundRect(
+      i * step + (step - barWidth) / 2,
+      height - h,
+      barWidth,
+      h,
+      Math.min(3, h / 2),
+    );
     ctx.fill();
   });
   ctx.globalAlpha = 1;
@@ -673,6 +690,7 @@ async function init() {
   }
   await initProfiles();
   window.LibraryTools.init();
+  window.Studio.init();
   window.Updates.init({ save, showSettings: () => showView("settings") });
   window.Automation.init();
   initCalibration();

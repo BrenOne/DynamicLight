@@ -15,6 +15,9 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
         "renderer.js",
         "updates.js",
         "automation.js",
+        "appearance.js",
+        "studio.js",
+        "image-palette.js",
         "library-tools.js",
         "ui-common.js",
         "icons.svg",
@@ -161,7 +164,16 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
         );
       }
       window.fixture = {
-        update: { phase: "idle", currentVersion: appVersion, version: null, notes: "", message: "", automatic: true, canInstall: true, progress: null },
+        update: {
+          phase: "idle",
+          currentVersion: appVersion,
+          version: null,
+          notes: "",
+          message: "",
+          automatic: true,
+          canInstall: true,
+          progress: null,
+        },
         updateInstalls: 0,
         state,
         calls,
@@ -180,27 +192,68 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
         },
         core: {
           invoke: async (cmd, args) => {
-            if (cmd === "automation_status") return structuredClone(fixture.automation || {enabled:false,allowCapture:false,endpoint:null,connectionFile:"private/session.json",message:""});
+            if (cmd === "studio_library") {
+              if (args.next) fixture.studioLibrary = args.next;
+              return structuredClone(
+                fixture.studioLibrary || { version: 1, effects: [], bias: [] },
+              );
+            }
+            if (cmd === "studio_preview")
+              return Array.from({ length: args.settings.count }, () => [
+                40, 80, 120,
+              ]);
+            if (cmd === "appearance") {
+              if (args.value) fixture.appearance = args.value;
+              return structuredClone(
+                fixture.appearance || {
+                  theme: "system",
+                  accent: "violet",
+                  density: "spacious",
+                },
+              );
+            }
+            if (cmd === "automation_status")
+              return structuredClone(
+                fixture.automation || {
+                  enabled: false,
+                  allowCapture: false,
+                  endpoint: null,
+                  connectionFile: "private/session.json",
+                  message: "",
+                },
+              );
             if (cmd === "automation_configure") {
-              if (fixture.failAutomation) throw Error("Automation settings could not be saved");
-              fixture.automation = { ...args, endpoint:args.enabled ? "http://127.0.0.1:12345/v1/command" : null, connectionFile:"private/session.json", message:"" };
+              if (fixture.failAutomation)
+                throw Error("Automation settings could not be saved");
+              fixture.automation = {
+                ...args,
+                endpoint: args.enabled
+                  ? "http://127.0.0.1:12345/v1/command"
+                  : null,
+                connectionFile: "private/session.json",
+                message: "",
+              };
               fixture.automationChanges = (fixture.automationChanges || 0) + 1;
               return structuredClone(fixture.automation);
             }
             if (cmd === "update_status") return structuredClone(fixture.update);
             if (cmd === "update_check") {
-              fixture.update.phase = fixture.update.version ? "available" : "current";
+              fixture.update.phase = fixture.update.version
+                ? "available"
+                : "current";
               return structuredClone(fixture.update);
             }
             if (cmd === "update_automatic") {
-              if (fixture.failUpdatePreference) throw Error("Update settings could not be saved");
+              if (fixture.failUpdatePreference)
+                throw Error("Update settings could not be saved");
               fixture.update.automatic = args.enabled;
               return structuredClone(fixture.update);
             }
             if (cmd === "update_install") {
               fixture.updateInstalls++;
               fixture.update.phase = "error";
-              fixture.update.message = "Download or signature verification failed. Lighting has not been stopped.";
+              fixture.update.message =
+                "Download or signature verification failed. Lighting has not been stopped.";
               return structuredClone(fixture.update);
             }
             if (cmd === "effect_previews") {
@@ -1374,61 +1427,245 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || "playwright");
     await page.locator("#close-color-editor").click();
     await page.setViewportSize({ width: 1120, height: 780 });
     await page.locator('.app-sidebar [data-view="settings"]').click();
-    await page.locator('#update-check').click();
-    assert.equal(await page.locator('#automation-enabled').isChecked(), false);
-    assert.equal(await page.locator('#automation-capture').isEnabled(), false);
-    await page.locator('#automation-enabled').check();
+    await page.locator("#update-check").click();
+    assert.equal(await page.locator("#automation-enabled").isChecked(), false);
+    assert.equal(await page.locator("#automation-capture").isEnabled(), false);
+    await page.locator("#automation-enabled").check();
     await page.waitForFunction(() => fixture.automation?.enabled);
-    assert.equal(await page.locator('#automation-capture').isChecked(), false);
-    await page.locator('#automation-capture').check();
+    assert.equal(await page.locator("#automation-capture").isChecked(), false);
+    await page.locator("#automation-capture").check();
     await page.waitForFunction(() => fixture.automation?.allowCapture);
-    await page.locator('#automation-rotate').click();
+    await page.locator("#automation-rotate").click();
     await page.waitForFunction(() => fixture.automationChanges === 3);
-    await page.evaluate(() => { fixture.failAutomation = true; });
-    await page.locator('#automation-enabled').click();
-    await page.waitForFunction(() => document.querySelector('#automation-enabled').checked);
-    assert.match(await page.locator('#automation-status').textContent(), /could not be saved/);
-    await page.evaluate(() => { fixture.failAutomation = false; });
-    await page.locator('#automation-enabled').uncheck();
-    await page.waitForFunction(() => !fixture.automation.enabled);
-    assert.equal(await page.locator('#automation-rotate').isEnabled(), false);
-    await page.waitForFunction(() => document.querySelector('#update-status').textContent.includes('up to date'));
-    await page.locator('#update-automatic').uncheck();
-    await page.waitForFunction(() => !fixture.update.automatic);
-    await page.evaluate(() => { fixture.failUpdatePreference = true; });
-    await page.locator('#update-automatic').click();
-    await page.waitForFunction(() => !document.querySelector('#update-automatic').checked);
-    assert.match(await page.locator('#update-status').innerText(), /could not be saved/);
     await page.evaluate(() => {
-      fixture.update.version = '99.0.0';
-      fixture.update.notes = '<script>window.injected = true</script>';
+      fixture.failAutomation = true;
     });
-    await page.locator('#update-check').click();
-    await page.locator('#update-install').click();
-    await page.locator('#update-cancel').click();
+    await page.locator("#automation-enabled").click();
+    await page.waitForFunction(
+      () => document.querySelector("#automation-enabled").checked,
+    );
+    assert.match(
+      await page.locator("#automation-status").textContent(),
+      /could not be saved/,
+    );
+    await page.evaluate(() => {
+      fixture.failAutomation = false;
+    });
+    await page.locator("#automation-enabled").uncheck();
+    await page.waitForFunction(() => !fixture.automation.enabled);
+    assert.equal(await page.locator("#automation-rotate").isEnabled(), false);
+    await page.waitForFunction(() =>
+      document
+        .querySelector("#update-status")
+        .textContent.includes("up to date"),
+    );
+    await page.locator("#update-automatic").uncheck();
+    await page.waitForFunction(() => !fixture.update.automatic);
+    await page.evaluate(() => {
+      fixture.failUpdatePreference = true;
+    });
+    await page.locator("#update-automatic").click();
+    await page.waitForFunction(
+      () => !document.querySelector("#update-automatic").checked,
+    );
+    assert.match(
+      await page.locator("#update-status").innerText(),
+      /could not be saved/,
+    );
+    await page.evaluate(() => {
+      fixture.update.version = "99.0.0";
+      fixture.update.notes = "<script>window.injected = true</script>";
+    });
+    await page.locator("#update-check").click();
+    await page.locator("#update-install").click();
+    await page.locator("#update-cancel").click();
     assert.equal(await page.evaluate(() => fixture.updateInstalls), 0);
-    await page.locator('#update-install').click();
-    await page.locator('#update-confirm').click();
+    await page.locator("#update-install").click();
+    await page.locator("#update-confirm").click();
     await page.waitForFunction(() => fixture.updateInstalls === 1);
-    assert.match(await page.locator('#update-status').innerText(), /signature verification failed/);
+    assert.match(
+      await page.locator("#update-status").innerText(),
+      /signature verification failed/,
+    );
     assert.equal(await page.evaluate(() => window.injected), undefined);
     await page.evaluate(() => {
-      fixture.update.phase = 'downloading'; fixture.update.progress = 42; fixture.update.message = '';
-      fixture.emitEvent('update-status', structuredClone(fixture.update));
+      fixture.update.phase = "downloading";
+      fixture.update.progress = 42;
+      fixture.update.message = "";
+      fixture.emitEvent("update-status", structuredClone(fixture.update));
     });
-    assert.equal(await page.locator('#update-progress').getAttribute('value'), '42');
-    assert.equal(await page.locator('#update-install').isDisabled(), true);
+    assert.equal(
+      await page.locator("#update-progress").getAttribute("value"),
+      "42",
+    );
+    assert.equal(await page.locator("#update-install").isDisabled(), true);
     await page.evaluate(() => {
-      fixture.update.phase = 'available'; fixture.update.canInstall = false;
-      fixture.emitEvent('update-status', structuredClone(fixture.update));
+      fixture.update.phase = "available";
+      fixture.update.canInstall = false;
+      fixture.emitEvent("update-status", structuredClone(fixture.update));
     });
-    assert.equal(await page.locator('#update-install').isVisible(), false);
-    assert.equal(await page.locator('#update-manual').isVisible(), true);
+    assert.equal(await page.locator("#update-install").isVisible(), false);
+    assert.equal(await page.locator("#update-manual").isVisible(), true);
     for (const width of [540, 780, 1120]) {
       await page.setViewportSize({ width, height: 780 });
-      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Update settings fit at ' + width);
+      assert(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+        "Update settings fit at " + width,
+      );
     }
-    await page.screenshot({ path: '.local/ui-updates.png' });
+    await page.screenshot({ path: ".local/ui-updates.png" });
+
+    // Appearance preferences cover every supported palette and both color schemes.
+    await page.setViewportSize({ width: 1120, height: 780 });
+    for (const theme of ["light", "dark"])
+      for (const accent of ["violet", "blue", "green", "rose"]) {
+        await page.locator("#appearance-theme").selectOption(theme);
+        await page.locator("#appearance-accent").selectOption(accent);
+        await page.waitForFunction(
+          ({ theme, accent }) =>
+            document.documentElement.dataset.theme === theme &&
+            document.documentElement.dataset.accent === accent,
+          { theme, accent },
+        );
+        const contrast = await page.evaluate(() => {
+          const css = getComputedStyle(document.documentElement);
+          const luminance = (name) => {
+            const hex = css.getPropertyValue(name).trim().slice(1);
+            const c = [0, 2, 4]
+              .map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+              .map((c) =>
+                c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4,
+              );
+            return c[0] * 0.2126 + c[1] * 0.7152 + c[2] * 0.0722;
+          };
+          return [
+            ["--text", "--panel"],
+            ["--muted", "--panel"],
+            ["--accent", "--accent-soft"],
+            ["--accent-text", "--accent"],
+          ].map(([a, b]) => {
+            const x = luminance(a),
+              y = luminance(b);
+            return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+          });
+        });
+        assert(
+          contrast.every((c) => c >= 4.5),
+          theme + " " + accent + " text contrast: " + contrast,
+        );
+      }
+    await page.locator("#appearance-density").selectOption("compact");
+    await page.locator("#appearance-theme").selectOption("system");
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.waitForFunction(
+      () => document.documentElement.dataset.theme === "light",
+    );
+    await page.emulateMedia({ colorScheme: "dark" });
+    await page.waitForFunction(
+      () => document.documentElement.dataset.theme === "dark",
+    );
+    await page.locator('[data-view="control"]').click();
+    await page.locator('[data-mode="rainbow"]').click();
+    await page.waitForFunction(() => !busy);
+    await page.locator("#open-studio-effect").click();
+    const beforeStudio = await page.evaluate(() =>
+      JSON.stringify(fixture.state.settings),
+    );
+    await page.locator("#studio-duration").fill("12");
+    await page.locator("#studio-duration").dispatchEvent("change");
+    await page.locator("#studio-add-layer").click();
+    assert.equal(await page.locator("#studio-layers fieldset").count(), 2);
+    await page.locator("#studio-undo").click();
+    assert.equal(await page.locator("#studio-layers fieldset").count(), 1);
+    await page.locator("#studio-cancel").click();
+    assert.equal(
+      await page.evaluate(() => JSON.stringify(fixture.state.settings)),
+      beforeStudio,
+      "Cancel preserves native scene",
+    );
+    await page.locator("#open-studio-effect").click();
+    await page.locator("#studio-duration").fill("12");
+    await page.locator("#studio-duration").dispatchEvent("change");
+    await page.locator("#studio-preset-name").fill("Layered ocean");
+    await page.locator("#studio-save-preset").click();
+    await page.waitForFunction(
+      () => fixture.studioLibrary?.effects.length === 1,
+    );
+    await page.locator("#studio-apply").click();
+    await page.waitForFunction(
+      () => !document.querySelector("#studio-dialog").open,
+    );
+    assert.equal(
+      await page.evaluate(
+        () => fixture.state.settings.studio.effect.durationMs,
+      ),
+      12000,
+    );
+    await page.locator('[data-view="device"]').click();
+    await page.locator("#open-studio-zones").click();
+    await page.locator("#studio-edge-top").click();
+    await page.locator("#studio-add-zone").click();
+    assert.equal(await page.locator("#studio-zones fieldset").count(), 1);
+    await page.locator("#studio-leds button").first().focus();
+    await page.keyboard.press("Shift+ArrowRight");
+    assert.equal(
+      await page.locator("#studio-leds [aria-pressed=true]").count(),
+      2,
+      "Keyboard range selection",
+    );
+    await page.setViewportSize({ width: 540, height: 780 });
+    assert(
+      await page
+        .locator("#studio-dialog")
+        .evaluate((e) => e.scrollWidth <= e.clientWidth),
+      "Studio editor fits narrow windows",
+    );
+    await page.screenshot({ path: ".local/ui-studio-zones.png" });
+    await page.locator("#studio-apply").click();
+    await page.waitForFunction(
+      () => !document.querySelector("#studio-dialog").open,
+    );
+    assert.equal(
+      await page.evaluate(() => fixture.state.settings.studio.zones.length),
+      1,
+    );
+    await page.locator('[data-view="control"]').click();
+    await page.locator('[data-mode="solid"]').click();
+    await page.waitForFunction(() => !busy);
+    await page.locator("#open-studio-bias").click();
+    await page.locator("#studio-red").fill("93");
+    await page.locator("#studio-red").dispatchEvent("change");
+    await page.locator("#studio-preset-name").fill("Metered desk");
+    await page.locator("#studio-save-preset").click();
+    await page.waitForFunction(() => fixture.studioLibrary.bias.length === 1);
+    await page.locator("#studio-apply").click();
+    await page.waitForFunction(
+      () => !document.querySelector("#studio-dialog").open,
+    );
+    assert.equal(
+      await page.evaluate(() => fixture.state.settings.studio.bias.gains[0]),
+      93,
+    );
+    assert.equal(
+      await page.evaluate(() => fixture.state.settings.studio.zones.length),
+      0,
+      "Bias removes decorative zones",
+    );
+    const colors = await page.evaluate(() =>
+      ImagePalette.extract(
+        new Uint8ClampedArray([
+          255, 0, 0, 255, 0, 0, 255, 255, 255, 0, 0, 255, 0, 255, 0, 0,
+        ]),
+      ),
+    );
+    assert.deepEqual(
+      colors,
+      ["#ff0000", "#0000ff"],
+      "Palette extraction ignores transparent pixels",
+    );
+    await page.setViewportSize({ width: 1120, height: 780 });
     await page.goto(`http://127.0.0.1:${server.address().port}/compact.html`);
     await page.waitForFunction(
       () => document.querySelector("#quick-power").disabled === false,

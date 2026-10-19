@@ -520,6 +520,7 @@ impl Engine {
         }
     }
     fn start_requested(&mut self) -> Result<(), String> {
+        self.started = Instant::now();
         self.life.requested = true;
         self.life.capture_allowed = true;
         self.desired = true;
@@ -579,6 +580,12 @@ impl Engine {
         let was_paused = !self.life.pause_reason(&self.state.settings).is_empty();
         if self.state.settings.resume_capture && !settings.resume_capture && !self.state.capturing {
             self.life.capture_allowed = false;
+        }
+        if settings.mode != self.state.settings.mode
+            || settings.effect != self.state.settings.effect
+            || settings.studio != self.state.settings.studio
+        {
+            self.started = Instant::now();
         }
         self.state.settings = settings;
         if !was_paused && !self.life.pause_reason(&self.state.settings).is_empty() {
@@ -876,7 +883,14 @@ impl Engine {
                 .collect());
         }
         match s.mode.as_str() {
-            "solid" => Ok(vec![lighting::hex(&s.color); s.count]),
+            "solid" => Ok(vec![
+                if s.studio.bias.enabled {
+                    s.studio.bias.color()
+                } else {
+                    lighting::hex(&s.color)
+                };
+                s.count
+            ]),
             "rainbow" => Ok(effects::animated(s, self.started.elapsed().as_secs_f32())),
             "screen" => {
                 if let Some(screen) = self.screen.as_mut() {
@@ -983,7 +997,15 @@ impl Engine {
         self.reconcile_capture();
         let generated = self.generate_frame(dt);
         match generated {
-            Ok(colors) => {
+            Ok(mut colors) => {
+                if !self.state.calibrating {
+                    self.state.settings.studio.overlay(
+                        &mut colors,
+                        self.started.elapsed().as_secs_f32(),
+                        self.state.settings.speed,
+                        self.state.settings.effect_reverse,
+                    );
+                }
                 if !self.state.powered
                     || (matches!(
                         self.state.settings.mode.as_str(),
@@ -1026,7 +1048,10 @@ impl Engine {
             let write_started = Instant::now();
             let s = &self.state.settings;
             let active = self.state.powered
-                && (self.state.calibrating || s.mode == "rainbow" || self.state.capturing);
+                && (self.state.calibrating
+                    || s.mode == "rainbow"
+                    || self.state.capturing
+                    || (s.mode == "solid" && !s.studio.zones.is_empty()));
             let result = if active {
                 Some(self.controller.frame(&lighting::reorder(
                     &self.state.colors,
@@ -1126,7 +1151,9 @@ pub fn start(
                     clock.set_active(
                         !engine.life.sleeping
                             && engine.state.powered
-                            && (engine.state.capturing || engine.state.settings.mode == "rainbow"),
+                            && (engine.state.capturing
+                                || engine.state.settings.mode == "rainbow"
+                                || !engine.state.settings.studio.zones.is_empty()),
                     );
                     let began = Instant::now();
                     let period = Duration::from_secs_f64(1.0 / engine.state.settings.fps as f64);
@@ -1360,6 +1387,96 @@ mod tests {
             writes: 0,
         });
         e
+    }
+    #[test]
+    fn studio_zones_use_frames_respect_off_and_capture_and_preserve_scene_data() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = Settings {
+            count: 4,
+            brightness: 100,
+            max_brightness: 20,
+            ..Default::default()
+        };
+        s.studio.zones.push(crate::studio::Zone {
+            name: "Left".into(),
+            start: 0,
+            end: 500,
+            color: "#ff0000".into(),
+            effect: None,
+        });
+        s.studio.zones.push(crate::studio::Zone {
+            name: "Right".into(),
+            start: 500,
+            end: 1000,
+            color: "#0000ff".into(),
+            effect: None,
+        });
+        let mut e = simulated(s.clone(), dir.path().join("settings.json"));
+        e.tick();
+        assert!(e.state.colors.iter().all(|c| *c == [0; 3]));
+        e.action(Action::Start).unwrap();
+        e.tick();
+        assert_eq!(
+            e.state.colors,
+            [[51, 0, 0], [51, 0, 0], [0, 0, 51], [0, 0, 51]]
+        );
+        e.action(Action::Power { on: false }).unwrap();
+        e.tick();
+        assert!(e.state.colors.iter().all(|c| *c == [0; 3]));
+        s.mode = "screen".into();
+        e.action(Action::Settings {
+            settings: s.clone(),
+        })
+        .unwrap();
+        e.life.requested = true;
+        e.tick();
+        assert!(!e.state.capturing);
+        assert!(
+            e.state.colors.iter().all(|c| *c == [0; 3]),
+            "Zones cannot bypass capture consent"
+        );
+        let scene = SceneSettings::capture(&s);
+        let serialized = serde_json::to_string(&scene).unwrap();
+        let restored: SceneSettings = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(restored.studio, s.studio);
+        assert_eq!(
+            restored
+                .apply(&Settings {
+                    max_brightness: 5,
+                    ..Default::default()
+                })
+                .max_brightness,
+            5
+        );
+    }
+    #[test]
+    fn finite_effects_restart_and_color_edits_exit_bias() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut e = simulated(Settings::default(), dir.path().join("settings.json"));
+        e.started = Instant::now() - Duration::from_secs(300);
+        let mut s = e.state.settings.clone();
+        s.effect = "custom".into();
+        s.mode = "rainbow".into();
+        s.studio.effect.repeats = 1;
+        e.action(Action::Settings { settings: s }).unwrap();
+        assert!(e.started.elapsed() < Duration::from_secs(1));
+        let old = e.started;
+        e.action(Action::Adjust {
+            brightness: Some(20),
+            color: None,
+        })
+        .unwrap();
+        assert_eq!(e.started, old, "Brightness must not restart an effect");
+        let mut s = e.state.settings.clone();
+        s.mode = "solid".into();
+        s.studio.bias.enabled = true;
+        e.action(Action::Settings { settings: s }).unwrap();
+        e.action(Action::Adjust {
+            brightness: None,
+            color: Some("#ff0000".into()),
+        })
+        .unwrap();
+        assert!(!e.state.settings.studio.bias.enabled);
     }
     #[test]
     fn start_mode_restores_memory_and_respects_calibration_and_stop() {

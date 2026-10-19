@@ -1,3 +1,4 @@
+mod appearance;
 mod audio;
 mod automation;
 mod beat;
@@ -21,6 +22,7 @@ mod protocol;
 mod scenes;
 mod settings;
 mod sharing;
+mod studio;
 mod tray;
 mod updates;
 
@@ -162,6 +164,10 @@ pub fn run() {
             Some(vec!["--autostart"]),
         ))
         .invoke_handler(tauri::generate_handler![
+            appearance::appearance,
+            studio::studio_library,
+            studio::studio_preview,
+            studio::wallpaper_image,
             control,
             displays,
             quit,
@@ -248,6 +254,8 @@ pub fn run() {
             }
             app.manage(AtomicBool::new(false));
             updates::init(app.handle()).map_err(std::io::Error::other)?;
+            studio::init(app.handle()).map_err(std::io::Error::other)?;
+            appearance::init(app.handle()).map_err(std::io::Error::other)?;
             profiles::init(app.handle()).map_err(std::io::Error::other)?;
             automation::init(app.handle()).map_err(std::io::Error::other)?;
             tray::init(app.handle())?;

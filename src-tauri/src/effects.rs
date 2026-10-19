@@ -32,6 +32,18 @@ pub fn palette(s: &Settings, position: f32) -> Rgb {
     })
 }
 pub fn animated(s: &Settings, seconds: f32) -> Vec<Rgb> {
+    if s.effect == "custom" {
+        return (0..s.count)
+            .map(|i| {
+                s.studio.effect.color(
+                    i as f32 / (s.count - 1).max(1) as f32,
+                    seconds,
+                    s.speed,
+                    s.effect_reverse,
+                )
+            })
+            .collect();
+    }
     let t = seconds * (0.03 + s.speed as f32 / 250.0);
     (0..s.count)
         .map(|i| {

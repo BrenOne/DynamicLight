@@ -1,6 +1,9 @@
 {
   "updated": "2026-10-19",
-  "next": [],
+  "next": [
+    "SCR-02",
+    "FX-07"
+  ],
   "items": {
     "REL-01": {
       "status": "Implemented",
@@ -181,6 +184,66 @@
       "status": "Implemented",
       "delivered": "Opt-in authenticated loopback API v1 and standalone Windows/macOS/Linux CLI for status, power, brightness, scenes and profiles; private rotating credentials, bounded and rate-limited requests, capture consent and engine comfort guards, terminal installers and adapter examples.",
       "remaining": "Physical Stream Deck, capture permission and installed CLI validation on macOS/Linux; phone and game adapters remain separate backlog features.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
+    },
+    "UI-09": {
+      "status": "Implemented",
+      "delivered": "0.11: Persistent system/light/dark themes, four contrast-checked accents and density choices synchronized between studio and Quick controls.",
+      "remaining": "Physical output and assistive-technology validation; see docs/studio-authoring.md for supported scope.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
+    },
+    "FX-01": {
+      "status": "Implemented",
+      "delivered": "0.11: Versioned data-only effects with four composited layers, gradients/waves/breathing/keyframes, duration/repeats/speed/direction, native simulated preview, preset persistence and bounded file import/export.",
+      "remaining": "Physical output and assistive-technology validation; see docs/studio-authoring.md for supported scope.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
+    },
+    "FX-02": {
+      "status": "Implemented",
+      "delivered": "0.11: Named calibrated-range zones with static colors or custom effects, deterministic overlap precedence, profile persistence, and global comfort/power/capture guards.",
+      "remaining": "Physical output and assistive-technology validation; see docs/studio-authoring.md for supported scope.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
+    },
+    "FX-04": {
+      "status": "Implemented",
+      "delivered": "0.11: Separate bias-light calibration presets with approximate temperature targets, measured RGB gains, brightness and measurement notes; no unmeasured color accuracy claim.",
+      "remaining": "Physical output and assistive-technology validation; see docs/studio-authoring.md for supported scope.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
+    },
+    "FX-06": {
+      "status": "Implemented",
+      "delivered": "0.11: Local image palette extraction into the existing edit/reorder/save/apply workflow. Windows static-wallpaper lookup; manual wallpaper image selection on other platforms.",
+      "remaining": "Physical output and assistive-technology validation; see docs/studio-authoring.md for supported scope.",
+      "validation": [
+        "QA-01",
+        "PLAT-01",
+        "UI-10"
+      ]
+    },
+    "UI-01": {
+      "status": "Implemented",
+      "delivered": "0.11: Interactive simulated LED/edge/range selection, keyboard range controls, draft placement/color/zone edits, undo and cancel before applying.",
+      "remaining": "Physical output and assistive-technology validation; see docs/studio-authoring.md for supported scope.",
       "validation": [
         "QA-01",
         "PLAT-01",

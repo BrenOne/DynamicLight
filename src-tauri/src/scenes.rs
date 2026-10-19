@@ -103,8 +103,15 @@ pub fn scene_previews(settings: Vec<Settings>, seconds: f32) -> Result<Vec<Vec<R
                 .map(|i| (0.2 + 0.5 * (i as f32 * 0.35 - seconds * 2.0).sin()).max(0.0))
                 .collect();
             let beat = [(-seconds.rem_euclid(0.6) / 0.18).exp(); 32];
-            let colors = match s.mode.as_str() {
-                "solid" => vec![crate::lighting::hex(&s.color); 48],
+            let mut colors = match s.mode.as_str() {
+                "solid" => vec![
+                    if s.studio.bias.enabled {
+                        s.studio.bias.color()
+                    } else {
+                        crate::lighting::hex(&s.color)
+                    };
+                    48
+                ],
                 "rainbow" => effects::animated(&s, seconds),
                 "music" => effects::music(
                     &s,
@@ -128,6 +135,8 @@ pub fn scene_previews(settings: Vec<Settings>, seconds: f32) -> Result<Vec<Vec<R
                     }
                 }
             };
+            s.studio
+                .overlay(&mut colors, seconds, s.speed, s.effect_reverse);
             let brightness = s.brightness.min(s.max_brightness) as f32 / 100.0;
             Ok(colors
                 .into_iter()

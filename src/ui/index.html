@@ -208,7 +208,13 @@
                     <div>
                       <h2 tabindex="-1">Effects</h2>
                     </div>
-                    <span class="muted">Preview on hover</span>
+                    <button
+                      id="open-studio-effect"
+                      class="text-button"
+                      type="button"
+                    >
+                      Create / edit…
+                    </button>
                   </div>
                   <div class="effect-grid">
                     <button data-effect="rainbow" type="button">
@@ -436,6 +442,13 @@
                 </section>
                 <section class="inspector-section tuning">
                   <div id="color-control">
+                    <button
+                      id="open-studio-bias"
+                      class="text-button"
+                      type="button"
+                    >
+                      Bias-light calibration…
+                    </button>
                     <label for="color"
                       >Color <output id="hex-value">#9B72FF</output></label
                     >
@@ -655,6 +668,9 @@
                   >Closing the window keeps lighting running in the tray.</span
                 >
               </p>
+              <button id="open-studio-zones" type="button">
+                LED layout &amp; zones…
+              </button>
               <button id="calibrate" class="secondary" type="button">
                 Calibrate strip…
               </button>
@@ -669,6 +685,37 @@
             <div class="page-heading">
               <div><h2 tabindex="-1">Settings</h2></div>
             </div>
+            <fieldset class="appearance-card">
+              <legend>Appearance</legend>
+              <div class="settings-grid">
+                <label
+                  >Theme<select id="appearance-theme">
+                    <option value="system">Follow system</option>
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                  </select></label
+                >
+                <label
+                  >Accent<select id="appearance-accent">
+                    <option value="violet">Violet</option>
+                    <option value="blue">Blue</option>
+                    <option value="green">Green</option>
+                    <option value="rose">Rose</option>
+                  </select></label
+                >
+                <label
+                  >Layout density<select id="appearance-density">
+                    <option value="spacious">Spacious</option>
+                    <option value="compact">Compact</option>
+                  </select></label
+                >
+              </div>
+              <p class="help">
+                Applies to Studio and Quick controls. Native tray menus follow
+                platform appearance.
+              </p>
+              <p id="appearance-status" class="help" role="status"></p>
+            </fieldset>
             <div class="behavior-grid">
               <fieldset>
                 <legend>Startup</legend>
@@ -767,29 +814,81 @@
             <p id="lifecycle-warning" class="help" role="status" hidden=""></p>
             <fieldset class="updates-card">
               <legend>Local automation</legend>
-              <label class="checkbox"><input id="automation-enabled" type="checkbox" /> Enable local API and CLI controls</label>
-              <p class="hint">Allows apps running as your user to control DynamicLight using a private credential. The desktop app must stay open.</p>
-              <label class="checkbox"><input id="automation-capture" type="checkbox" disabled /> Allow automation to start screen and audio capture</label>
-              <p class="hint">Capture also needs explicit consent on each command and existing system permission. Comfort limits still apply.</p>
-              <p id="automation-status" role="status" aria-live="polite">Local automation is off.</p>
+              <label class="checkbox"
+                ><input id="automation-enabled" type="checkbox" /> Enable local
+                API and CLI controls</label
+              >
+              <p class="hint">
+                Allows apps running as your user to control DynamicLight using a
+                private credential. The desktop app must stay open.
+              </p>
+              <label class="checkbox"
+                ><input id="automation-capture" type="checkbox" disabled />
+                Allow automation to start screen and audio capture</label
+              >
+              <p class="hint">
+                Capture also needs explicit consent on each command and existing
+                system permission. Comfort limits still apply.
+              </p>
+              <p id="automation-status" role="status" aria-live="polite">
+                Local automation is off.
+              </p>
               <div id="automation-connection" hidden>
                 <p>Endpoint: <code id="automation-endpoint"></code></p>
-                <p>Private connection file: <code id="automation-file"></code></p>
+                <p>
+                  Private connection file: <code id="automation-file"></code>
+                </p>
               </div>
-              <button id="automation-rotate" type="button" class="secondary" disabled>Rotate credential</button>
+              <button
+                id="automation-rotate"
+                type="button"
+                class="secondary"
+                disabled
+              >
+                Rotate credential
+              </button>
             </fieldset>
             <fieldset class="updates-card">
               <legend>App updates</legend>
-              <label class="checkbox"><input id="update-automatic" type="checkbox" /> Automatically check for updates</label>
-              <p class="help">Checks GitHub after startup and every six hours. Downloads and installation only start when you choose. No lighting, screen, audio or profile data is sent.</p>
+              <label class="checkbox"
+                ><input id="update-automatic" type="checkbox" /> Automatically
+                check for updates</label
+              >
+              <p class="help">
+                Checks GitHub after startup and every six hours. Downloads and
+                installation only start when you choose. No lighting, screen,
+                audio or profile data is sent.
+              </p>
               <p id="update-status" role="status">Loading update settings…</p>
-              <progress id="update-progress" max="100" hidden="" aria-label="Update download progress"></progress>
-              <p id="update-manual" class="help" hidden="">In-app installation is available in Windows and macOS release builds and Linux AppImages. For a Debian package or development build, use the terminal installer or install the latest release package.</p>
+              <progress
+                id="update-progress"
+                max="100"
+                hidden=""
+                aria-label="Update download progress"
+              ></progress>
+              <p id="update-manual" class="help" hidden="">
+                In-app installation is available in Windows and macOS release
+                builds and Linux AppImages. For a Debian package or development
+                build, use the terminal installer or install the latest release
+                package.
+              </p>
               <div class="input-row">
-                <button id="update-check" type="button" class="secondary">Check for updates</button>
-                <button id="update-install" type="button" class="power" hidden="">Install and restart…</button>
+                <button id="update-check" type="button" class="secondary">
+                  Check for updates
+                </button>
+                <button
+                  id="update-install"
+                  type="button"
+                  class="power"
+                  hidden=""
+                >
+                  Install and restart…
+                </button>
               </div>
-              <details id="update-notes-details" hidden=""><summary>Release notes</summary><pre id="update-notes"></pre></details>
+              <details id="update-notes-details" hidden="">
+                <summary>Release notes</summary>
+                <pre id="update-notes"></pre>
+              </details>
             </fieldset>
             <section class="about-app">
               <img src="icon.svg" width="32" height="32" alt="" />
@@ -809,7 +908,14 @@
           <span id="footer-status" role="status"
             ><span id="frame-rate" class="muted">Preview only</span></span
           ><span class="footer-end"
-            ><button id="update-banner" class="text-button" type="button" hidden="">Update available</button><button id="connection-details" class="text-button" type="button">
+            ><button
+              id="update-banner"
+              class="text-button"
+              type="button"
+              hidden=""
+            >
+              Update available</button
+            ><button id="connection-details" class="text-button" type="button">
               Connection details
               <svg viewBox="0 0 24 24" class="icon" aria-hidden="true">
                 <use href="icons.svg#chevron-up"></use>
@@ -1184,10 +1290,198 @@
     </dialog>
     <dialog id="update-dialog" aria-labelledby="update-dialog-title">
       <h2 id="update-dialog-title">Install update and restart?</h2>
-      <p>Your settings will be saved. Lighting continues during download, then stops while DynamicLight installs and restarts. Your existing startup and capture recovery settings still apply.</p>
+      <p>
+        Your settings will be saved. Lighting continues during download, then
+        stops while DynamicLight installs and restarts. Your existing startup
+        and capture recovery settings still apply.
+      </p>
       <p id="update-dialog-error" class="help" role="status"></p>
-      <div class="input-row"><button id="update-cancel" type="button" class="secondary" autofocus>Cancel</button><button id="update-confirm" type="button" class="power">Install and restart</button></div>
+      <div class="input-row">
+        <button id="update-cancel" type="button" class="secondary" autofocus>
+          Cancel</button
+        ><button id="update-confirm" type="button" class="power">
+          Install and restart
+        </button>
+      </div>
     </dialog>
+    <dialog id="studio-dialog" aria-labelledby="studio-title">
+      <div class="dialog-heading">
+        <h2 id="studio-title" tabindex="-1">Studio editor</h2>
+        <button id="studio-cancel" type="button">Cancel</button>
+      </div>
+      <p class="help">
+        Simulated preview. Hardware keeps its current scene until Apply. Global
+        brightness and comfort limits still apply.
+      </p>
+      <canvas
+        id="studio-preview"
+        width="600"
+        height="260"
+        aria-label="Simulated LED placement and colors. Use the LED buttons below for keyboard selection."
+      ></canvas>
+      <label class="checkbox"
+        ><input id="studio-animate" type="checkbox" /> Animate preview</label
+      >
+      <section id="studio-effect-panel">
+        <div class="settings-grid">
+          <label>Saved effect<select id="studio-effect-presets"></select></label
+          ><label
+            >Duration (seconds)<input
+              id="studio-duration"
+              type="number"
+              min="0.1"
+              max="3600"
+              step="0.1" /></label
+          ><label
+            >Repeat cycles (0 = forever)<input
+              id="studio-repeats"
+              type="number"
+              min="0"
+              max="10000" /></label
+          ><label
+            >Speed (50 = original)<input
+              id="studio-speed"
+              type="number"
+              min="1"
+              max="100" /></label
+          ><label class="checkbox"
+            ><input id="studio-reverse" type="checkbox" /> Reverse spatial
+            direction</label
+          >
+        </div>
+        <p class="help">
+          Layers blend in order using opacity. Keyframe positions run from 0 to
+          1000. Finite sequences hold their final frame. Up to four layers and
+          sixteen stops per layer.
+        </p>
+        <div id="studio-layers"></div>
+        <button id="studio-add-layer" type="button">Add layer</button>
+        <details>
+          <summary>Effect file</summary>
+          <label
+            >Import v1 effect<input
+              id="studio-import"
+              type="file"
+              accept=".json,application/json" /></label
+          ><button id="studio-export" type="button">Export effect</button>
+        </details>
+      </section>
+      <section id="studio-zones-panel" hidden>
+        <div class="settings-grid">
+          <label
+            >Starting offset<input
+              id="studio-offset"
+              type="number"
+              min="0"
+              max="126" /></label
+          ><label
+            >Coverage<select id="studio-sides">
+              <option value="3">Three sides</option>
+              <option value="4">Four sides</option>
+            </select></label
+          ><label class="checkbox"
+            ><input id="studio-route-reverse" type="checkbox" /> Reverse
+            physical route</label
+          >
+        </div>
+        <p class="help">
+          LED numbers follow the calibrated route before physical
+          reversal/offset. The ① marker shows the first hardware LED. Zones
+          scale proportionally when LED count changes. Last overlapping zone
+          wins. Unassigned LEDs retain the underlying scene.
+        </p>
+        <div
+          class="studio-toolbar"
+          role="group"
+          aria-label="Select monitor edge"
+        >
+          <button id="studio-edge-left">Left</button
+          ><button id="studio-edge-top">Top</button
+          ><button id="studio-edge-right">Right</button
+          ><button id="studio-edge-bottom">Bottom</button
+          ><button id="studio-edge-all">All LEDs</button>
+        </div>
+        <p id="studio-selection" class="help" role="status"></p>
+        <div id="studio-leds" role="group" aria-label="LED selection"></div>
+        <div class="input-row">
+          <label
+            >Selected range color<input
+              id="studio-zone-color"
+              type="color"
+              value="#ffffff" /></label
+          ><button id="studio-add-zone">Create zone from selection</button
+          ><button id="studio-clear-zones">Clear zones</button>
+        </div>
+        <div id="studio-zones"></div>
+      </section>
+      <section id="studio-bias-panel" hidden>
+        <p class="help">
+          RGB temperature is an approximation. An RGB strip cannot guarantee a
+          neutral white point or spectral accuracy. Calibrate with a meter;
+          temperature alone is not a measured result. Applying bias lighting
+          clears decorative zones.
+        </p>
+        <div class="settings-grid">
+          <label
+            >Saved calibration<select id="studio-bias-presets"></select></label
+          ><label
+            >Target temperature (K)<input
+              id="studio-kelvin"
+              type="number"
+              min="2700"
+              max="10000" /></label
+          ><label
+            >Brightness %<input
+              id="studio-brightness"
+              type="number"
+              min="0"
+              max="100" /></label
+          ><label
+            >Measured red gain %<input
+              id="studio-red"
+              type="number"
+              min="0"
+              max="200" /></label
+          ><label
+            >Measured green gain %<input
+              id="studio-green"
+              type="number"
+              min="0"
+              max="200" /></label
+          ><label
+            >Measured blue gain %<input
+              id="studio-blue"
+              type="number"
+              min="0"
+              max="200"
+          /></label>
+        </div>
+        <label
+          >Measurement reference (meter, white point, date; optional)<input
+            id="studio-measurement"
+            maxlength="200" /></label
+        ><button id="studio-disable-bias" type="button">
+          Use ordinary color instead
+        </button>
+      </section>
+      <div id="studio-preset-controls">
+        <label
+          >Preset name<input id="studio-preset-name" maxlength="50"
+        /></label>
+        <div class="input-row">
+          <button id="studio-save-preset">Save / replace preset</button
+          ><button id="studio-delete-preset">Delete named preset</button>
+        </div>
+      </div>
+      <p id="studio-status" class="help" role="status"></p>
+      <div class="input-row">
+        <button id="studio-undo">Undo edit</button
+        ><button id="studio-apply" class="power">Apply</button>
+      </div>
+    </dialog>
+    <script src="image-palette.js"></script>
+    <script src="studio.js"></script>
+    <script src="appearance.js"></script>
     <script src="ui-common.js"></script>
     <script src="updates.js"></script>
     <script src="automation.js"></script>

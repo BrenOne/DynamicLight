@@ -40,6 +40,8 @@ pub struct Settings {
     pub transition_limit: u16,
     pub minimum_glow: u8,
     pub effect_reverse: bool,
+    #[serde(default)]
+    pub studio: crate::studio::Studio,
     pub mode_settings: std::collections::BTreeMap<String, ModeSettings>,
 }
 impl Default for Settings {
@@ -80,12 +82,14 @@ impl Default for Settings {
             transition_limit: 0,
             minimum_glow: 0,
             effect_reverse: false,
+            studio: Default::default(),
             mode_settings: Default::default(),
         }
     }
 }
 impl Settings {
     pub fn validate(&self) -> Result<(), String> {
+        self.studio.validate()?;
         if self.mode_settings.len() > 5 {
             return Err("Too many remembered modes".into());
         }
@@ -139,7 +143,8 @@ impl Settings {
         {
             return Err("Unknown lighting mode or audio source".into());
         }
-        if !["rainbow", "aurora", "breath", "comet", "ember"].contains(&self.effect.as_str())
+        if !["rainbow", "aurora", "breath", "comet", "ember", "custom"]
+            .contains(&self.effect.as_str())
             || !["aurora", "ocean", "sunset", "mono", "custom"].contains(&self.palette.as_str())
             || !["spectrum", "bass", "vu", "wave", "beat"].contains(&self.music_style.as_str())
         {
@@ -241,6 +246,8 @@ pub struct ModeSettings {
     input_gain: i8,
     blend: u8,
     effect_reverse: bool,
+    #[serde(default)]
+    studio: crate::studio::Studio,
 }
 impl ModeSettings {
     pub fn capture(s: &Settings) -> Self {
@@ -266,6 +273,7 @@ impl ModeSettings {
             input_gain: s.input_gain,
             blend: s.blend,
             effect_reverse: s.effect_reverse,
+            studio: s.studio.clone(),
         }
     }
     pub fn apply(&self, s: &mut Settings) {
@@ -290,6 +298,7 @@ impl ModeSettings {
         s.input_gain = self.input_gain;
         s.blend = self.blend;
         s.effect_reverse = self.effect_reverse;
+        s.studio = self.studio.clone();
     }
 }
 
@@ -320,6 +329,8 @@ pub struct SceneSettings {
     pub input_gain: i8,
     pub blend: u8,
     pub effect_reverse: bool,
+    #[serde(default)]
+    pub studio: crate::studio::Studio,
 }
 impl SceneSettings {
     pub fn capture(s: &Settings) -> Self {
@@ -345,6 +356,7 @@ impl SceneSettings {
             input_gain: s.input_gain,
             blend: s.blend,
             effect_reverse: s.effect_reverse,
+            studio: s.studio.clone(),
         }
     }
     pub fn apply(&self, current: &Settings) -> Settings {
@@ -370,6 +382,7 @@ impl SceneSettings {
             input_gain: self.input_gain,
             blend: self.blend,
             effect_reverse: self.effect_reverse,
+            studio: self.studio.clone(),
             ..current.clone()
         }
     }
@@ -401,7 +414,10 @@ impl SettingsPatch {
             }
             fields.insert(key.clone(), value.clone());
         }
-        let settings: Settings = serde_json::from_value(value).map_err(|e| e.to_string())?;
+        let mut settings: Settings = serde_json::from_value(value).map_err(|e| e.to_string())?;
+        if self.0.contains_key("color") && !self.0.contains_key("studio") {
+            settings.studio.bias.enabled = false;
+        }
         settings.validate()?;
         Ok(settings)
     }
