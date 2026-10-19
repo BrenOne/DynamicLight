@@ -17,17 +17,17 @@ Wayland screen sync is not enabled yet. Other modes remain available. Closing th
 
 ## Recommended: Debian package
 
-Download the Linux artifact, extract it, then install the `.deb` from your Downloads directory (replace the filename with the one you downloaded):
+Download the `.deb` from [Releases](https://github.com/mskutin/DynamicLight/releases/latest), then install it from your Downloads directory:
 
 ```sh
-sudo apt install ./DynamicLight_0.6.0_amd64.deb
+sudo apt install ./dynamiclight-desktop-linux-x64.deb
 ```
 
 The package installs the required libraries, audio helper, app icon, and a USB permission rule. **Unplug and reconnect the strip after installation**, then launch DynamicLight from your applications menu. Run the app as your normal user.
 
 ## AppImage
 
-The AppImage needs the host's audio service and the USB permission rule. Download `69-dynamiclight.rules` from the same build artifact and install it once:
+The AppImage needs the host's audio service and the USB permission rule. Download `69-dynamiclight.rules` from the same release and install it once. If you used `bash install.sh --appimage`, first change to `~/.local/opt/dynamiclight-desktop`, where the installer saved the rule:
 
 ```sh
 sudo apt install pulseaudio-utils libasound2-plugins libfuse2t64
@@ -38,11 +38,11 @@ sudo udevadm control --reload-rules
 Unplug and reconnect the strip. Mark the AppImage executable in its file properties, or run:
 
 ```sh
-chmod +x DynamicLight_0.6.0_amd64.AppImage
-./DynamicLight_0.6.0_amd64.AppImage
+chmod +x dynamiclight-desktop-linux-x64.AppImage
+./dynamiclight-desktop-linux-x64.AppImage
 ```
 
-The rule grants only the active local user access to this controller's lighting interface; it does not grant access to all USB devices or the keyboard interface. AppImage updates do not install system permission rules automatically.
+The terminal installer instead names the installed file `~/.local/opt/dynamiclight-desktop/DynamicLight.AppImage`; run that path directly. The rule grants only the active local user access to this controller's lighting interface; it does not grant access to all USB devices or the keyboard interface. AppImage updates do not install system permission rules automatically.
 
 ## If something does not work
 
@@ -52,4 +52,4 @@ The rule grants only the active local user access to this controller's lighting 
 - **No tray icon:** reopen the minimized app from the taskbar or applications menu. GNOME may require an AppIndicator extension to show tray icons, but the app does not require one.
 - **Lights stay on during suspend:** automatic sleep handling requires systemd-logind and permission for a delay inhibitor. Turn lights off manually if your desktop does not provide these.
 
-To uninstall a Debian package, use `sudo apt remove dynamiclight`. For an AppImage, delete the AppImage and, if no longer needed, the manually installed `/etc/udev/rules.d/69-dynamiclight.rules` file; reload udev rules and reconnect the strip afterward. Saved lighting preferences are retained.
+To uninstall a Debian package, use `sudo apt remove dynamiclight`. For an AppImage, delete the AppImage (or the terminal installer's `~/.local/opt/dynamiclight-desktop` directory) and, if no longer needed, the manually installed `/etc/udev/rules.d/69-dynamiclight.rules` file; reload udev rules and reconnect the strip afterward. Saved lighting preferences are retained.

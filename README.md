@@ -8,16 +8,32 @@ Control compatible USB LED strips with fixed colors, screen sync, music, and ani
 
 ## Get the app
 
-DynamicLight is in preview. Download a build from [GitHub Actions](https://github.com/mskutin/DynamicLight/actions/workflows/build.yml): open a successful run, scroll to **Artifacts**, and choose your platform. GitHub requires sign-in to download these preview builds.
+DynamicLight is in preview. Download an installer from [GitHub Releases](https://github.com/mskutin/DynamicLight/releases/latest). No GitHub sign-in is required.
 
 | Your computer | Download and open |
 | --- | --- |
-| Windows | Windows artifact → `.exe` installer |
-| Mac with Apple silicon | `aarch64-apple-darwin` artifact → `.dmg` |
-| Mac with Intel | `x86_64-apple-darwin` artifact → `.dmg` |
-| Linux | Linux artifact → `.deb` or `.AppImage`; see [Linux setup](docs/linux.md) |
+| Windows x64 | `dynamiclight-desktop-windows-x64-setup.exe` |
+| Mac with Apple silicon | `dynamiclight-desktop-macos-arm64.dmg` |
+| Mac with Intel | `dynamiclight-desktop-macos-x64.dmg` |
+| Linux x64 | `dynamiclight-desktop-linux-x64.deb` or `.AppImage`; see [Linux setup](docs/linux.md) |
 
 macOS needs version 13 or newer. Linux builds target Ubuntu 24.04+; screen sync currently needs X11. Preview builds are unsigned. Windows has been tested with a physical strip; Mac and Linux hardware testing is still pending.
+
+Prefer the terminal? Download and run the release installer:
+
+```powershell
+# Windows PowerShell
+Invoke-WebRequest https://github.com/mskutin/DynamicLight/releases/latest/download/install.ps1 -OutFile install.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+```sh
+# macOS / Linux
+curl -fsSL https://github.com/mskutin/DynamicLight/releases/latest/download/install.sh -o install.sh
+bash install.sh
+```
+
+The scripts verify package checksums before installing. See [installation options](docs/installation.md) for pinned versions, AppImage, downloads without installation, and uninstalling. These install the desktop app; command-line lighting controls are planned in [#16](https://github.com/mskutin/DynamicLight/issues/16). Development builds remain available from [Actions](https://github.com/mskutin/DynamicLight/actions/workflows/build.yml).
 
 ## Getting started
 

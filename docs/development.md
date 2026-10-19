@@ -22,6 +22,21 @@ For another Mac architecture, use `rustup target add x86_64-apple-darwin` or `aa
 
 `pnpm test:ui` runs the real UI against explicit browser-only IPC fixtures, checking six responsive widths, effect/music controls, live metrics, error recovery, and slider coalescing. It does not test physical hardware. Set `UI_BROWSER_CHANNEL=msedge` to use an installed Edge browser, or `PLAYWRIGHT_PATH` to reuse an existing Playwright installation. Screenshots are written to the ignored `.local/` directory.
 
+## Publish a release
+
+`Build desktop apps` runs on pull requests, pushes to main, manual dispatches, and `v*` tags. Ordinary builds upload Actions artifacts only. A tag build publishes a GitHub Release after all tests and all four target builds succeed. A manual dispatch against an existing `v*` tag can retry publishing; dispatching against a branch does not publish.
+
+1. Set the same version in `package.json`, `src-tauri/Cargo.toml`, the `dynamiclight` entry in `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json`. Commit and merge the release changes.
+2. Validate with `node scripts/release.cjs version v0.7.0` (substitute the intended version), `node --test scripts/release-test.cjs scripts/install-test.cjs`, and the ordinary checks above.
+3. Tag the exact merged commit: `git tag -a v0.7.0 <commit> -m "DynamicLight 0.7.0"`, then `git push origin v0.7.0`. Use your own authenticated Git client; tags pushed by a workflow's default `GITHUB_TOKEN` do not trigger another workflow.
+4. Wait for the release job. Confirm all five desktop packages, two install scripts, USB rule, `release-version.txt`, and `SHA256SUMS` are attached before sharing the release URL. A suffix such as `v0.8.0-beta.1` publishes as a prerelease and does not replace the latest stable download.
+
+Only the publishing job has `contents: write`. It assembles assets from the current workflow run and fails on missing/empty packages or version/tag mismatch. It creates a draft, uploads everything, and publishes last. A failed upload leaves a draft that can be completed by rerunning the job. Published releases are left unchanged on retries; corrections need a new version/tag. Never move a published tag. CI tests both installers without downloading or installing real applications, including Windows PowerShell 5.1 and Bash on Linux/macOS.
+
+Asset names are deliberately versionless inside a versioned release URL, with a `dynamiclight-desktop-` prefix and explicit OS/architecture. `scripts/release.cjs` defines this contract and hashes every distributed file. The installer resolves `latest` once through `release-version.txt`, then pins the remaining downloads to that tag. Keep names backward compatible so pinned installer scripts continue to work. Ordinary Actions artifacts contain only platform packages; release-level scripts, rules and checksums are assembled by the release job.
+
+For [CLI/API issue #16](https://github.com/mskutin/DynamicLight/issues/16), add separate CLI artifacts (for example `dynamiclight-cli-<target>`) and an explicit installer option when the actual CLI exists. The desktop installer owns no command alias or PATH entry. Keep GUI/CLI ownership, upgrades and uninstall behavior explicit; CLI commands should route through the authenticated local engine API rather than opening a second USB writer. Do not advertise headless control or close #16 as part of desktop distribution.
+
 ## Implementation
 
 Linux CI also exercises computer-audio input against a PulseAudio null sink, X11 capture under Xvfb, validates the udev rule, inspects the Debian package's icon/desktop entry/dependencies, and launches the packaged app on a virtual desktop. These are explicit integration tests; normal unit tests do not capture audio or a screen. Physical Linux USB, sleep, real desktop audio routing, and Wayland compositor behavior still need validation.
