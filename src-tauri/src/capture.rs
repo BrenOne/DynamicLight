@@ -11,6 +11,63 @@ pub struct Screen {
     pub height: u32,
     pub primary: bool,
 }
+#[derive(Serialize)]
+pub struct WindowPreview {
+    pub width: u32,
+    pub height: u32,
+    pub rgba: Vec<u8>,
+}
+/// Called only after an explicit preview request. Pixels stay in memory and
+/// never become a portable profile or diagnostic artifact.
+pub fn window_preview(source: crate::capture_source::Source) -> Result<WindowPreview, String> {
+    source.validate()?;
+    check_session()?;
+    let window = source.window()?;
+    #[cfg(target_os = "windows")]
+    {
+        crate::capture_windows::WindowCapture::new(window.id().map_err(|e| e.to_string())?)?
+            .preview()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let requested_width = window.width().map_err(|e| e.to_string())?;
+        let requested_height = window.height().map_err(|e| e.to_string())?;
+        if requested_width == 0
+            || requested_height == 0
+            || u64::from(requested_width) * u64::from(requested_height) > 40_000_000
+        {
+            return Err("Window has no pixels or exceeds the 40 megapixel capture limit".into());
+        }
+        let image = window.capture_image().map_err(|e| e.to_string())?;
+        let (source_width, source_height) = (image.width(), image.height());
+        if source_width == 0
+            || source_height == 0
+            || u64::from(source_width) * u64::from(source_height) > 40_000_000
+        {
+            return Err("Window has no pixels or exceeds the 40 megapixel capture limit".into());
+        }
+        let scale = (600.0 / f64::from(source_width))
+            .min(340.0 / f64::from(source_height))
+            .min(1.0);
+        let width = (f64::from(source_width) * scale).floor().max(1.0) as u32;
+        let height = (f64::from(source_height) * scale).floor().max(1.0) as u32;
+        let mut rgba = vec![0; width as usize * height as usize * 4];
+        for y in 0..height {
+            let source_y = u64::from(y) * u64::from(source_height) / u64::from(height);
+            for x in 0..width {
+                let source_x = u64::from(x) * u64::from(source_width) / u64::from(width);
+                let input = (source_y * u64::from(source_width) + source_x) as usize * 4;
+                let output = (y * width + x) as usize * 4;
+                rgba[output..output + 4].copy_from_slice(&image.as_raw()[input..input + 4]);
+            }
+        }
+        Ok(WindowPreview {
+            width,
+            height,
+            rgba,
+        })
+    }
+}
 pub fn screens() -> Result<Vec<Screen>, String> {
     check_session()?;
     Monitor::all()
@@ -154,7 +211,7 @@ impl ScreenCapture {
                 {
                     let image = window.capture_image().map_err(|e| e.to_string())?;
                     self.dimensions = (image.width(), image.height());
-                    Ok(lighting::sample_geometry(
+                    Ok(lighting::sample_window(
                         image.as_raw(),
                         (
                             image.width(),

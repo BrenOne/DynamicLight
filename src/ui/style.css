@@ -1721,6 +1721,13 @@ dd {
   width: 100%;
   min-width: 0;
 }
+#source-dialog .source-crop-toggle {
+  flex-direction: row;
+  align-items: center;
+}
+#source-dialog .source-crop-toggle input {
+  width: auto;
+}
 
 #sequence-dialog,
 #routine-dialog {

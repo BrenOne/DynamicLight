@@ -380,11 +380,27 @@ mod tests {
     }
     #[test]
     fn selected_export_roundtrips_without_local_state_and_creates_missing_directory() {
-        let base = library();
+        let mut base = library();
+        base.profiles[0].source.capture_source = crate::capture_source::Source::Window {
+            id: 1,
+            pid: 2,
+            app: "private-window-app".into(),
+            session: "private-window-session".into(),
+            crop: Some(crate::capture_source::Rectangle {
+                left: 200,
+                top: 200,
+                width: 600,
+                height: 600,
+            }),
+        };
         let bundle = portable(&base, &["desk".into()], &["test".into()]).unwrap();
         let text = serde_json::to_string(&bundle).unwrap();
         for private in [
             "private-screen-path",
+            "private-window-app",
+            "private-window-session",
+            "captureSource",
+            "crop",
             "shortcut",
             "favorite",
             "source",

@@ -59,7 +59,7 @@ Each mode remembers its tuning. Browsing views and previewing effects does not s
 | Mode | What you can do |
 | --- | --- |
 | **Color** | Choose a solid color with the wheel, RGB/hex input, palettes, or approximate white temperature. Tune bias lighting with per-channel gains and saved calibration notes. |
-| **Screen** | Sample a full display, a selected window, or a rectangular region. Adjust black-bar detection, RGB balance, gamma, and saturation. |
+| **Screen** | Sample a full display, a selected window, or a rectangular region. Preview a window and select just its video area to exclude browser toolbars and white margins. Adjust black-bar detection, RGB balance, gamma, and saturation. |
 | **Music** | React to computer audio or a microphone with spectrum, bass, level, and wave styles, plus beat response and gain/noise-gate/release tuning. |
 | **Blend** | Combine screen colors with audio-reactive brightness; keep the available source running if the other fails. |
 | **Effects** | Run Color flow, Aurora, Breathe, Comet, and Ember, or create layered effects with gradients, waves, breathing, and color sequences. |

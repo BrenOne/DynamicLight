@@ -150,11 +150,7 @@ pub fn sample_geometry(
     aspect: f32,
 ) -> Vec<Rgb> {
     let (width, height, stride, bgra) = frame;
-    if width == 0
-        || height == 0
-        || stride < width as usize * 4
-        || data.len() < stride * height as usize
-    {
+    if !valid_frame(data, width, height, stride) {
         return vec![[0; 3]; settings.count];
     }
     let (left, top) = crop.update(data, width, height, stride, settings.exclude_bars);
@@ -187,6 +183,45 @@ pub fn sample_geometry(
             balance(sum.map(|v| v as f32 / n as f32), settings)
         })
         .collect()
+}
+fn valid_frame(data: &[u8], width: u32, height: u32, stride: usize) -> bool {
+    if width == 0 || height == 0 {
+        return false;
+    }
+    let Some(row_bytes) = (width as usize).checked_mul(4) else {
+        return false;
+    };
+    stride >= row_bytes
+        && (height as usize - 1)
+            .checked_mul(stride)
+            .and_then(|offset| offset.checked_add(row_bytes))
+            .is_some_and(|required| data.len() >= required)
+}
+/// Sample an explicitly selected part of a window before optional black-bar
+/// detection. The strided view avoids copying the full captured window.
+pub fn sample_window(
+    data: &[u8],
+    frame: (u32, u32, usize, bool),
+    settings: &Settings,
+    crop: &mut Crop,
+    aspect: f32,
+) -> Vec<Rgb> {
+    let (width, height, stride, bgra) = frame;
+    if !valid_frame(data, width, height, stride) {
+        return vec![[0; 3]; settings.count];
+    }
+    let Ok((left, top, width, height)) = settings.capture_source.rectangle(width, height) else {
+        return vec![[0; 3]; settings.count];
+    };
+    // The original frame validation and bounded rectangle make this offset safe.
+    let offset = top as usize * stride + left as usize * 4;
+    sample_geometry(
+        &data[offset..],
+        (width, height, stride, bgra),
+        settings,
+        crop,
+        aspect,
+    )
 }
 pub fn transform(colors: &[Rgb], previous: &[[f32; 3]], s: &Settings, dt: f32) -> Vec<[f32; 3]> {
     colors
@@ -230,6 +265,94 @@ pub fn reorder(colors: &[Rgb], reverse: bool, offset: usize) -> Vec<Rgb> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn window_settings(crop: Option<crate::capture_source::Rectangle>) -> Settings {
+        Settings {
+            count: 24,
+            sides: 4,
+            capture_source: crate::capture_source::Source::Window {
+                id: 1,
+                pid: 2,
+                app: "browser".into(),
+                session: "local".into(),
+                crop,
+            },
+            ..Default::default()
+        }
+    }
+    #[test]
+    fn window_video_crop_excludes_white_browser_edges() {
+        let (w, h) = (200usize, 100usize);
+        let orange = [240, 90, 12];
+        let mut pixels = vec![255; w * h * 4];
+        for y in 20..80 {
+            for x in 40..160 {
+                pixels[(y * w + x) * 4..(y * w + x) * 4 + 3].copy_from_slice(&orange);
+            }
+        }
+        let full = sample_window(
+            &pixels,
+            (w as u32, h as u32, w * 4, false),
+            &window_settings(None),
+            &mut Crop::default(),
+            16.0 / 9.0,
+        );
+        assert!(full.iter().all(|color| *color == [255; 3]));
+        let video = window_settings(Some(crate::capture_source::Rectangle {
+            left: 200,
+            top: 200,
+            width: 600,
+            height: 600,
+        }));
+        let cropped = sample_window(
+            &pixels,
+            (w as u32, h as u32, w * 4, false),
+            &video,
+            &mut Crop::default(),
+            16.0 / 9.0,
+        );
+        assert!(cropped.iter().all(|color| *color == orange));
+    }
+    #[test]
+    fn window_crop_handles_rgba_bgra_padding_and_the_final_row() {
+        let (w, h, stride) = (6usize, 3usize, 28usize);
+        let s = window_settings(Some(crate::capture_source::Rectangle {
+            left: 500,
+            top: 334,
+            width: 500,
+            height: 666,
+        }));
+        for bgra in [false, true] {
+            // No trailing padding is needed after the last row. The cropped
+            // view starts partway into a row and still includes that last row.
+            let mut pixels = vec![255; (h - 1) * stride + w * 4];
+            for y in 1..h {
+                for x in 3..w {
+                    let encoded = if bgra {
+                        [12, 90, 240, 255]
+                    } else {
+                        [240, 90, 12, 255]
+                    };
+                    pixels[y * stride + x * 4..y * stride + x * 4 + 4].copy_from_slice(&encoded);
+                }
+            }
+            let colors = sample_window(
+                &pixels,
+                (w as u32, h as u32, stride, bgra),
+                &s,
+                &mut Crop::default(),
+                16.0 / 9.0,
+            );
+            assert!(colors.iter().all(|color| *color == [240, 90, 12]));
+            let truncated = sample_window(
+                &pixels[..pixels.len() - 1],
+                (w as u32, h as u32, stride, bgra),
+                &s,
+                &mut Crop::default(),
+                16.0 / 9.0,
+            );
+            assert!(truncated.iter().all(|color| *color == [0; 3]));
+        }
+    }
     #[test]
     fn cropping_keeps_the_physical_edge_allocation() {
         let (w, h) = (256usize, 128usize);
