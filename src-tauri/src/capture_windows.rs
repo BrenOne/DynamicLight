@@ -294,7 +294,15 @@ use windows::Win32::System::WinRT::{
     Graphics::Capture::IGraphicsCaptureItemInterop,
     RoInitialize, RoUninitialize, RO_INIT_MULTITHREADED,
 };
-struct Apartment;
+// Initialization and teardown must stay on the same thread. The worker keeps
+// one guard for its whole lifetime; capture sessions take an additional lease.
+pub(crate) struct Apartment(std::marker::PhantomData<*mut ()>);
+impl Apartment {
+    pub(crate) fn new() -> windows::core::Result<Self> {
+        unsafe { RoInitialize(RO_INIT_MULTITHREADED)? };
+        Ok(Self(std::marker::PhantomData))
+    }
+}
 impl Drop for Apartment {
     fn drop(&mut self) {
         unsafe { RoUninitialize() };
@@ -326,15 +334,10 @@ pub struct WindowCapture {
 }
 impl WindowCapture {
     pub fn new(id: u32) -> Result<Self, String> {
-        Self::create(id).map_err(|e| {
-            format!("Window capture unavailable: {e}. Windows 10 1903 or newer is required.")
-        })
+        Self::create(id).map_err(|e| format!("Window capture unavailable: {e}"))
     }
     fn create(id: u32) -> windows::core::Result<Self> {
-        unsafe {
-            RoInitialize(RO_INIT_MULTITHREADED)?;
-        }
-        let apartment = Apartment;
+        let apartment = Apartment::new()?;
         let (mut device, mut context) = (None, None);
         unsafe {
             D3D11CreateDevice(
@@ -551,6 +554,11 @@ mod window_tests {
     #[test]
     #[ignore = "requires an interactive Windows desktop with Windows Graphics Capture"]
     fn selected_window_capture_resizes_and_closes_without_desktop_fallback() {
+        // Match the lighting worker: WinRT must be initialized before WASAPI.
+        // Query devices only; do not open an audio stream or record any audio.
+        let _apartment = Apartment::new().unwrap();
+        use cpal::traits::HostTrait;
+        drop(cpal::default_host().default_output_device());
         let stop = Arc::new(AtomicBool::new(false));
         let done = stop.clone();
         let (tx, rx) = mpsc::channel();
@@ -588,6 +596,12 @@ mod window_tests {
         let hwnd = windows::Win32::Foundation::HWND(
             rx.recv_timeout(Duration::from_secs(5)).unwrap() as *mut c_void,
         );
+        // Repeated start/stop must not tear down COM underneath CPAL's cached
+        // initialization. Exercise the Music -> Window -> Music -> Window order.
+        for _ in 0..2 {
+            drop(WindowCapture::new(hwnd.0 as usize as u32).unwrap());
+            drop(cpal::default_host().default_output_device());
+        }
         let mut capture = WindowCapture::new(hwnd.0 as usize as u32).unwrap();
         let settings = Settings::default();
         let mut frame = vec![];

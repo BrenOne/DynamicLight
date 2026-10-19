@@ -1702,6 +1702,13 @@ pub fn start(
     thread::Builder::new()
         .name("lighting".into())
         .spawn(move || {
+            // WASAPI otherwise initializes this thread as STA first, making
+            // later WinRT/MTA window capture fail with RPC_E_CHANGED_MODE.
+            // Keep COM alive across every screen/audio start/stop, and drop it
+            // after the engine and its capture/audio objects have been dropped.
+            #[cfg(target_os = "windows")]
+            let _apartment = crate::capture_windows::Apartment::new()
+                .expect("initialize lighting worker Windows Runtime");
             let mut engine = Engine::new(settings, path, warning);
             engine.restore();
             let mut clock = crate::platform::FrameClock::new();
@@ -1783,6 +1790,42 @@ fn missed_slots(late: Duration, period: Duration) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_worker_keeps_mta_before_and_between_capture_sessions() {
+        use windows::Win32::{
+            Foundation::RPC_E_CHANGED_MODE,
+            System::WinRT::{RoInitialize, RoUninitialize, RO_INIT_SINGLETHREADED},
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, rx) = mpsc::channel();
+        let worker = start(
+            Settings::default(),
+            dir.path().join("settings.json"),
+            String::new(),
+            move |_| {
+                // Model WASAPI's attempted STA initialization without opening an
+                // audio device. It must find the worker's existing MTA each time.
+                let attempt = unsafe { RoInitialize(RO_INIT_SINGLETHREADED) };
+                if attempt.is_ok() {
+                    unsafe { RoUninitialize() };
+                }
+                let mta = attempt.is_err_and(|e| e.code() == RPC_E_CHANGED_MODE);
+                let capture_lease = crate::capture_windows::Apartment::new();
+                let capture_ready = capture_lease.is_ok();
+                drop(capture_lease);
+                let _ = tx.send(mta && capture_ready);
+            },
+        );
+        let mut observations = Vec::new();
+        for _ in 0..3 {
+            worker.request(Action::Snapshot).unwrap();
+            observations.push(rx.recv_timeout(Duration::from_secs(5)).unwrap());
+        }
+        worker.request(Action::Shutdown).unwrap();
+        assert!(observations.into_iter().all(|mta| mta));
+    }
+
     #[test]
     fn controllers_keep_independent_settings_and_group_gain_without_overwriting_levels() {
         let dir = tempfile::tempdir().unwrap();
