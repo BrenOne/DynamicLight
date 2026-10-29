@@ -83,6 +83,10 @@ impl Desktop {
             Err("Display not available through Desktop Duplication".into())
         }
     }
+    /// True once at least one desktop image has been copied.
+    pub fn has_frame(&self) -> bool {
+        self.staging.is_some()
+    }
     pub fn colors(&mut self, settings: &Settings) -> Result<Vec<Rgb>, String> {
         unsafe {
             let mut info = DXGI_OUTDUPL_FRAME_INFO::default();
