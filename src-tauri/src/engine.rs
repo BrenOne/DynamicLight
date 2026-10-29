@@ -335,14 +335,22 @@ impl Engine {
     /// Connect and adopt the LED count the controller reports about itself.
     fn connect_strip(&mut self) -> Result<(), String> {
         self.controller.connect()?;
+        if self.state.calibrating {
+            return Ok(());
+        }
+        let mut changed = false;
         if let Some((leds, _)) = self.controller.detected {
             let n = leds as usize;
-            if self.state.settings.count != n && !self.state.calibrating {
+            if self.state.settings.count != n {
                 self.state.settings.count = n;
                 self.previous.clear();
                 self.state.colors = vec![[0; 3]; n];
-                let _ = self.state.settings.save(&self.path);
+                changed = true;
             }
+        }
+        changed |= lighting::auto_sides(&mut self.state.settings, 16.0 / 9.0);
+        if changed {
+            let _ = self.state.settings.save(&self.path);
         }
         Ok(())
     }

@@ -84,6 +84,29 @@ pub fn hsv(h: f32) -> Rgb {
             .round() as u8
     })
 }
+/// Fill per-side LED counts when they don't add up to the strip length.
+/// Vertical edges get floor(n / perimeter); for 94 LEDs on 16:9 that is
+/// 16/31/16/31, matching kits whose bars leave the corners empty.
+pub fn auto_sides(s: &mut Settings, aspect: f32) -> bool {
+    let four = s.sides == 4;
+    let counts = [s.side_left, s.side_top, s.side_right, s.side_bottom];
+    let sum: usize = counts[..if four { 4 } else { 3 }].iter().map(|&n| n as usize).sum();
+    if sum == s.count || s.count < 4 {
+        return false;
+    }
+    let fresh = counts.iter().all(|&n| n == 0);
+    let n = s.count;
+    let perimeter = if four { 2.0 * (1.0 + aspect) } else { 2.0 + aspect };
+    let v = ((n as f32 / perimeter).floor() as usize).max(1);
+    let h = n - 2 * v;
+    let (top, bottom) = if four { (h / 2, h - h / 2) } else { (h, 0) };
+    (s.side_left, s.side_right) = (v as u8, v as u8);
+    (s.side_top, s.side_bottom) = (top as u8, bottom as u8);
+    if fresh && s.corner_gap == 0 {
+        s.corner_gap = 4;
+    }
+    true
+}
 /// LED sample points in strip order (bottom-left, up, clockwise seen from the
 /// front). With explicit per-side counts the LEDs sit inside each edge, leaving
 /// `corner_gap` percent empty at both ends — strips made of bars with wired

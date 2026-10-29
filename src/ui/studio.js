@@ -299,18 +299,7 @@ window.Studio = (() => {
     selection();
   }
   function positions() {
-    const aspect = 16 / 9,
-      perimeter = 2 + aspect * (draft.sides === 4 ? 2 : 1);
-    return Array.from({ length: draft.count }, (_, i) => {
-      const p = ((i + 0.5) / draft.count) * perimeter;
-      return p < 1
-        ? [0, 1 - p]
-        : p < 1 + aspect
-          ? [(p - 1) / aspect, 0]
-          : p < 2 + aspect
-            ? [1, p - 1 - aspect]
-            : [1 - (p - 2 - aspect) / aspect, 1];
-    });
+    return window.ledLayout(draft, draft.count, 16 / 9);
   }
   function render() {
     for (const name of ["effect", "zones", "bias"])
