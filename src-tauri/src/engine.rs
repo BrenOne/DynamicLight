@@ -347,8 +347,9 @@ impl Engine {
                 self.state.colors = vec![[0; 3]; n];
                 changed = true;
             }
+            // Only a strip that reported its size drives the automatic layout.
+            changed |= lighting::auto_sides(&mut self.state.settings, 16.0 / 9.0);
         }
-        changed |= lighting::auto_sides(&mut self.state.settings, 16.0 / 9.0);
         if changed {
             let _ = self.state.settings.save(&self.path);
         }
