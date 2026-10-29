@@ -90,13 +90,20 @@ pub fn hsv(h: f32) -> Rgb {
 pub fn auto_sides(s: &mut Settings, aspect: f32) -> bool {
     let four = s.sides == 4;
     let counts = [s.side_left, s.side_top, s.side_right, s.side_bottom];
-    let sum: usize = counts[..if four { 4 } else { 3 }].iter().map(|&n| n as usize).sum();
+    let sum: usize = counts[..if four { 4 } else { 3 }]
+        .iter()
+        .map(|&n| n as usize)
+        .sum();
     if sum == s.count || s.count < 4 {
         return false;
     }
     let fresh = counts.iter().all(|&n| n == 0);
     let n = s.count;
-    let perimeter = if four { 2.0 * (1.0 + aspect) } else { 2.0 + aspect };
+    let perimeter = if four {
+        2.0 * (1.0 + aspect)
+    } else {
+        2.0 + aspect
+    };
     let v = ((n as f32 / perimeter).floor() as usize).max(1);
     let h = n - 2 * v;
     let (top, bottom) = if four { (h / 2, h - h / 2) } else { (h, 0) };

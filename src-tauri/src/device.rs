@@ -288,7 +288,8 @@ impl Controller {
                 return Ok(());
             }
             self.reopen().map_err(|e| format!("{first}; reopen: {e}"))?;
-            self.write_once(packet).map_err(|e| format!("{first}; retry: {e}"))
+            self.write_once(packet)
+                .map_err(|e| format!("{first}; retry: {e}"))
         });
         if let Err(ref e) = result {
             self.close(&format!("USB disconnected: {e}"));
@@ -296,7 +297,7 @@ impl Controller {
         result
     }
     fn write_once(&mut self, packet: &[u8]) -> Result<(), String> {
-        let result: Result<(), String> = (|| {
+        (|| {
             #[cfg(test)]
             if let Some(bus) = &mut self.test_bus {
                 bus.writes += 1;
@@ -319,8 +320,7 @@ impl Controller {
                 }
             }
             Ok(())
-        })();
-        result
+        })()
     }
     pub fn solid(&mut self, rgb: Rgb, count: usize) -> Result<(), String> {
         let id = self.id();

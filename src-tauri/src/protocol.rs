@@ -67,14 +67,24 @@ pub fn merge(colors: &[Rgb], limit: usize) -> Vec<(u8, u8, Rgb)> {
         .enumerate()
         .map(|(i, c)| {
             let sum = [c[0] as f64, c[1] as f64, c[2] as f64];
-            Range { start: i + 1, end: i + 1, n: 1.0, term: term(&sum, 1.0), sum }
+            Range {
+                start: i + 1,
+                end: i + 1,
+                n: 1.0,
+                term: term(&sum, 1.0),
+                sum,
+            }
         })
         .collect();
     while ranges.len() > limit.max(1) {
         let (mut best, mut best_delta, mut best_term) = (0, f64::MAX, 0.0);
         for i in 0..ranges.len() - 1 {
             let (a, b) = (&ranges[i], &ranges[i + 1]);
-            let sum = [a.sum[0] + b.sum[0], a.sum[1] + b.sum[1], a.sum[2] + b.sum[2]];
+            let sum = [
+                a.sum[0] + b.sum[0],
+                a.sum[1] + b.sum[1],
+                a.sum[2] + b.sum[2],
+            ];
             let t = term(&sum, a.n + b.n);
             let delta = a.term + b.term - t;
             if delta < best_delta {
@@ -147,6 +157,8 @@ mod tests {
         assert_eq!(r[0].0, 1);
         assert_eq!(r.last().unwrap().1, 94);
         assert!(r.windows(2).all(|w| w[1].0 == w[0].1 + 1));
-        assert!(r.iter().any(|x| x.0 == 41 && x.1 == 41 && x.2 == [255, 255, 255]));
+        assert!(r
+            .iter()
+            .any(|x| x.0 == 41 && x.1 == 41 && x.2 == [255, 255, 255]));
     }
 }

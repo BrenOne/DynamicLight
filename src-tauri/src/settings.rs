@@ -153,9 +153,14 @@ impl Settings {
             || self.smoothing > 95
             || !(1..=100).contains(&self.sensitivity)
             || ![10, 20, 30, 45, 60].contains(&self.fps)
-            || [self.side_left, self.side_top, self.side_right, self.side_bottom]
-                .iter()
-                .any(|n| *n > 127)
+            || [
+                self.side_left,
+                self.side_top,
+                self.side_right,
+                self.side_bottom,
+            ]
+            .iter()
+            .any(|n| *n > 127)
             || self.corner_gap > 20
             || self.screen_id.len() > 200
             || !(1..=100).contains(&self.speed)
