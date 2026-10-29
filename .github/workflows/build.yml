@@ -7,6 +7,10 @@ on:
   pull_request:
 permissions:
   contents: read
+# A newer push cancels the unfinished build of the same branch.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   release-checks:
     runs-on: ubuntu-24.04
