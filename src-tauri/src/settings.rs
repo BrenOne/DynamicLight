@@ -12,6 +12,13 @@ pub struct Settings {
     pub sides: u8,
     pub reverse: bool,
     pub offset: usize,
+    /// LEDs per edge in strip order: left, top, right, bottom (0 = automatic).
+    pub side_left: u8,
+    pub side_top: u8,
+    pub side_right: u8,
+    pub side_bottom: u8,
+    /// Empty space at each corner, percent of the edge length (0-20).
+    pub corner_gap: u8,
     pub smoothing: u8,
     pub audio_source: String,
     pub sensitivity: u8,
@@ -60,10 +67,15 @@ impl Default for Settings {
             sides: 3,
             reverse: false,
             offset: 0,
+            side_left: 0,
+            side_top: 0,
+            side_right: 0,
+            side_bottom: 0,
+            corner_gap: 0,
             smoothing: 65,
             audio_source: "system".into(),
             sensitivity: 50,
-            fps: 30,
+            fps: 60,
             screen_id: String::new(),
             capture_source: Default::default(),
             off_on_sleep: true,
@@ -140,7 +152,11 @@ impl Settings {
             || self.offset > 126
             || self.smoothing > 95
             || !(1..=100).contains(&self.sensitivity)
-            || ![10, 20, 30].contains(&self.fps)
+            || ![10, 20, 30, 45, 60].contains(&self.fps)
+            || [self.side_left, self.side_top, self.side_right, self.side_bottom]
+                .iter()
+                .any(|n| *n > 127)
+            || self.corner_gap > 20
             || self.screen_id.len() > 200
             || !(1..=100).contains(&self.speed)
             || self.noise_floor > 20

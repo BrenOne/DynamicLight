@@ -84,6 +84,32 @@ pub fn hsv(h: f32) -> Rgb {
             .round() as u8
     })
 }
+/// LED sample points in strip order (bottom-left, up, clockwise seen from the
+/// front). With explicit per-side counts the LEDs sit inside each edge, leaving
+/// `corner_gap` percent empty at both ends — strips made of bars with wired
+/// corners have no LEDs there.
+pub fn layout(s: &Settings, aspect: f32) -> Vec<(f32, f32)> {
+    let used = if s.sides == 4 { 4 } else { 3 };
+    let counts = [s.side_left, s.side_top, s.side_right, s.side_bottom];
+    let total: usize = counts[..used].iter().map(|&n| n as usize).sum();
+    if total != s.count || total == 0 {
+        return positions(s.count, s.sides, aspect);
+    }
+    let gap = s.corner_gap.min(20) as f32 / 100.0;
+    let mut out = Vec::with_capacity(total);
+    for (side, &n) in counts[..used].iter().enumerate() {
+        for j in 0..n {
+            let t = gap + (1.0 - 2.0 * gap) * (j as f32 + 0.5) / n as f32;
+            out.push(match side {
+                0 => (0.0, 1.0 - t),
+                1 => (t, 0.0),
+                2 => (1.0, t),
+                _ => (1.0 - t, 1.0),
+            });
+        }
+    }
+    out
+}
 pub fn positions(count: usize, sides: u8, aspect: f32) -> Vec<(f32, f32)> {
     let perimeter = 2.0 + aspect * if sides == 4 { 2.0 } else { 1.0 };
     (0..count)
@@ -157,7 +183,7 @@ pub fn sample_geometry(
     let (cw, ch) = (width - 2 * left, height - 2 * top);
     // LED edge allocation follows the physical display. Cropping changes where
     // each LED samples the picture, not which physical LEDs belong to an edge.
-    positions(settings.count, settings.sides, aspect)
+    layout(settings, aspect)
         .iter()
         .map(|&(x, y)| {
             let cx = left + (x * (cw - 1) as f32).round() as u32;

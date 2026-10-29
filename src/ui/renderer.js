@@ -218,7 +218,7 @@ function updateUI() {
     $(id).value = settings[key];
     $(id + "-value").textContent = settings[key] + "%";
   }
-  for (const name of ["count", "sides", "offset", "fps", "palette"])
+  for (const name of ["count", "sides", "offset", "sideLeft", "sideTop", "sideRight", "sideBottom", "cornerGap", "fps", "palette"])
     $(name).value = settings[name];
   $("input-gain-value").textContent = settings.inputGain + " dB";
   $("gamma-value").textContent = (settings.gamma / 100).toFixed(2);
@@ -812,7 +812,7 @@ async function init() {
       settings[key] = Number(event.target.value);
       changed([key]);
     };
-  for (const name of ["count", "sides", "offset", "fps"])
+  for (const name of ["count", "sides", "offset", "sideLeft", "sideTop", "sideRight", "sideBottom", "cornerGap", "fps"])
     $(name).onchange = (event) => {
       if (event.target.checkValidity()) {
         settings[name] = Number(event.target.value);

@@ -332,6 +332,20 @@ impl Engine {
             calibration: None,
         }
     }
+    /// Connect and adopt the LED count the controller reports about itself.
+    fn connect_strip(&mut self) -> Result<(), String> {
+        self.controller.connect()?;
+        if let Some((leds, _)) = self.controller.detected {
+            let n = leds as usize;
+            if self.state.settings.count != n && !self.state.calibrating {
+                self.state.settings.count = n;
+                self.previous.clear();
+                self.state.colors = vec![[0; 3]; n];
+                let _ = self.state.settings.save(&self.path);
+            }
+        }
+        Ok(())
+    }
     fn black(&mut self) {
         self.previous.clear();
         self.last_solid = None;
@@ -358,7 +372,7 @@ impl Engine {
                 return Err("Wake and unlock the display before calibrating".into());
             }
             if !self.controller.status.connected {
-                self.controller.connect()?;
+                self.connect_strip()?;
             }
             self.calibration = Some(CalibrationSession {
                 original: self.state.settings.clone(),
@@ -665,7 +679,7 @@ impl Engine {
         self.state.error.clear();
         self.retry = Instant::now();
         if !self.controller.status.connected {
-            self.controller.connect()?;
+            self.connect_strip()?;
         }
         self.last_solid = None;
         if matches!(
@@ -1132,7 +1146,7 @@ impl Engine {
                 self.state.error.clear();
                 self.desired = true;
                 self.retry = Instant::now();
-                self.controller.connect()?;
+                self.connect_strip()?;
                 self.last_solid = None;
             }
             Action::Disconnect => {
@@ -1385,7 +1399,7 @@ impl Engine {
                     Some(led) if led == i => [255; 3],
                     Some(_) => [0; 3],
                     None => {
-                        let (x, y) = lighting::positions(s.count, s.sides, 16.0 / 9.0)[i];
+                        let (x, y) = lighting::layout(s, 16.0 / 9.0)[i];
                         if y == 0.0 {
                             [0, 255, 0]
                         } else if x == 0.0 {
@@ -1517,7 +1531,7 @@ impl Engine {
             && self.retry.elapsed() >= Duration::from_secs(3)
         {
             self.retry = Instant::now();
-            match self.controller.connect() {
+            match self.connect_strip() {
                 Ok(()) => self.state.error.clear(),
                 Err(e) => self.state.error = format!("Waiting for strip: {e}"),
             }
