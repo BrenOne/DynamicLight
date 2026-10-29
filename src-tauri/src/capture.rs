@@ -313,7 +313,7 @@ impl DisplayCapture {
         {
             if self.desktop.is_none()
                 && matches!(self.region, crate::capture_source::Source::Display {})
-                && self.retry.elapsed() >= std::time::Duration::from_secs(1)
+                && self.retry.elapsed() >= std::time::Duration::from_millis(250)
             {
                 self.retry = std::time::Instant::now();
                 self.desktop =
@@ -332,20 +332,25 @@ impl DisplayCapture {
                     // No desktop image yet after a (re)start: keep the last frame
                     // instead of flashing black.
                     Ok(colors) => return Ok(if held { self.last.clone() } else { colors }),
-                    // DXGI drops duplication on lock-key OSDs, UAC, mode changes and
-                    // full-screen switches. Rebuild it silently; fall back to GDI only
-                    // when there is nothing to hold.
+                    // DXGI drops duplication on UAC, lock screen, mode changes and
+                    // full-screen switches. Rebuild it a moment later (above); fall back
+                    // to GDI only when there is nothing to hold.
                     Err(_) => {
                         self.retry = std::time::Instant::now();
-                        self.desktop = crate::capture_windows::Desktop::new(
-                            &self.monitor.name().unwrap_or_default(),
-                        )
-                        .ok();
+                        self.desktop = None;
                         if held {
                             return Ok(self.last.clone());
                         }
                     }
                 }
+            }
+            // While duplication is being rebuilt (UAC secure desktop, lock screen), GDI
+            // fails too: keep the last real frame until the desktop comes back.
+            if self.desktop.is_none()
+                && matches!(self.region, crate::capture_source::Source::Display {})
+                && self.last.len() == settings.count
+            {
+                return Ok(self.last.clone());
             }
             let dimensions = (
                 self.monitor.width().map_err(|e| e.to_string())?,
