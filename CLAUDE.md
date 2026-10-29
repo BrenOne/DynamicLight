@@ -20,6 +20,15 @@
 - 0x80 — кадр: `53 43 lenH lenL id 80 [(start,r,g,b,end)…] checksum`, len = 7 + 5·N. Официальное приложение сжимает кадр до 34 диапазонов.
 - Между 64-байтными репортами пауза 1 мс.
 
+## Как работает SyncLight 3.15 (Electron, разобран app.asar)
+- Захват экрана — нативный модуль `@warren-robobloq/quiklight` в worker-потоке, интервал `syncInterval 10 мс + syncSpeed` (≈100 Гц), samplingRate 10.
+- Кадр 0x80 ("SC", len 16-bit BE, id, 0x80, тройки (start,r,g,b,end), checksum = сумма % 256) — **диапазоны с 1, включительно**, число диапазонов = числу зон захвата (~34), LED делятся по зонам поровну (`floor(n/zones)`, остаток в первые зоны).
+- Прошивки ≤1.0.2: вместо 0x80 шлёт 0x86 кусками по 55 значений с паузой 20 мс.
+- Пишет через node-hid `HIDAsync` без пауз между репортами и без ожидания ответа (`writeWithoutResponse`); ответы читает постоянно (событие `data`). Т.е. **частота и паузы контроллер не вешают**.
+- Вывод: вероятная причина зависаний в оригинальном DynamicLight — нестандартный кадр (диапазоны с **0** и лишний байт в конце), прошивка пишет за границу буфера. Наш `frame()` это уже исправил.
+- id пакета: 1..254 по кругу. Команды: 0x80 sync, 0x81 writeDeviceInfo, 0x82 readDeviceInfo, 0x83 readUUID, 0x85 effect, 0x86 sectionLED, 0x87 brightness, 0x89 autoOff, 0x8A speed, 0x8B soundSens, 0x91 externalAudio, 0x93 openUrl, 0x95 setLampsAmount, 0x96 whiteBright, 0x97 turnOff, 0x98 computerRhythm.
+- Программный перезапуск USB (`pnputil /restart-device`) не помогает: зависший контроллер пропадает до физического переподключения.
+
 ## Проблемы оригинала (почему форк)
 1. `hidapi error: hid_write/WaitForSingleObject 0x3E5` и «Waiting for strip» — кадр из 94 диапазонов = 8 репортов подряд без пауз, при любой ошибке сразу обрыв.
 2. Всего 30 FPS (лента тянет 60).
