@@ -27,6 +27,25 @@ impl Drop for Controller {
         self.close("Closed");
     }
 }
+/// While Windows updates keyboard indicators (Caps/Num/Scroll Lock), the controller's
+/// keyboard interface receives a SET_REPORT. If it lands while a frame is being
+/// received/driven, the firmware shows garbage (white/random strobes above ~30 FPS).
+/// The Windows lock-key hook calls `hold_output` so no frame overlaps that window.
+static EPOCH: std::sync::LazyLock<std::time::Instant> =
+    std::sync::LazyLock::new(std::time::Instant::now);
+static HOLD_UNTIL_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+fn now_ms() -> u64 {
+    EPOCH.elapsed().as_millis() as u64
+}
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+pub fn hold_output(ms: u64) {
+    HOLD_UNTIL_MS.fetch_max(now_ms() + ms, std::sync::atomic::Ordering::Relaxed);
+}
+fn held_for() -> Option<Duration> {
+    let until = HOLD_UNTIL_MS.load(std::sync::atomic::Ordering::Relaxed);
+    let now = now_ms();
+    (until > now).then(|| Duration::from_millis(until - now))
+}
 struct Lease(String);
 impl Lease {
     fn claim(key: String) -> Result<Self, String> {
@@ -323,10 +342,18 @@ impl Controller {
         })()
     }
     pub fn solid(&mut self, rgb: Rgb, count: usize) -> Result<(), String> {
+        // Solid colours are sent once, so wait out an indicator update instead of skipping.
+        if let Some(wait) = held_for() {
+            thread::sleep(wait);
+        }
         let id = self.id();
         self.write(&protocol::solid(id, rgb, count))
     }
     pub fn frame(&mut self, colors: &[Rgb]) -> Result<(), String> {
+        // Frames stream continuously; drop the ones that would collide with a lock key.
+        if held_for().is_some() {
+            return Ok(());
+        }
         let id = self.id();
         self.write(&protocol::frame(id, colors))
     }

@@ -242,6 +242,9 @@ pub struct DisplayCapture {
     last: Vec<Rgb>,
     #[cfg(target_os = "windows")]
     retry: std::time::Instant,
+    /// When the held frame started; used to dim the strip during UAC/lock.
+    #[cfg(target_os = "windows")]
+    held_since: Option<std::time::Instant>,
 }
 impl DisplayCapture {
     pub fn start(settings: &Settings) -> Result<Self, String> {
@@ -298,6 +301,7 @@ impl DisplayCapture {
                 thumbnail,
                 last: Vec::new(),
                 retry: std::time::Instant::now(),
+                held_since: None,
             })
         }
         #[cfg(not(target_os = "windows"))]
@@ -308,12 +312,25 @@ impl DisplayCapture {
             dimensions: (image.width(), image.height()),
         })
     }
+    /// Last real frame; after 0.3 s without the desktop (UAC secure desktop, lock
+    /// screen) it fades to 25 % over half a second.
+    #[cfg(target_os = "windows")]
+    fn held_frame(&mut self) -> Vec<Rgb> {
+        let since = *self.held_since.get_or_insert_with(std::time::Instant::now);
+        // Brief losses stay at full brightness; only a real outage (UAC) dims.
+        let t = ((since.elapsed().as_secs_f32() - 0.3) / 0.5).clamp(0.0, 1.0);
+        let k = 1.0 - 0.75 * t;
+        self.last
+            .iter()
+            .map(|c| c.map(|v| (v as f32 * k).round() as u8))
+            .collect()
+    }
     pub fn colors(&mut self, settings: &Settings) -> Result<Vec<Rgb>, String> {
         #[cfg(target_os = "windows")]
         {
             if self.desktop.is_none()
                 && matches!(self.region, crate::capture_source::Source::Display {})
-                && self.retry.elapsed() >= std::time::Duration::from_secs(1)
+                && self.retry.elapsed() >= std::time::Duration::from_millis(250)
             {
                 self.retry = std::time::Instant::now();
                 self.desktop =
@@ -326,26 +343,32 @@ impl DisplayCapture {
                 let held = self.last.len() == settings.count;
                 match result {
                     Ok(colors) if ready => {
+                        self.held_since = None;
                         self.last.clone_from(&colors);
                         return Ok(colors);
                     }
                     // No desktop image yet after a (re)start: keep the last frame
                     // instead of flashing black.
-                    Ok(colors) => return Ok(if held { self.last.clone() } else { colors }),
-                    // DXGI drops duplication on lock-key OSDs, UAC, mode changes and
-                    // full-screen switches. Rebuild it silently; fall back to GDI only
-                    // when there is nothing to hold.
+                    Ok(colors) => return Ok(if held { self.held_frame() } else { colors }),
+                    // DXGI drops duplication on UAC, lock screen, mode changes and
+                    // full-screen switches. Rebuild it a moment later (above); fall back
+                    // to GDI only when there is nothing to hold.
                     Err(_) => {
                         self.retry = std::time::Instant::now();
-                        self.desktop = crate::capture_windows::Desktop::new(
-                            &self.monitor.name().unwrap_or_default(),
-                        )
-                        .ok();
+                        self.desktop = None;
                         if held {
-                            return Ok(self.last.clone());
+                            return Ok(self.held_frame());
                         }
                     }
                 }
+            }
+            // While duplication is being rebuilt (UAC secure desktop, lock screen), GDI
+            // fails too: keep the last real frame until the desktop comes back.
+            if self.desktop.is_none()
+                && matches!(self.region, crate::capture_source::Source::Display {})
+                && self.last.len() == settings.count
+            {
+                return Ok(self.held_frame());
             }
             let dimensions = (
                 self.monitor.width().map_err(|e| e.to_string())?,
