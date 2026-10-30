@@ -215,7 +215,12 @@ fn show(app: &tauri::AppHandle) {
 }
 pub fn run() {
     #[cfg(target_os = "windows")]
-    autostart_windows::allow_relaunch_from_unelevated();
+    {
+        if let Some(code) = autostart_windows::startup() {
+            std::process::exit(code);
+        }
+        autostart_windows::allow_relaunch_from_unelevated();
+    }
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, args, _| {
