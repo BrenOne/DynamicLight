@@ -342,9 +342,15 @@ impl Controller {
         })()
     }
     pub fn solid(&mut self, rgb: Rgb, count: usize) -> Result<(), String> {
-        // Solid colours are sent once, so wait out an indicator update instead of skipping.
-        if let Some(wait) = held_for() {
-            thread::sleep(wait);
+        // Solid colours are sent once, so wait out an indicator update instead of
+        // skipping it (re-checked: a held key keeps extending the window), but never
+        // stall the engine for more than a second.
+        let deadline = std::time::Instant::now() + Duration::from_secs(1);
+        while let Some(wait) = held_for() {
+            if std::time::Instant::now() >= deadline {
+                break;
+            }
+            thread::sleep(wait.min(Duration::from_millis(50)));
         }
         let id = self.id();
         self.write(&protocol::solid(id, rgb, count))
