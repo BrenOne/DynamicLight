@@ -37,13 +37,15 @@ fn mip_level(width: u32, height: u32) -> u32 {
     level
 }
 type Mips = (ID3D11Texture2D, ID3D11ShaderResourceView, u32);
+struct Textures {
+    mips: Option<Mips>,
+    staging: ID3D11Texture2D,
+    size: (u32, u32),
+}
 /// Creates the textures for a desktop of `desc` size: an optional mip chain for
 /// GPU downscaling and the CPU staging texture of the level that is read back.
 /// Falls back to a full-size readback when the GPU cannot generate mips.
-unsafe fn prepare(
-    device: &ID3D11Device,
-    desc: D3D11_TEXTURE2D_DESC,
-) -> Result<(Option<Mips>, ID3D11Texture2D, (u32, u32)), String> {
+unsafe fn prepare(device: &ID3D11Device, desc: D3D11_TEXTURE2D_DESC) -> Result<Textures, String> {
     let single = DXGI_SAMPLE_DESC {
         Count: 1,
         Quality: 0,
@@ -95,7 +97,11 @@ unsafe fn prepare(
     device
         .CreateTexture2D(&staging, None, Some(&mut texture))
         .map_err(|e| e.to_string())?;
-    Ok((mips, texture.ok_or("Missing staging surface")?, size))
+    Ok(Textures {
+        mips,
+        staging: texture.ok_or("Missing staging surface")?,
+        size,
+    })
 }
 struct Acquired<'a>(&'a IDXGIOutputDuplication);
 impl Drop for Acquired<'_> {
@@ -185,9 +191,9 @@ impl Desktop {
                     }
                     if self.staging.is_none() || self.source != (desc.Width, desc.Height) {
                         self.source = (desc.Width, desc.Height);
-                        let (mips, staging, size) = prepare(&self.device, desc)?;
-                        (self.mips, self.staging) = (mips, Some(staging));
-                        (self.width, self.height) = size;
+                        let textures = prepare(&self.device, desc)?;
+                        (self.mips, self.staging) = (textures.mips, Some(textures.staging));
+                        (self.width, self.height) = textures.size;
                     }
                     let staging = self.staging.as_ref().ok_or("Missing staging surface")?;
                     match &self.mips {
