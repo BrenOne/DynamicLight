@@ -66,19 +66,6 @@ unsafe extern "system" fn window_proc(
     DefWindowProcW(hwnd, message, wparam, lparam)
 }
 
-/// Low-level keyboard hook that only looks at Caps/Num/Scroll Lock key-downs, which
-/// make Windows send an indicator report to the strip's keyboard interface.
-unsafe extern "system" fn lock_keys(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    if code >= 0 && matches!(wparam.0 as u32, WM_KEYDOWN | WM_SYSKEYDOWN) && lparam.0 != 0 {
-        let info = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
-        // VK_CAPITAL, VK_NUMLOCK, VK_SCROLL
-        if matches!(info.vkCode, 0x14 | 0x90 | 0x91) {
-            crate::device::hold_output(250);
-        }
-    }
-    CallNextHookEx(None, code, wparam, lparam)
-}
-
 unsafe fn message_loop(handle: &Handle) -> windows::core::Result<()> {
     let instance = HINSTANCE(GetModuleHandleW(None)?.0);
     let class = w!("DynamicLightSessionEvents");
@@ -150,14 +137,10 @@ unsafe fn message_loop(handle: &Handle) -> windows::core::Result<()> {
         }
         WTSFreeMemory(buffer.0.cast());
     }
-    let hook = SetWindowsHookExW(WH_KEYBOARD_LL, Some(lock_keys), Some(instance), 0).ok();
     let mut message = MSG::default();
     while GetMessageW(&mut message, None, 0, 0).0 > 0 {
         let _ = TranslateMessage(&message);
         DispatchMessageW(&message);
-    }
-    if let Some(hook) = hook {
-        let _ = UnhookWindowsHookEx(hook);
     }
     if session.is_ok() {
         let _ = WTSUnRegisterSessionNotification(hwnd);
