@@ -92,6 +92,20 @@ pub fn screens() -> Result<Vec<Screen>, String> {
         .collect()
 }
 /// Re-enumerate instead of trusting cached monitor handles after docking/resolution changes.
+/// Width / height of the display lighting follows (selected or primary).
+pub fn display_aspect(id: &str) -> Option<f32> {
+    let all = Monitor::all().ok()?;
+    let monitor = if id.is_empty() {
+        all.iter()
+            .find(|m| m.is_primary().unwrap_or(false))
+            .or(all.first())
+    } else {
+        all.iter()
+            .find(|m| m.id().map(|v| v.to_string() == id).unwrap_or(false))
+    }?;
+    let (w, h) = (monitor.width().ok()?, monitor.height().ok()?);
+    (w > 0 && h > 0).then(|| w as f32 / h as f32)
+}
 pub fn source_signature(settings: &Settings) -> Result<String, String> {
     if matches!(
         settings.capture_source,

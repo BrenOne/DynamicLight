@@ -339,7 +339,7 @@ impl Engine {
             return Ok(());
         }
         let mut changed = false;
-        if let Some((leds, _)) = self.controller.detected {
+        if let Some((leds, inches)) = self.controller.detected {
             let n = leds as usize;
             if self.state.settings.count != n {
                 self.state.settings.count = n;
@@ -348,7 +348,9 @@ impl Engine {
                 changed = true;
             }
             // Only a strip that reported its size drives the automatic layout.
-            changed |= lighting::auto_sides(&mut self.state.settings, 16.0 / 9.0);
+            let aspect = crate::capture::display_aspect(&self.state.settings.screen_id)
+                .unwrap_or(16.0 / 9.0);
+            changed |= lighting::auto_sides(&mut self.state.settings, aspect, Some(inches));
         }
         if changed {
             let _ = self.state.settings.save(&self.path);
