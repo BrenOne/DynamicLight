@@ -757,7 +757,12 @@ async function init() {
   $("launch-at-login").onchange = (event) => {
     const enabled = event.target.checked;
     run(async () => {
-      loginEnabled = await invoke("launch_at_login", { enabled });
+      try {
+        loginEnabled = await invoke("launch_at_login", { enabled });
+      } finally {
+        // A declined UAC prompt leaves the previous state in place.
+        event.target.checked = loginEnabled;
+      }
       if (loginEnabled !== enabled)
         throw new Error(
           "Login startup was not changed. Check your operating system's login-item settings.",

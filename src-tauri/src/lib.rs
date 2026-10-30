@@ -2,6 +2,8 @@ mod ambient;
 mod appearance;
 mod audio;
 mod automation;
+#[cfg(target_os = "windows")]
+mod autostart_windows;
 mod beat;
 mod bounded_http;
 mod capture;
@@ -45,10 +47,39 @@ use std::sync::{
 use tauri::{Emitter, Manager};
 struct Preview(Arc<AtomicBool>);
 
-#[tauri::command]
+// Runs off the main thread: enabling may wait for a UAC prompt.
+#[tauri::command(async)]
 fn launch_at_login(app: tauri::AppHandle, enabled: Option<bool>) -> Result<bool, String> {
     use tauri_plugin_autostart::ManagerExt;
-    let manager = app.autolaunch();
+    login_item(&app.autolaunch(), enabled)
+}
+
+#[cfg(target_os = "windows")]
+fn login_item(
+    manager: &tauri_plugin_autostart::AutoLaunchManager,
+    enabled: Option<bool>,
+) -> Result<bool, String> {
+    if let Some(enabled) = enabled {
+        // Older versions used the per-user Run key; the elevated task replaces it.
+        if manager.is_enabled().unwrap_or(false) {
+            let _ = manager.disable();
+        }
+        if enabled != autostart_windows::enabled() {
+            if enabled {
+                autostart_windows::enable()?;
+            } else {
+                autostart_windows::disable()?;
+            }
+        }
+    }
+    Ok(autostart_windows::enabled())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn login_item(
+    manager: &tauri_plugin_autostart::AutoLaunchManager,
+    enabled: Option<bool>,
+) -> Result<bool, String> {
     if let Some(enabled) = enabled {
         if enabled {
             manager.enable()
@@ -183,6 +214,8 @@ fn show(app: &tauri::AppHandle) {
     }
 }
 pub fn run() {
+    #[cfg(target_os = "windows")]
+    autostart_windows::allow_relaunch_from_unelevated();
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, args, _| {
