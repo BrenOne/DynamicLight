@@ -37,11 +37,21 @@ static HOLD_UNTIL_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU6
 fn now_ms() -> u64 {
     EPOCH.elapsed().as_millis() as u64
 }
+/// Output rate the engine is running at. At 30 FPS or less a frame (33 ms apart)
+/// never overlaps the controller's ~27 ms indicator update, so no hold is needed.
+static OUTPUT_FPS: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(60);
+const HOLD_ABOVE_FPS: u8 = 30;
+pub fn set_output_fps(fps: u8) {
+    OUTPUT_FPS.store(fps, std::sync::atomic::Ordering::Relaxed);
+}
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 pub fn hold_output(ms: u64) {
     HOLD_UNTIL_MS.fetch_max(now_ms() + ms, std::sync::atomic::Ordering::Relaxed);
 }
 fn held_for() -> Option<Duration> {
+    if OUTPUT_FPS.load(std::sync::atomic::Ordering::Relaxed) <= HOLD_ABOVE_FPS {
+        return None;
+    }
     let until = HOLD_UNTIL_MS.load(std::sync::atomic::Ordering::Relaxed);
     let now = now_ms();
     (until > now).then(|| Duration::from_millis(until - now))
