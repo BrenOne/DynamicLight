@@ -30,6 +30,8 @@ const LAUNCH: &str = "DynamicLight Launch";
 /// Argument of processes started by the launch task; they never relaunch.
 const FROM_TASK: &str = "--from-task";
 const NO_WINDOW: u32 = 0x0800_0000;
+const DETACHED_PROCESS: u32 = 0x0000_0008;
+const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
 
 fn exists(task: &str) -> bool {
     Command::new("schtasks")
@@ -138,15 +140,17 @@ pub fn is_elevated() -> bool {
 /// Registers the launch task (one UAC prompt) and restarts through it, so the
 /// app comes back elevated. The restart waits ~4 s for this copy to exit.
 pub fn elevate_and_restart() -> Result<(), String> {
-    if !exists(LAUNCH) {
-        register(false)?;
-    }
+    // Always (re)create it: a task that exists but is disabled would not run,
+    // and the app would close without coming back.
+    register(false)?;
+    // Detached, so the delayed restart survives this process exiting. raw_arg:
+    // Rust's argument quoting (\") is not understood by cmd.exe and mangled
+    // the task name, so the restart silently failed.
     Command::new("cmd.exe")
-        .args([
-            "/c",
-            "ping -n 5 127.0.0.1 >nul & schtasks /Run /TN \"DynamicLight Launch\"",
-        ])
-        .creation_flags(NO_WINDOW)
+        .raw_arg(format!(
+            "/c ping -n 5 127.0.0.1 >nul & schtasks /Run /TN \"{LAUNCH}\""
+        ))
+        .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
         .spawn()
         .map_err(|e| e.to_string())?;
     Ok(())

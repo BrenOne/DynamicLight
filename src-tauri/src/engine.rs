@@ -2681,6 +2681,7 @@ mod tests {
         let mut e = simulated(
             Settings {
                 mode: "blend".into(),
+                resume_capture: false,
                 ..Default::default()
             },
             dir.path().join("settings.json"),

@@ -47,6 +47,7 @@
 - `sequence.rs`: запись RGB не чаще 30 к/с (лимит 1800 кадров).
 - UI (`index.html`, `renderer.js`): поля LEDs left/top/right/bottom, Corner gap %, опции 60/45 FPS.
 - Патч 2: `lighting::auto_sides()` при подключении сам заполняет разбивку по сторонам (94 → 16/31/16/31, corner_gap 4 % при первом заполнении); превью ленты в UI (`window.ledLayout` в ui-common.js, studio.js) учитывает стороны и отступы углов.
+- Capture recovery (`resume_capture`) включён по умолчанию.
 - Захват экрана (`capture.rs`): при потере DXGI duplication (UAC, блокировка, смена режима) держим последний кадр, пересоздаём захват 4 раза/с, через 0,3 с приглушаем до 25 %.
 - Lock-клавиши: хук + `hold_output` (см. ниже).
 - Автонастройка без участия пользователя: при подключении `0x82` даёт число LED и диагональ; `lighting::guess_sides` выбирает 3 или 4 стороны по шагу LED ≈2 см (0.5 LED/см), соотношение сторон — из реального монитора (`capture::display_aspect`). Киты: 24"/27", 3- и 4-сторонние (24": ~56/~83 LED, 27": ~64/~94; порог 69/78). Ручной выбор сторон не перетирается. В UI предупреждение, если сумма сторон ≠ числу LED.
@@ -70,6 +71,12 @@
 
 ## Дальше
 - Проверить на ленте ветку `feature/installer-dark-fps`: вопрос установщика и запуск от администратора через ярлык, слайдер Dark scenes, 90/120 FPS.
+
+## Релизы и автообновление
+- Версия форка 1.0.0+ (выше любой 0.x автора, чтобы апдейтер никогда не предлагал его сборки). Версия должна совпадать в package.json, src-tauri/Cargo.toml, src-tauri/Cargo.lock, control/Cargo.toml, control/Cargo.lock, tauri.conf.json (`node scripts/release.cjs version vX.Y.Z` проверяет).
+- Апдейтер: endpoint `https://github.com/BrenOne/DynamicLight/releases/latest/download/latest.json`, свой pubkey в tauri.conf.json, `updates.rs` доверяет только `/BrenOne/DynamicLight/releases/download/v{version}/dynamiclight-desktop-…`.
+- Секреты репозитория: `TAURI_SIGNING_PRIVATE_KEY` (содержимое файла ключа) и `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Ключ хранится у владельца, в репозитории его нет.
+- Выпуск: поднять версию во всех файлах → merge в main → `git tag vX.Y.Z && git push origin vX.Y.Z`. Джоб `release` подписывает установщик и публикует Release с `dynamiclight-desktop-windows-x64-setup.exe`, `.sig` и `latest.json`.
 
 ## Процесс
 - Новая работа — в ветках `fix/…`/`feature/…`, PR в `BrenOne/DynamicLight` (не в upstream!), сборка на PR, проверка на ленте, merge.

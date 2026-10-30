@@ -96,6 +96,7 @@ mod tests {
     fn independent_preferences_and_capture_consent() {
         let mut s = Settings {
             off_on_lock: false,
+            resume_capture: false,
             ..Default::default()
         };
         let mut life = Lifecycle {
