@@ -21,7 +21,7 @@ pub struct Desktop {
     staging: Option<ID3D11Texture2D>,
     /// GPU downscale: full-size texture with a mip chain, its view, and the mip
     /// level read back. Only that small level crosses to the CPU each frame.
-    mips: Option<(ID3D11Texture2D, ID3D11ShaderResourceView, u32)>,
+    mips: Option<Mips>,
     /// Desktop size the textures were made for.
     source: (u32, u32),
     /// Size of the image read back (the chosen mip level).
@@ -35,6 +35,67 @@ fn mip_level(width: u32, height: u32) -> u32 {
         level += 1;
     }
     level
+}
+type Mips = (ID3D11Texture2D, ID3D11ShaderResourceView, u32);
+/// Creates the textures for a desktop of `desc` size: an optional mip chain for
+/// GPU downscaling and the CPU staging texture of the level that is read back.
+/// Falls back to a full-size readback when the GPU cannot generate mips.
+unsafe fn prepare(
+    device: &ID3D11Device,
+    desc: D3D11_TEXTURE2D_DESC,
+) -> Result<(Option<Mips>, ID3D11Texture2D, (u32, u32)), String> {
+    let single = DXGI_SAMPLE_DESC {
+        Count: 1,
+        Quality: 0,
+    };
+    let mut mips = None;
+    let level = mip_level(desc.Width, desc.Height);
+    if level > 0 {
+        let chain = D3D11_TEXTURE2D_DESC {
+            MipLevels: level + 1,
+            ArraySize: 1,
+            SampleDesc: single,
+            Usage: D3D11_USAGE_DEFAULT,
+            BindFlags: (D3D11_BIND_RENDER_TARGET.0 | D3D11_BIND_SHADER_RESOURCE.0) as u32,
+            CPUAccessFlags: 0,
+            MiscFlags: D3D11_RESOURCE_MISC_GENERATE_MIPS.0 as u32,
+            ..desc
+        };
+        let mut texture = None;
+        if device
+            .CreateTexture2D(&chain, None, Some(&mut texture))
+            .is_ok()
+        {
+            if let Some(texture) = texture {
+                let mut view = None;
+                if device
+                    .CreateShaderResourceView(&texture, None, Some(&mut view))
+                    .is_ok()
+                {
+                    mips = view.map(|view| (texture, view, level));
+                }
+            }
+        }
+    }
+    let level = mips.as_ref().map_or(0, |m| m.2);
+    let size = ((desc.Width >> level).max(1), (desc.Height >> level).max(1));
+    let staging = D3D11_TEXTURE2D_DESC {
+        Width: size.0,
+        Height: size.1,
+        MipLevels: 1,
+        ArraySize: 1,
+        SampleDesc: single,
+        Usage: D3D11_USAGE_STAGING,
+        BindFlags: 0,
+        CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
+        MiscFlags: 0,
+        ..desc
+    };
+    let mut texture = None;
+    device
+        .CreateTexture2D(&staging, None, Some(&mut texture))
+        .map_err(|e| e.to_string())?;
+    Ok((mips, texture.ok_or("Missing staging surface")?, size))
 }
 struct Acquired<'a>(&'a IDXGIOutputDuplication);
 impl Drop for Acquired<'_> {
@@ -103,68 +164,6 @@ impl Desktop {
     pub fn has_frame(&self) -> bool {
         self.staging.is_some()
     }
-    /// (Re)creates the textures for a desktop of `desc` size. Falls back to a
-    /// full-size readback when the GPU cannot generate mips for this format.
-    unsafe fn prepare(&mut self, desc: D3D11_TEXTURE2D_DESC) -> Result<(), String> {
-        self.mips = None;
-        self.staging = None;
-        let level = mip_level(desc.Width, desc.Height);
-        if level > 0 {
-            let mip = D3D11_TEXTURE2D_DESC {
-                MipLevels: level + 1,
-                ArraySize: 1,
-                SampleDesc: DXGI_SAMPLE_DESC {
-                    Count: 1,
-                    Quality: 0,
-                },
-                Usage: D3D11_USAGE_DEFAULT,
-                BindFlags: (D3D11_BIND_RENDER_TARGET.0 | D3D11_BIND_SHADER_RESOURCE.0) as u32,
-                CPUAccessFlags: 0,
-                MiscFlags: D3D11_RESOURCE_MISC_GENERATE_MIPS.0 as u32,
-                ..desc
-            };
-            let mut texture = None;
-            let mut view = None;
-            if self
-                .device
-                .CreateTexture2D(&mip, None, Some(&mut texture))
-                .is_ok()
-            {
-                if let Some(texture) = texture {
-                    if self
-                        .device
-                        .CreateShaderResourceView(&texture, None, Some(&mut view))
-                        .is_ok()
-                    {
-                        if let Some(view) = view {
-                            self.mips = Some((texture, view, level));
-                        }
-                    }
-                }
-            }
-        }
-        let level = self.mips.as_ref().map_or(0, |m| m.2);
-        self.width = (desc.Width >> level).max(1);
-        self.height = (desc.Height >> level).max(1);
-        let staging = D3D11_TEXTURE2D_DESC {
-            Width: self.width,
-            Height: self.height,
-            MipLevels: 1,
-            ArraySize: 1,
-            SampleDesc: DXGI_SAMPLE_DESC {
-                Count: 1,
-                Quality: 0,
-            },
-            Usage: D3D11_USAGE_STAGING,
-            BindFlags: 0,
-            CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
-            MiscFlags: 0,
-            ..desc
-        };
-        self.device
-            .CreateTexture2D(&staging, None, Some(&mut self.staging))
-            .map_err(|e| e.to_string())
-    }
     pub fn colors(&mut self, settings: &Settings) -> Result<Vec<Rgb>, String> {
         unsafe {
             let mut info = DXGI_OUTDUPL_FRAME_INFO::default();
@@ -186,7 +185,9 @@ impl Desktop {
                     }
                     if self.staging.is_none() || self.source != (desc.Width, desc.Height) {
                         self.source = (desc.Width, desc.Height);
-                        self.prepare(desc)?;
+                        let (mips, staging, size) = prepare(&self.device, desc)?;
+                        (self.mips, self.staging) = (mips, Some(staging));
+                        (self.width, self.height) = size;
                     }
                     let staging = self.staging.as_ref().ok_or("Missing staging surface")?;
                     match &self.mips {
