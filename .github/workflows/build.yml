@@ -1,7 +1,8 @@
 # Fork build: Windows only, the NSIS installer as an artifact (no releases,
 # updater packages or CLI).
-# Checks and the installer build run in parallel; PR builds use a fast release
-# profile, pushes to main keep the project's optimised one.
+# Checks and the installer build run in parallel. Every build uses one fast
+# release profile and one cache key, so PRs reuse main's compiled dependencies
+# (GitHub lets a PR restore caches saved by its base branch).
 name: Build desktop apps
 on:
   workflow_dispatch:
@@ -51,12 +52,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-          key: build-${{ github.event_name == 'pull_request' && 'fast' || 'release' }}
+          key: build
           cache-on-failure: true
       - run: npm install --global pnpm@11.25.0
       - run: pnpm install --frozen-lockfile
-      - name: Fast release profile for PR test builds
-        if: github.event_name == 'pull_request'
+      - name: Fast release profile (no LTO, parallel codegen)
         shell: bash
         run: |
           echo "CARGO_PROFILE_RELEASE_LTO=false" >> "$GITHUB_ENV"
