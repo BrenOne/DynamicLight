@@ -37,7 +37,7 @@ dependencies = [
 
 [[package]]
 name = "dynamiclight-control"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "dirs",
  "getrandom 0.3.4",
