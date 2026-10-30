@@ -214,7 +214,7 @@ impl Deck {
         self.recording = Some(Recorder {
             started: Instant::now(),
             limit_ms: u32::from(seconds) * 1000,
-            interval_ms: 1000 / u32::from(s.fps),
+            interval_ms: (1000 / u32::from(s.fps)).max(33),
             next_ms: 0,
             count: s.count,
             sides: s.sides,

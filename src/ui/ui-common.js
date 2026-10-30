@@ -1,4 +1,35 @@
 "use strict";
+// LED sample points in strip order (bottom-left, up, clockwise). Mirrors
+// lighting::layout: explicit per-side counts leave cornerGap % empty at corners.
+window.ledLayout = (s, count, aspect) => {
+  const used = s.sides === 4 ? 4 : 3,
+    counts = [s.sideLeft, s.sideTop, s.sideRight, s.sideBottom]
+      .slice(0, used)
+      .map((n) => n || 0),
+    total = counts.reduce((a, b) => a + b, 0);
+  if (total !== count || total === 0) {
+    const perimeter = 2 + aspect * (s.sides === 4 ? 2 : 1);
+    return Array.from({ length: count }, (_, i) => {
+      const p = ((i + 0.5) / count) * perimeter;
+      return p < 1
+        ? [0, 1 - p]
+        : p < 1 + aspect
+          ? [(p - 1) / aspect, 0]
+          : p < 2 + aspect
+            ? [1, p - 1 - aspect]
+            : [1 - (p - 2 - aspect) / aspect, 1];
+    });
+  }
+  const gap = Math.min(20, s.cornerGap || 0) / 100,
+    out = [];
+  counts.forEach((n, side) => {
+    for (let j = 0; j < n; j++) {
+      const t = gap + ((1 - 2 * gap) * (j + 0.5)) / n;
+      out.push([[0, 1 - t], [t, 0], [1, t], [1 - t, 1]][side]);
+    }
+  });
+  return out;
+};
 // Shared, local-only presentation for the main and Quick-controls windows.
 window.LightUI = (() => {
   const svgNS = "http://www.w3.org/2000/svg";
@@ -227,17 +258,9 @@ window.LightUI = (() => {
     ctx.lineTo(right, bottom);
     if (s.sides === 4) ctx.closePath();
     ctx.stroke();
-    const perimeter = 2 + aspect * (s.sides === 4 ? 2 : 1);
+    const points = window.ledLayout(s, colors.length, aspect);
     colors.forEach((color, i) => {
-      const p = ((i + 0.5) / colors.length) * perimeter;
-      const [x, y] =
-        p < 1
-          ? [0, 1 - p]
-          : p < 1 + aspect
-            ? [(p - 1) / aspect, 0]
-            : p < 2 + aspect
-              ? [1, p - 1 - aspect]
-              : [1 - (p - 2 - aspect) / aspect, 1];
+      const [x, y] = points[i];
       const rgb = powered ? color : [0, 0, 0],
         lit = rgb.some((v) => v > 0);
       ctx.fillStyle = lit ? `rgb(${rgb.join(",")})` : c.track;

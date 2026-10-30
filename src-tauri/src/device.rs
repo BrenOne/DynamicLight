@@ -14,8 +14,11 @@ pub struct Controller {
     #[cfg(test)]
     pub test_bus: Option<TestBus>,
     device: Option<HidDevice>,
+    path: Option<std::ffi::CString>,
     sequence: u8,
     pub status: Status,
+    /// (LED count, display size in inches) reported by the controller (0x82).
+    pub detected: Option<(u8, u8)>,
 }
 static CLAIMED: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<String>>> =
     std::sync::LazyLock::new(Default::default);
@@ -123,7 +126,11 @@ fn write_reports(
     packet: &[u8],
     mut write: impl FnMut(&[u8]) -> Result<usize, String>,
 ) -> Result<(), String> {
-    for report in protocol::reports(packet) {
+    for (i, report) in protocol::reports(packet).enumerate() {
+        if i > 0 {
+            // The controller drops/stalls back-to-back reports (OpenRGB uses the same gap).
+            thread::sleep(Duration::from_millis(1));
+        }
         let n = write(&report)?;
         if n != report.len() {
             return Err(format!("Incomplete USB write ({n}/{})", report.len()));
@@ -139,7 +146,9 @@ impl Controller {
             #[cfg(test)]
             test_bus: None,
             device: None,
+            path: None,
             sequence: 0,
+            detected: None,
             status: Status {
                 connected: false,
                 message: "Ready to connect".into(),
@@ -152,6 +161,7 @@ impl Controller {
     }
     pub fn close(&mut self, message: &str) {
         self.device = None;
+        self.path = None;
         self.lease = None;
         self.status = Status {
             connected: false,
@@ -197,23 +207,27 @@ impl Controller {
                 .ok_or("No compatible strip found. Check USB and close SyncLight.")?;
             let key = hex(target.path().to_bytes());
             self.lease = Some(Lease::claim(key)?);
+            self.path = Some(target.path().to_owned());
             self.device = Some(target.open_device(&api).map_err(|e| {
                 #[cfg(target_os = "linux")]
                 { format!("Cannot open the strip: {e}. Install the DynamicLight USB permission rule, then unplug and reconnect the strip. See docs/linux.md.") }
                 #[cfg(not(target_os = "linux"))]
                 { e.to_string() }
             })?);
-            let id = self.id();
-            self.write(&protocol::command(id, 0x82, &[]))?;
-            thread::sleep(Duration::from_millis(50));
+            self.detected = self.query_info();
+            // Stop the controller from typing the driver-download URL.
             let id = self.id();
             self.write(&protocol::command(id, 0x93, &[0]))?;
+            // Hardware brightness is 0-255; software brightness scales colours.
             let id = self.id();
-            self.write(&protocol::command(id, 0x87, &[100]))?;
+            self.write(&protocol::command(id, 0x87, &[255]))?;
             self.solid([0; 3], 127)?;
             self.status = Status {
                 connected: true,
-                message: "Connected over USB".into(),
+                message: match self.detected {
+                    Some((leds, size)) => format!("Connected over USB · {leds} LEDs · {size}\""),
+                    None => "Connected over USB".into(),
+                },
             };
             Ok(())
         })();
@@ -222,8 +236,68 @@ impl Controller {
         }
         result
     }
+    /// Asks for device info (0x82). Reply: 52 42 len id 82 .. [8]=inches .. [11]=LEDs.
+    fn query_info(&mut self) -> Option<(u8, u8)> {
+        #[cfg(test)]
+        if self.test_bus.is_some() {
+            return None;
+        }
+        for _ in 0..3 {
+            let id = self.id();
+            let packet = protocol::command(id, 0x82, &[]);
+            let d = self.device.as_ref()?;
+            write_reports(&packet, |r| d.write(r).map_err(|e| e.to_string())).ok()?;
+            let mut buf = [0u8; 65];
+            for _ in 0..5 {
+                let n = d.read_timeout(&mut buf, 100).ok()?;
+                if n == 0 {
+                    continue;
+                }
+                // Tolerate a leading report-ID byte on some platforms.
+                let o = if buf[0] == 0 { 1 } else { 0 };
+                if n >= o + 24 && buf[o] == 0x52 && buf[o + 1] == 0x42 && buf[o + 4] == 0x82 {
+                    let (leds, inches) = (buf[o + 11], buf[o + 8]);
+                    return (1..=127).contains(&leds).then_some((leds, inches));
+                }
+            }
+            // The controller sometimes holds a reply until it receives another command.
+            let id = self.id();
+            let nop = protocol::command(id, 0x93, &[0]);
+            let d = self.device.as_ref()?;
+            let _ = write_reports(&nop, |r| d.write(r).map_err(|e| e.to_string()));
+        }
+        None
+    }
+    /// Reopen the same interface after a stalled write without a full reconnect.
+    fn reopen(&mut self) -> Result<(), String> {
+        let path = self.path.clone().ok_or("Strip is not connected")?;
+        self.device = None;
+        let api = HidApi::new().map_err(|e| e.to_string())?;
+        self.device = Some(api.open_path(&path).map_err(|e| e.to_string())?);
+        Ok(())
+    }
     fn write(&mut self, packet: &[u8]) -> Result<(), String> {
-        let result: Result<(), String> = (|| {
+        let result = self.write_once(packet).or_else(|first| {
+            #[cfg(test)]
+            if self.test_bus.is_some() {
+                return Err(first);
+            }
+            // A single hid_write timeout (0x3E5) is usually transient: retry, then reopen.
+            thread::sleep(Duration::from_millis(5));
+            if self.write_once(packet).is_ok() {
+                return Ok(());
+            }
+            self.reopen().map_err(|e| format!("{first}; reopen: {e}"))?;
+            self.write_once(packet)
+                .map_err(|e| format!("{first}; retry: {e}"))
+        });
+        if let Err(ref e) = result {
+            self.close(&format!("USB disconnected: {e}"));
+        }
+        result
+    }
+    fn write_once(&mut self, packet: &[u8]) -> Result<(), String> {
+        (|| {
             #[cfg(test)]
             if let Some(bus) = &mut self.test_bus {
                 bus.writes += 1;
@@ -246,11 +320,7 @@ impl Controller {
                 }
             }
             Ok(())
-        })();
-        if let Err(ref e) = result {
-            self.close(&format!("USB disconnected: {e}"));
-        }
-        result
+        })()
     }
     pub fn solid(&mut self, rgb: Rgb, count: usize) -> Result<(), String> {
         let id = self.id();

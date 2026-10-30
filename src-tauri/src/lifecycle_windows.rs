@@ -54,6 +54,12 @@ unsafe extern "system" fn window_proc(
                 }
             }
             WM_DISPLAYCHANGE => handle.system_event(SystemEvent::SourcesChanged, false),
+            // Windows shutdown/restart/sign-out: turn the strip off before the process is
+            // killed, otherwise USB power keeps the last frame lit.
+            WM_QUERYENDSESSION => return LRESULT(1),
+            WM_ENDSESSION if wparam.0 != 0 => {
+                let _ = handle.request(crate::engine::Action::Shutdown);
+            }
             _ => {}
         }
     }

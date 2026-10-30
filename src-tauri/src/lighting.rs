@@ -84,6 +84,85 @@ pub fn hsv(h: f32) -> Rgb {
             .round() as u8
     })
 }
+/// LED pitch of monitor kits (≈2 cm), used to tell 3-sided from 4-sided strips.
+const LEDS_PER_CM: f32 = 0.5;
+
+/// 3 or 4 monitor edges for `count` LEDs on a `inches` display with `aspect`:
+/// the option whose LED density is closest to a real strip's pitch.
+pub fn guess_sides(count: usize, inches: u8, aspect: f32) -> u8 {
+    let diagonal = inches as f32 * 2.54;
+    let height = diagonal / (1.0 + aspect * aspect).sqrt();
+    let width = height * aspect;
+    let error = |length: f32| (count as f32 / length / LEDS_PER_CM).ln().abs();
+    if error(2.0 * height + width) < error(2.0 * (width + height)) {
+        3
+    } else {
+        4
+    }
+}
+
+/// Fill per-side LED counts when they don't add up to the strip length.
+/// `size` is the display diagonal the controller reports; with it, a fresh
+/// setup also picks 3 or 4 edges. For 94 LEDs on 27" 16:9 that is four edges,
+/// 16/31/16/31, matching kits whose bars leave the corners empty.
+pub fn auto_sides(s: &mut Settings, aspect: f32, size: Option<u8>) -> bool {
+    let counts = [s.side_left, s.side_top, s.side_right, s.side_bottom];
+    let fresh = counts.iter().all(|&n| n == 0);
+    let sum = |four: bool| -> usize {
+        counts[..if four { 4 } else { 3 }]
+            .iter()
+            .map(|&n| n as usize)
+            .sum()
+    };
+    if sum(s.sides == 4) == s.count || s.count < 4 {
+        return false;
+    }
+    if let Some(inches) = size.filter(|&i| fresh && (10..=100).contains(&i)) {
+        s.sides = guess_sides(s.count, inches, aspect);
+    }
+    let four = s.sides == 4;
+    let n = s.count;
+    let perimeter = if four {
+        2.0 * (1.0 + aspect)
+    } else {
+        2.0 + aspect
+    };
+    let v = ((n as f32 / perimeter).floor() as usize).max(1);
+    let h = n - 2 * v;
+    let (top, bottom) = if four { (h / 2, h - h / 2) } else { (h, 0) };
+    (s.side_left, s.side_right) = (v as u8, v as u8);
+    (s.side_top, s.side_bottom) = (top as u8, bottom as u8);
+    if fresh && s.corner_gap == 0 {
+        s.corner_gap = 4;
+    }
+    true
+}
+/// LED sample points in strip order (bottom-left, up, clockwise seen from the
+/// front). With explicit per-side counts the LEDs sit inside each edge, leaving
+/// `corner_gap` percent empty at both ends — strips made of bars with wired
+/// corners have no LEDs there.
+pub fn layout(s: &Settings, aspect: f32) -> Vec<(f32, f32)> {
+    let used = if s.sides == 4 { 4 } else { 3 };
+    let counts = [s.side_left, s.side_top, s.side_right, s.side_bottom];
+    let total: usize = counts[..used].iter().map(|&n| n as usize).sum();
+    if total != s.count || total == 0 {
+        return positions(s.count, s.sides, aspect);
+    }
+    let gap = s.corner_gap.min(20) as f32 / 100.0;
+    let mut out = Vec::with_capacity(total);
+    for (side, &n) in counts[..used].iter().enumerate() {
+        for j in 0..n {
+            let t = gap + (1.0 - 2.0 * gap) * (j as f32 + 0.5) / n as f32;
+            out.push(match side {
+                0 => (0.0, 1.0 - t),
+                1 => (t, 0.0),
+                2 => (1.0, t),
+                _ => (1.0 - t, 1.0),
+            });
+        }
+    }
+    out
+}
 pub fn positions(count: usize, sides: u8, aspect: f32) -> Vec<(f32, f32)> {
     let perimeter = 2.0 + aspect * if sides == 4 { 2.0 } else { 1.0 };
     (0..count)
@@ -157,7 +236,7 @@ pub fn sample_geometry(
     let (cw, ch) = (width - 2 * left, height - 2 * top);
     // LED edge allocation follows the physical display. Cropping changes where
     // each LED samples the picture, not which physical LEDs belong to an edge.
-    positions(settings.count, settings.sides, aspect)
+    layout(settings, aspect)
         .iter()
         .map(|&(x, y)| {
             let cx = left + (x * (cw - 1) as f32).round() as u32;
@@ -265,6 +344,40 @@ pub fn reorder(colors: &[Rgb], reverse: bool, offset: usize) -> Vec<Rgb> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn auto_layout_detects_edges_from_size_and_aspect() {
+        let mut s = Settings {
+            count: 94,
+            ..Default::default()
+        };
+        assert!(auto_sides(&mut s, 16.0 / 9.0, Some(27)));
+        assert_eq!(s.sides, 4);
+        assert_eq!(
+            [s.side_left, s.side_top, s.side_right, s.side_bottom],
+            [16, 31, 16, 31]
+        );
+        assert_eq!(s.corner_gap, 4);
+        assert!(!auto_sides(&mut s, 16.0 / 9.0, Some(27)));
+        // OpenRGB's 34" ultrawide kit: 71 LEDs on three edges.
+        let mut s = Settings {
+            count: 71,
+            sides: 4,
+            ..Default::default()
+        };
+        assert!(auto_sides(&mut s, 3440.0 / 1440.0, Some(34)));
+        assert_eq!(s.sides, 3);
+        assert_eq!(s.side_bottom, 0);
+        assert_eq!(s.side_left + s.side_top + s.side_right, 71);
+        // Manual edge choice is kept once counts exist.
+        let mut s = Settings {
+            count: 94,
+            sides: 3,
+            side_left: 10,
+            ..Default::default()
+        };
+        assert!(auto_sides(&mut s, 16.0 / 9.0, Some(27)));
+        assert_eq!(s.sides, 3);
+    }
     fn window_settings(crop: Option<crate::capture_source::Rectangle>) -> Settings {
         Settings {
             count: 24,

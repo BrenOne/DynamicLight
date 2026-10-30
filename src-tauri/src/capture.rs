@@ -362,7 +362,8 @@ impl DisplayCapture {
     }
 }
 
-fn display_aspect(id: &str) -> Result<f32, String> {
+/// Width / height of the display lighting follows (selected or primary).
+pub(crate) fn display_aspect(id: &str) -> Result<f32, String> {
     let monitors = Monitor::all().map_err(|e| e.to_string())?;
     let monitor = if id.is_empty() {
         monitors
