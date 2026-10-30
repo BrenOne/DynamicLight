@@ -44,6 +44,8 @@ pub struct Settings {
     pub rgb_balance: [u8; 3],
     pub saturation: u16,
     pub gamma: u16,
+    /// Lift dim colours (0-100), see lighting::lift_dark.
+    pub dark_scenes: u8,
     pub input_gain: i8,
     pub blend: u8,
     pub max_brightness: u8,
@@ -95,6 +97,7 @@ impl Default for Settings {
             rgb_balance: [100; 3],
             saturation: 100,
             gamma: 100,
+            dark_scenes: 35,
             input_gain: 0,
             blend: 60,
             max_brightness: 100,
@@ -152,7 +155,7 @@ impl Settings {
             || self.offset > 126
             || self.smoothing > 95
             || !(1..=100).contains(&self.sensitivity)
-            || ![10, 20, 30, 45, 60].contains(&self.fps)
+            || ![10, 20, 30, 45, 60, 90, 120].contains(&self.fps)
             || [
                 self.side_left,
                 self.side_top,
@@ -169,6 +172,7 @@ impl Settings {
             || self.rgb_balance.iter().any(|v| *v > 200)
             || self.saturation > 200
             || !(50..=250).contains(&self.gamma)
+            || self.dark_scenes > 100
             || !(-24..=24).contains(&self.input_gain)
             || self.blend > 100
             || self.max_brightness > 100

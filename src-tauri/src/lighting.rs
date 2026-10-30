@@ -67,13 +67,26 @@ impl Crop {
 }
 fn balance(rgb: [f32; 3], s: &Settings) -> Rgb {
     let luma = rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
-    std::array::from_fn(|c| {
+    let adjusted: [f32; 3] = std::array::from_fn(|c| {
         let value =
             ((luma + (rgb[c] - luma) * s.saturation as f32 / 100.0) / 255.0).clamp(0.0, 1.0);
-        (255.0 * value.powf(s.gamma as f32 / 100.0) * s.rgb_balance[c] as f32 / 100.0)
-            .round()
-            .clamp(0.0, 255.0) as u8
-    })
+        255.0 * value.powf(s.gamma as f32 / 100.0) * s.rgb_balance[c] as f32 / 100.0
+    });
+    lift_dark(adjusted, s.dark_scenes).map(|v| v.round().clamp(0.0, 255.0) as u8)
+}
+/// Dark scenes: below 40 % brightness, scale a colour up along a gentle curve.
+/// All channels get the same factor, so the hue is kept, and the strip's low
+/// PWM steps no longer turn dim colours into dirty tints or near-black. Bright
+/// colours and true black are untouched. `amount` 0 disables it.
+fn lift_dark(rgb: [f32; 3], amount: u8) -> [f32; 3] {
+    const KNEE: f32 = 0.4;
+    let peak = rgb[0].max(rgb[1]).max(rgb[2]) / 255.0;
+    if amount == 0 || peak >= KNEE || peak < 1.5 / 255.0 {
+        return rgb;
+    }
+    let exponent = 1.0 - 0.6 * amount.min(100) as f32 / 100.0;
+    let lifted = KNEE * (peak / KNEE).powf(exponent);
+    rgb.map(|v| v * lifted / peak)
 }
 pub fn hex(color: &str) -> Rgb {
     [1, 3, 5].map(|i| u8::from_str_radix(&color[i..i + 2], 16).unwrap_or(0))
@@ -345,6 +358,22 @@ pub fn reorder(colors: &[Rgb], reverse: bool, offset: usize) -> Vec<Rgb> {
 mod tests {
     use super::*;
     #[test]
+    fn dark_scenes_lift_dim_colours_and_keep_hue() {
+        // Bright colours and black are untouched.
+        assert_eq!(lift_dark([200.0, 0.0, 0.0], 50), [200.0, 0.0, 0.0]);
+        assert_eq!(lift_dark([0.0, 0.0, 0.0], 50), [0.0; 3]);
+        assert_eq!(lift_dark([10.0, 5.0, 2.0], 0), [10.0, 5.0, 2.0]);
+        let dim = [20.0, 10.0, 4.0];
+        let lifted = lift_dark(dim, 50);
+        assert!(lifted[0] > 30.0 && lifted[0] < 102.0);
+        // Same factor on every channel keeps the hue.
+        assert!((lifted[1] / lifted[0] - 0.5).abs() < 1e-4);
+        assert!((lifted[2] / lifted[0] - 0.2).abs() < 1e-4);
+        // Continuous at the knee and monotonic.
+        assert!((lift_dark([101.9, 0.0, 0.0], 100)[0] - 101.9).abs() < 0.5);
+        assert!(lift_dark([30.0, 0.0, 0.0], 50)[0] < lift_dark([40.0, 0.0, 0.0], 50)[0]);
+    }
+    #[test]
     fn auto_layout_detects_edges_from_size_and_aspect() {
         let mut s = Settings {
             count: 94,
@@ -568,7 +597,11 @@ mod tests {
                 pixels[y * 20 + x * 4..y * 20 + x * 4 + 4].copy_from_slice(&[3, 2, 1, 255]);
             }
         }
-        let colors = sample_strided(&pixels, 4, 2, 20, true, &Settings::default());
+        let s = Settings {
+            dark_scenes: 0,
+            ..Default::default()
+        };
+        let colors = sample_strided(&pixels, 4, 2, 20, true, &s);
         assert!(colors.iter().all(|rgb| *rgb == [1, 2, 3]));
     }
     #[test]

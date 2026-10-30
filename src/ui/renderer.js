@@ -50,6 +50,7 @@ const ranges = {
   blend: "blend",
   saturation: "saturation",
   gamma: "gamma",
+  "dark-scenes": "darkScenes",
   "max-brightness": "maxBrightness",
   "transition-limit": "transitionLimit",
   "minimum-glow": "minimumGlow",
@@ -753,8 +754,9 @@ async function init() {
       rgbBalance: [100, 100, 100],
       saturation: 100,
       gamma: 100,
+      darkScenes: 35,
     });
-    changed(["excludeBars", "rgbBalance", "saturation", "gamma"]);
+    changed(["excludeBars", "rgbBalance", "saturation", "gamma", "darkScenes"]);
   };
   updateUI();
   $("connect").onclick = () =>
