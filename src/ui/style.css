@@ -169,6 +169,9 @@ h2:focus {
   margin-top: 8px;
   line-height: 1.6;
 }
+.help.warning {
+  color: var(--error);
+}
 .help:empty {
   display: none;
 }
