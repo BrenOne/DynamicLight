@@ -12,7 +12,7 @@
   nsExec::Exec 'schtasks /Query /TN "DynamicLight Launch"'
   Pop $0
   StrCmp $0 "0" dl_tasks_done
-  MessageBox MB_YESNO|MB_ICONQUESTION "Start DynamicLight with Windows?$\r$\n$\r$\nDynamicLight runs with administrator rights so Caps Lock protection works in every window. Windows asks for permission once.$\r$\n$\r$\nYou can change this later in Settings > Launch at login." IDNO dl_tasks_nologin
+  MessageBox MB_YESNO|MB_ICONQUESTION "Start DynamicLight with Windows?" IDNO dl_tasks_nologin
     ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --setup-tasks login'
     Goto dl_tasks_done
   dl_tasks_nologin:
