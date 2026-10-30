@@ -1,9 +1,12 @@
+# Fork build: Windows only, the NSIS installer as an artifact (no releases,
+# updater packages or CLI).
+# Checks and the installer build run in parallel; PR builds use a fast release
+# profile, pushes to main keep the project's optimised one.
 name: Build desktop apps
 on:
   workflow_dispatch:
   push:
     branches: [main]
-    tags: ['v*']
   pull_request:
 permissions:
   contents: read
@@ -12,143 +15,57 @@ concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  release-checks:
-    runs-on: ubuntu-24.04
-    outputs:
-      tag: ${{ steps.version.outputs.tag }}
+  checks:
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - name: Validate package versions and release tag
-        id: version
-        shell: bash
-        env:
-          RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
-        run: |
-          version=$(node scripts/release.cjs version "$RELEASE_TAG")
-          echo "tag=v$version" >> "$GITHUB_OUTPUT"
-      - run: sudo apt-get update && sudo apt-get install -y minisign
-      - run: node --test scripts/release-test.cjs scripts/publish-release-test.cjs
-      - run: bash -n scripts/install.sh
-      - run: shellcheck scripts/install.sh
-  installer-tests:
-    strategy:
-      matrix:
-        os: [windows-latest] # fork: Windows only
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - name: Test terminal installer without installing software
-        run: node --test scripts/install-test.cjs
-  build:
-    needs: [release-checks, installer-tests]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            bundle: nsis
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf libudev-dev libasound2-dev libxcb1-dev libxcb-randr0-dev libpipewire-0.3-dev libclang-dev libgbm-dev libegl1-mesa-dev libwayland-dev libxkbcommon-dev libdbus-1-dev pulseaudio pulseaudio-utils xvfb
       - uses: actions/setup-node@v4
         with:
           node-version: 24
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: |
-            src-tauri
-            control
-          key: ${{ matrix.target }}
+          workspaces: src-tauri
+          key: checks
           cache-on-failure: true
       - run: npm install --global pnpm@11.25.0
       - run: pnpm install --frozen-lockfile
-      - name: Verify UI and native icons match the source artwork
-        run: pnpm icons:check
-      - name: Verify backlog publishing preserves triage
-        if: runner.os == 'Linux'
-        run: node scripts/backlog-test.cjs
-      - name: Check studio UI and responsive layouts
-        if: runner.os == 'Linux'
-        run: |
-          pnpm exec playwright install --with-deps chromium
-          pnpm test:ui
+      - run: pnpm icons:check
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       - run: pnpm test
       - run: pnpm check
-      - name: Test and build standalone CLI
-        run: |
-          cargo fmt --manifest-path control/Cargo.toml -- --check
-          cargo test --locked --manifest-path control/Cargo.toml
-          cargo clippy --locked --manifest-path control/Cargo.toml --all-targets -- -D warnings
-          cargo build --locked --manifest-path control/Cargo.toml --release --target ${{ matrix.target }}
-        env:
-          MACOSX_DEPLOYMENT_TARGET: '13.0'
-      - name: Verify Linux audio and USB rules
-        if: runner.os == 'Linux'
-        run: |
-          udevadm verify src-tauri/linux/69-dynamiclight.rules
-          pulseaudio --start --exit-idle-time=-1
-          pactl load-module module-null-sink sink_name=dynamiclight_test
-          pactl set-default-sink dynamiclight_test
-          cargo test --manifest-path src-tauri/Cargo.toml pulse_monitor_receives_samples_and_stops -- --ignored
-          XDG_SESSION_TYPE=x11 xvfb-run -a cargo test --manifest-path src-tauri/Cargo.toml x11_capture_samples_display -- --ignored
-      - name: Configure signed updater packages
-        run: node scripts/configure-updater.cjs
-        env:
-          # fork: no upstream signing key; always build with a disposable key
-          RELEASE_BUILD: 'false'
-          RELEASE_SIGNING_KEY: ''
-      - run: pnpm tauri build --config .local/updater-build.json --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
-        env:
-          MACOSX_DEPLOYMENT_TARGET: '13.0'
-          APPIMAGE_EXTRACT_AND_RUN: '1'
-      - name: Verify Linux package contents and app startup
-        if: runner.os == 'Linux'
-        run: bash scripts/check-linux.sh
-      - name: Stage desktop release assets
-        run: node scripts/release.cjs stage ${{ matrix.target }} dist/release
-      - uses: actions/upload-artifact@v4
-        with:
-          name: dynamiclight-${{ matrix.target }}
-          path: dist/release/*
-          if-no-files-found: error
-  release:
-    needs: [build, release-checks]
-    if: false # fork: artifacts only, no GitHub Releases
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    concurrency:
-      group: release-${{ github.repository }}-${{ needs.release-checks.outputs.tag }}
-      cancel-in-progress: false
+  build:
+    runs-on: windows-latest
+    env:
+      TARGET: x86_64-pc-windows-msvc
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - uses: actions/download-artifact@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          pattern: dynamiclight-*
-          path: dist/release
-          merge-multiple: true
-      - run: sudo apt-get update && sudo apt-get install -y minisign
-      - name: Create version tag and publish complete GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: node scripts/publish-release.cjs dist/release
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: build-${{ github.event_name == 'pull_request' && 'fast' || 'release' }}
+          cache-on-failure: true
+      - run: npm install --global pnpm@11.25.0
+      - run: pnpm install --frozen-lockfile
+      - name: Fast release profile for PR test builds
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          echo "CARGO_PROFILE_RELEASE_LTO=false" >> "$GITHUB_ENV"
+          echo "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16" >> "$GITHUB_ENV"
+          echo "CARGO_PROFILE_RELEASE_INCREMENTAL=true" >> "$GITHUB_ENV"
+      # The fork ships only the installer: no updater packages or CLI.
+      - run: pnpm tauri build --target ${{ env.TARGET }} --bundles nsis
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dynamiclight-${{ env.TARGET }}
+          path: src-tauri/target/${{ env.TARGET }}/release/bundle/nsis/*.exe
+          if-no-files-found: error

@@ -203,6 +203,23 @@ function selectButtons(selector, key, selected) {
     button.setAttribute("aria-pressed", match);
   });
 }
+// Per-side counts only apply when they add up to the strip length.
+function sidesHint() {
+  const used = settings.sides === 4 ? 4 : 3,
+    sides = [
+      settings.sideLeft,
+      settings.sideTop,
+      settings.sideRight,
+      settings.sideBottom,
+    ].slice(0, used),
+    sum = sides.reduce((a, b) => a + (b || 0), 0),
+    hint = $("sides-hint");
+  const wrong = sum > 0 && sum !== settings.count;
+  hint.textContent = wrong
+    ? `LEDs per side add up to ${sum}, not ${settings.count}: corners are ignored and LEDs are spread evenly. Fix the counts, or set them all to 0 to recalculate on the next connection.`
+    : "";
+  hint.classList.toggle("warning", wrong);
+}
 function updateUI() {
   selectButtons("[data-mode]", "mode", settings.mode);
   selectButtons("[data-effect]", "effect", settings.effect);
@@ -220,6 +237,7 @@ function updateUI() {
   }
   for (const name of ["count", "sides", "offset", "sideLeft", "sideTop", "sideRight", "sideBottom", "cornerGap", "fps", "palette"])
     $(name).value = settings[name];
+  sidesHint();
   $("input-gain-value").textContent = settings.inputGain + " dB";
   $("gamma-value").textContent = (settings.gamma / 100).toFixed(2);
   $("transition-limit-value").textContent = settings.transitionLimit
@@ -757,7 +775,12 @@ async function init() {
   $("launch-at-login").onchange = (event) => {
     const enabled = event.target.checked;
     run(async () => {
-      loginEnabled = await invoke("launch_at_login", { enabled });
+      try {
+        loginEnabled = await invoke("launch_at_login", { enabled });
+      } finally {
+        // A declined UAC prompt leaves the previous state in place.
+        event.target.checked = loginEnabled;
+      }
       if (loginEnabled !== enabled)
         throw new Error(
           "Login startup was not changed. Check your operating system's login-item settings.",
@@ -817,6 +840,7 @@ async function init() {
       if (event.target.checkValidity()) {
         settings[name] = Number(event.target.value);
         changed([name]);
+        sidesHint();
       }
     };
   $("palette").onchange = (event) => {

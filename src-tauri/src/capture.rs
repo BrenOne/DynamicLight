@@ -245,6 +245,9 @@ pub struct DisplayCapture {
     /// When the held frame started; used to dim the strip during UAC/lock.
     #[cfg(target_os = "windows")]
     held_since: Option<std::time::Instant>,
+    /// DXGI stayed unavailable but GDI works: stream GDI until DXGI returns.
+    #[cfg(target_os = "windows")]
+    gdi_fallback: bool,
 }
 impl DisplayCapture {
     pub fn start(settings: &Settings) -> Result<Self, String> {
@@ -302,6 +305,7 @@ impl DisplayCapture {
                 last: Vec::new(),
                 retry: std::time::Instant::now(),
                 held_since: None,
+                gdi_fallback: false,
             })
         }
         #[cfg(not(target_os = "windows"))]
@@ -325,6 +329,34 @@ impl DisplayCapture {
             .map(|c| c.map(|v| (v as f32 * k).round() as u8))
             .collect()
     }
+    #[cfg(target_os = "windows")]
+    fn gdi_colors(&mut self, settings: &Settings) -> Result<Vec<Rgb>, String> {
+        let dimensions = (
+            self.monitor.width().map_err(|e| e.to_string())?,
+            self.monitor.height().map_err(|e| e.to_string())?,
+        );
+        let rect = self.region.rectangle(dimensions.0, dimensions.1)?;
+        let dimensions = (rect.2, rect.3);
+        if self.dimensions != dimensions {
+            self.thumbnail = crate::capture_windows::Thumbnail::new(dimensions.0, dimensions.1)?;
+            self.dimensions = dimensions;
+        }
+        let (w, h) = (self.thumbnail.width, self.thumbnail.height);
+        let pixels = self.thumbnail.grab(
+            self.monitor.x().map_err(|e| e.to_string())? + rect.0 as i32,
+            self.monitor.y().map_err(|e| e.to_string())? + rect.1 as i32,
+            dimensions.0,
+            dimensions.1,
+        )?;
+        Ok(lighting::sample_geometry(
+            pixels,
+            (w, h, w as usize * 4, false),
+            settings,
+            &mut self.crop,
+            self.monitor.width().unwrap_or(16) as f32
+                / self.monitor.height().unwrap_or(9).max(1) as f32,
+        ))
+    }
     pub fn colors(&mut self, settings: &Settings) -> Result<Vec<Rgb>, String> {
         #[cfg(target_os = "windows")]
         {
@@ -344,6 +376,7 @@ impl DisplayCapture {
                 match result {
                     Ok(colors) if ready => {
                         self.held_since = None;
+                        self.gdi_fallback = false;
                         self.last.clone_from(&colors);
                         return Ok(colors);
                     }
@@ -363,39 +396,33 @@ impl DisplayCapture {
                 }
             }
             // While duplication is being rebuilt (UAC secure desktop, lock screen), GDI
-            // fails too: keep the last real frame until the desktop comes back.
+            // fails too: keep the last real frame. After 3 s try GDI anyway, so a
+            // display that lost DXGI for good (moved to another GPU) still works.
             if self.desktop.is_none()
                 && matches!(self.region, crate::capture_source::Source::Display {})
                 && self.last.len() == settings.count
             {
-                return Ok(self.held_frame());
+                let long = self.gdi_fallback
+                    || self
+                        .held_since
+                        .is_some_and(|t| t.elapsed() >= std::time::Duration::from_secs(3));
+                if !long {
+                    return Ok(self.held_frame());
+                }
+                return match self.gdi_colors(settings) {
+                    Ok(colors) => {
+                        self.held_since = None;
+                        self.gdi_fallback = true;
+                        self.last.clone_from(&colors);
+                        Ok(colors)
+                    }
+                    Err(_) => {
+                        self.gdi_fallback = false;
+                        Ok(self.held_frame())
+                    }
+                };
             }
-            let dimensions = (
-                self.monitor.width().map_err(|e| e.to_string())?,
-                self.monitor.height().map_err(|e| e.to_string())?,
-            );
-            let rect = self.region.rectangle(dimensions.0, dimensions.1)?;
-            let dimensions = (rect.2, rect.3);
-            if self.dimensions != dimensions {
-                self.thumbnail =
-                    crate::capture_windows::Thumbnail::new(dimensions.0, dimensions.1)?;
-                self.dimensions = dimensions;
-            }
-            let (w, h) = (self.thumbnail.width, self.thumbnail.height);
-            let pixels = self.thumbnail.grab(
-                self.monitor.x().map_err(|e| e.to_string())? + rect.0 as i32,
-                self.monitor.y().map_err(|e| e.to_string())? + rect.1 as i32,
-                dimensions.0,
-                dimensions.1,
-            )?;
-            Ok(lighting::sample_geometry(
-                pixels,
-                (w, h, w as usize * 4, false),
-                settings,
-                &mut self.crop,
-                self.monitor.width().unwrap_or(16) as f32
-                    / self.monitor.height().unwrap_or(9).max(1) as f32,
-            ))
+            self.gdi_colors(settings)
         }
         #[cfg(not(target_os = "windows"))]
         {
@@ -425,7 +452,8 @@ impl DisplayCapture {
     }
 }
 
-fn display_aspect(id: &str) -> Result<f32, String> {
+/// Width / height of the display lighting follows (selected or primary).
+pub(crate) fn display_aspect(id: &str) -> Result<f32, String> {
     let monitors = Monitor::all().map_err(|e| e.to_string())?;
     let monitor = if id.is_empty() {
         monitors
