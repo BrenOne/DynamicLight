@@ -115,8 +115,7 @@ pub fn startup() -> Option<i32> {
     }
     // A normally started copy hands over to the elevated launch task, which
     // shows the window (or passes it to an already running instance).
-    let admin = unsafe { IsUserAnAdmin() }.as_bool();
-    if !admin && !has(FROM_TASK) && !has("--autostart") && exists(LAUNCH) {
+    if !is_elevated() && !has(FROM_TASK) && !has("--autostart") && exists(LAUNCH) {
         let ran = Command::new("schtasks")
             .args(["/Run", "/TN", LAUNCH])
             .creation_flags(NO_WINDOW)
@@ -127,6 +126,30 @@ pub fn startup() -> Option<i32> {
         }
     }
     None
+}
+
+/// Whether this process has administrator rights (cached).
+pub fn is_elevated() -> bool {
+    static ELEVATED: std::sync::LazyLock<bool> =
+        std::sync::LazyLock::new(|| unsafe { IsUserAnAdmin() }.as_bool());
+    *ELEVATED
+}
+
+/// Registers the launch task (one UAC prompt) and restarts through it, so the
+/// app comes back elevated. The restart waits ~4 s for this copy to exit.
+pub fn elevate_and_restart() -> Result<(), String> {
+    if !exists(LAUNCH) {
+        register(false)?;
+    }
+    Command::new("cmd.exe")
+        .args([
+            "/c",
+            "ping -n 5 127.0.0.1 >nul & schtasks /Run /TN \"DynamicLight Launch\"",
+        ])
+        .creation_flags(NO_WINDOW)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 /// The elevated app may receive hand-overs from a normally started copy

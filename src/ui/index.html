@@ -720,6 +720,14 @@
                     <option value="10">10 FPS</option>
                   </select></label
                 >
+                <p id="fps-limit" class="help" hidden>
+                  Without administrator rights the strip runs at up to 30 FPS:
+                  faster updates can make it flash when Caps Lock, Num Lock or
+                  Scroll Lock is pressed in an administrator window.
+                  <button id="elevate" class="secondary" type="button">
+                    Allow administrator rights
+                  </button>
+                </p>
                 <label class="checkbox"
                   ><input id="reverse" type="checkbox" /> Reverse LED
                   direction</label

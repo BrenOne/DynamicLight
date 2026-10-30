@@ -46,6 +46,20 @@ fn held_for() -> Option<Duration> {
     let now = now_ms();
     (until > now).then(|| Duration::from_millis(until - now))
 }
+/// Without administrator rights the lock-key guard cannot see key presses in
+/// elevated windows, so on Windows the output rate stays at 30 FPS, the highest
+/// rate at which indicator updates never collide with frames.
+pub const UNELEVATED_FPS: u8 = 30;
+pub fn fps_limit() -> Option<u8> {
+    #[cfg(target_os = "windows")]
+    if !crate::autostart_windows::is_elevated() {
+        return Some(UNELEVATED_FPS);
+    }
+    None
+}
+pub fn effective_fps(fps: u8) -> u8 {
+    fps_limit().map_or(fps, |limit| fps.min(limit))
+}
 struct Lease(String);
 impl Lease {
     fn claim(key: String) -> Result<Self, String> {
