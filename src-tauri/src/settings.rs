@@ -84,7 +84,9 @@ impl Default for Settings {
             off_on_display_sleep: true,
             off_on_lock: true,
             restore_on_start: false,
-            resume_capture: false,
+            // Recover screen/audio capture after wake, USB reconnects and source
+            // changes without user action.
+            resume_capture: true,
             off_on_quit: true,
             effect: "rainbow".into(),
             palette: "aurora".into(),

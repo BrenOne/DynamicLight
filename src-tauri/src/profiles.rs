@@ -330,6 +330,7 @@ mod tests {
         let current = Settings {
             count: 37,
             max_brightness: 20,
+            resume_capture: false,
             ..Default::default()
         };
         let applied = scene(&reloaded.settings, &reloaded.source, &current);
