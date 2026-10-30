@@ -47,6 +47,26 @@ use std::sync::{
 use tauri::{Emitter, Manager};
 struct Preview(Arc<AtomicBool>);
 
+/// Highest frame rate allowed in this session (None: no limit).
+#[tauri::command]
+fn fps_limit() -> Option<u8> {
+    device::fps_limit()
+}
+
+/// Windows: get administrator rights (one UAC prompt) and restart elevated.
+#[cfg(target_os = "windows")]
+#[tauri::command(async)]
+fn elevate(app: tauri::AppHandle) -> Result<(), String> {
+    autostart_windows::elevate_and_restart()?;
+    app.exit(0);
+    Ok(())
+}
+#[cfg(not(target_os = "windows"))]
+#[tauri::command]
+fn elevate() -> Result<(), String> {
+    Err("Not needed on this platform".into())
+}
+
 // Runs off the main thread: enabling may wait for a UAC prompt.
 #[tauri::command(async)]
 fn launch_at_login(app: tauri::AppHandle, enabled: Option<bool>) -> Result<bool, String> {
@@ -215,7 +235,12 @@ fn show(app: &tauri::AppHandle) {
 }
 pub fn run() {
     #[cfg(target_os = "windows")]
-    autostart_windows::allow_relaunch_from_unelevated();
+    {
+        if let Some(code) = autostart_windows::startup() {
+            std::process::exit(code);
+        }
+        autostart_windows::allow_relaunch_from_unelevated();
+    }
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, args, _| {
@@ -266,6 +291,8 @@ pub fn run() {
             updates::update_automatic,
             effect_previews,
             launch_at_login,
+            fps_limit,
+            elevate,
             profiles::profile_library,
             profiles::apply_profile
             ,diagnostics::diagnostic_report,

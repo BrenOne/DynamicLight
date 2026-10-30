@@ -14,6 +14,8 @@ let previewPending,
   lastError = "";
 // Only unacknowledged edits are overlaid on native snapshots.
 const pendingSettings = {};
+// Highest frame rate this session may use (null: unlimited); see fps_limit.
+let fpsLimit = null;
 function markSettings(keys) {
   for (const key of keys) pendingSettings[key] = structuredClone(settings[key]);
 }
@@ -50,6 +52,7 @@ const ranges = {
   blend: "blend",
   saturation: "saturation",
   gamma: "gamma",
+  "dark-scenes": "darkScenes",
   "max-brightness": "maxBrightness",
   "transition-limit": "transitionLimit",
   "minimum-glow": "minimumGlow",
@@ -238,6 +241,8 @@ function updateUI() {
   for (const name of ["count", "sides", "offset", "sideLeft", "sideTop", "sideRight", "sideBottom", "cornerGap", "fps", "palette"])
     $(name).value = settings[name];
   sidesHint();
+  // Show the rate actually used; the saved choice returns once elevated.
+  if (fpsLimit && settings.fps > fpsLimit) $("fps").value = String(fpsLimit);
   $("input-gain-value").textContent = settings.inputGain + " dB";
   $("gamma-value").textContent = (settings.gamma / 100).toFixed(2);
   $("transition-limit-value").textContent = settings.transitionLimit
@@ -719,6 +724,22 @@ async function init() {
   const initial = await request({ type: "snapshot" });
   settings = initial.settings;
   try {
+    fpsLimit = await invoke("fps_limit");
+    if (fpsLimit) {
+      for (const option of $("fps").options)
+        option.disabled = Number(option.value) > fpsLimit;
+      $("fps-limit").hidden = false;
+      updateUI();
+    }
+  } catch {
+    // Older back ends have no limit.
+  }
+  $("elevate").onclick = () =>
+    run(async () => {
+      await save();
+      await invoke("elevate");
+    });
+  try {
     loginEnabled = await invoke("launch_at_login", { enabled: null });
   } catch (error) {
     loginAvailable = false;
@@ -753,8 +774,9 @@ async function init() {
       rgbBalance: [100, 100, 100],
       saturation: 100,
       gamma: 100,
+      darkScenes: 35,
     });
-    changed(["excludeBars", "rgbBalance", "saturation", "gamma"]);
+    changed(["excludeBars", "rgbBalance", "saturation", "gamma", "darkScenes"]);
   };
   updateUI();
   $("connect").onclick = () =>

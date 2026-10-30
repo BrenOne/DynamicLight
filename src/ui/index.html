@@ -363,6 +363,14 @@
                         >Gamma <output id="gamma-value">1.00</output
                         ><input id="gamma" type="range" min="50" max="250"
                       /></label>
+                      <label
+                        >Dark scenes <output id="dark-scenes-value">35%</output
+                        ><input id="dark-scenes" type="range" min="0" max="100"
+                        /><small
+                          >Keeps dim colours visible and clean. 0 turns it
+                          off.</small
+                        ></label
+                      >
                     </div>
                     <button id="reset-screen" class="secondary" type="button">
                       Reset screen adjustments
@@ -703,6 +711,8 @@
                     value="0" /></label
                 ><label
                   >Frame rate<select id="fps">
+                    <option value="120">120 FPS (experimental)</option>
+                    <option value="90">90 FPS (experimental)</option>
                     <option value="60">60 FPS</option>
                     <option value="45">45 FPS</option>
                     <option value="30">30 FPS</option>
@@ -710,6 +720,14 @@
                     <option value="10">10 FPS</option>
                   </select></label
                 >
+                <p id="fps-limit" class="help" hidden>
+                  Without administrator rights the strip runs at up to 30 FPS:
+                  faster updates can make it flash when Caps Lock, Num Lock or
+                  Scroll Lock is pressed in an administrator window.
+                  <button id="elevate" class="secondary" type="button">
+                    Allow administrator rights
+                  </button>
+                </p>
                 <label class="checkbox"
                   ><input id="reverse" type="checkbox" /> Reverse LED
                   direction</label
