@@ -72,6 +72,12 @@
 ## Дальше
 - Проверить на ленте ветку `feature/installer-dark-fps`: вопрос установщика и запуск от администратора через ярлык, слайдер Dark scenes, 90/120 FPS.
 
+## Релизы и автообновление
+- Версия форка 1.0.0+ (выше любой 0.x автора, чтобы апдейтер никогда не предлагал его сборки). Версия должна совпадать в package.json, src-tauri/Cargo.toml, src-tauri/Cargo.lock, control/Cargo.toml, control/Cargo.lock, tauri.conf.json (`node scripts/release.cjs version vX.Y.Z` проверяет).
+- Апдейтер: endpoint `https://github.com/BrenOne/DynamicLight/releases/latest/download/latest.json`, свой pubkey в tauri.conf.json, `updates.rs` доверяет только `/BrenOne/DynamicLight/releases/download/v{version}/dynamiclight-desktop-…`.
+- Секреты репозитория: `TAURI_SIGNING_PRIVATE_KEY` (содержимое файла ключа) и `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Ключ хранится у владельца, в репозитории его нет.
+- Выпуск: поднять версию во всех файлах → merge в main → `git tag vX.Y.Z && git push origin vX.Y.Z`. Джоб `release` подписывает установщик и публикует Release с `dynamiclight-desktop-windows-x64-setup.exe`, `.sig` и `latest.json`.
+
 ## Процесс
 - Новая работа — в ветках `fix/…`/`feature/…`, PR в `BrenOne/DynamicLight` (не в upstream!), сборка на PR, проверка на ленте, merge.
 - CI проверяет `cargo fmt --check`, тесты и `clippy -D warnings` — форматировать перед коммитом.

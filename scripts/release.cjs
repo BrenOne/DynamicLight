@@ -88,7 +88,7 @@ function assemble(root, output, tag) {
   for (const [platform, , , name] of Object.values(updates)) {
     const signature = fs.readFileSync(path.join(output, `${name}.sig`), 'utf8').trim();
     verifySignature(path.join(output, name), signature, publicKey, value);
-    platforms[platform] = { signature, url: `https://github.com/mskutin/DynamicLight/releases/download/v${value}/${name}` };
+    platforms[platform] = { signature, url: `https://github.com/BrenOne/DynamicLight/releases/download/v${value}/${name}` };
   }
   fs.writeFileSync(path.join(output, 'latest.json'), JSON.stringify({ version: value, notes: fs.readFileSync(path.join(root, 'docs/release-notes.md'), 'utf8'), platforms }, null, 2) + '\n');
   for (const [source, name] of [

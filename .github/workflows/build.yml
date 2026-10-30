@@ -1,5 +1,8 @@
-# Fork build: Windows only, the NSIS installer as an artifact (no releases,
-# updater packages or CLI).
+# Fork build: Windows only. Branches and PRs produce the NSIS installer as an
+# artifact. A pushed tag vX.Y.Z also signs the updater package (secrets
+# TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD) and
+# publishes a GitHub Release with the installer and latest.json, which the
+# app's updater reads.
 # Checks and the installer build run in parallel. Every build uses one fast
 # release profile and one cache key, so PRs reuse main's compiled dependencies
 # (GitHub lets a PR restore caches saved by its base branch).
@@ -8,6 +11,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
 permissions:
   contents: read
@@ -56,16 +60,80 @@ jobs:
           cache-on-failure: true
       - run: npm install --global pnpm@11.25.0
       - run: pnpm install --frozen-lockfile
+      - name: Check the tag matches the app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: node scripts/release.cjs version ${{ github.ref_name }}
+      - name: Sign updater packages (release tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: node scripts/configure-updater.cjs
+        env:
+          RELEASE_BUILD: 'true'
+          RELEASE_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      - name: Signing key password
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
       - name: Fast release profile (no LTO, parallel codegen)
         shell: bash
         run: |
           echo "CARGO_PROFILE_RELEASE_LTO=false" >> "$GITHUB_ENV"
           echo "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16" >> "$GITHUB_ENV"
           echo "CARGO_PROFILE_RELEASE_INCREMENTAL=true" >> "$GITHUB_ENV"
-      # The fork ships only the installer: no updater packages or CLI.
-      - run: pnpm tauri build --target ${{ env.TARGET }} --bundles nsis
+      - name: Build installer
+        shell: bash
+        run: |
+          if [ -f .local/updater-build.json ]; then config="--config .local/updater-build.json"; fi
+          pnpm tauri build $config --target "$TARGET" --bundles nsis
       - uses: actions/upload-artifact@v4
         with:
           name: dynamiclight-${{ env.TARGET }}
-          path: src-tauri/target/${{ env.TARGET }}/release/bundle/nsis/*.exe
+          path: |
+            src-tauri/target/${{ env.TARGET }}/release/bundle/nsis/*.exe
+            src-tauri/target/${{ env.TARGET }}/release/bundle/nsis/*.exe.sig
           if-no-files-found: error
+  release:
+    needs: [checks, build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dynamiclight-x86_64-pc-windows-msvc
+          path: bundle
+      - name: Assemble release assets and latest.json
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir dist
+          exe=$(ls bundle/*.exe | grep -v '\.sig$' | head -n1)
+          name=dynamiclight-desktop-windows-x64-setup.exe
+          cp "$exe" "dist/$name"
+          cp "$exe.sig" "dist/$name.sig"
+          node -e '
+            const fs = require("fs");
+            const [tag, repo, name] = process.argv.slice(1);
+            const signature = fs.readFileSync(`dist/${name}.sig`, "utf8").trim();
+            const url = `https://github.com/${repo}/releases/download/${tag}/${name}`;
+            fs.writeFileSync("dist/latest.json", JSON.stringify({
+              version: tag.replace(/^v/, ""),
+              notes: `DynamicLight ${tag}`,
+              pub_date: new Date().toISOString(),
+              platforms: {
+                "windows-x86_64": { signature, url },
+                "windows-x86_64-nsis": { signature, url },
+              },
+            }, null, 2));
+          ' "$TAG" "$REPO" "$name"
+          cat dist/latest.json
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" dist/* --repo "${{ github.repository }}" --title "DynamicLight $TAG" --generate-notes

@@ -88,7 +88,7 @@ fn trusted_download(url: &tauri::Url, version: &str) -> bool {
         && url.password().is_none()
         && url.port().is_none()
         && url.path().starts_with(&format!(
-            "/mskutin/DynamicLight/releases/download/v{version}/dynamiclight-desktop-"
+            "/BrenOne/DynamicLight/releases/download/v{version}/dynamiclight-desktop-"
         ))
 }
 pub fn init(app: &tauri::AppHandle) -> Result<(), String> {
@@ -322,11 +322,11 @@ mod tests {
     #[test]
     fn downloads_are_bound_to_our_versioned_release() {
         for (url, allowed) in [
-            ("https://github.com/mskutin/DynamicLight/releases/download/v0.9.0/dynamiclight-desktop-windows-x64-setup.exe", true),
-            ("http://github.com/mskutin/DynamicLight/releases/download/v0.9.0/dynamiclight-desktop-test", false),
+            ("https://github.com/BrenOne/DynamicLight/releases/download/v0.9.0/dynamiclight-desktop-windows-x64-setup.exe", true),
+            ("http://github.com/BrenOne/DynamicLight/releases/download/v0.9.0/dynamiclight-desktop-test", false),
             ("https://github.com/other/repo/releases/download/v0.9.0/dynamiclight-desktop-test", false),
-            ("https://github.com/mskutin/DynamicLight/releases/download/v0.8.1/dynamiclight-desktop-test", false),
-            ("https://github.com.evil.test/mskutin/DynamicLight/releases/download/v0.9.0/dynamiclight-desktop-test", false),
+            ("https://github.com/BrenOne/DynamicLight/releases/download/v0.8.1/dynamiclight-desktop-test", false),
+            ("https://github.com.evil.test/BrenOne/DynamicLight/releases/download/v0.9.0/dynamiclight-desktop-test", false),
         ] { assert_eq!(trusted_download(&url.parse().unwrap(), "0.9.0"), allowed); }
     }
     #[test]
