@@ -28,8 +28,7 @@ use windows::{
                 TASK_LOGON_INTERACTIVE_TOKEN,
             },
             Threading::{
-                GetExitCodeProcess, OpenProcess, WaitForSingleObject, INFINITE,
-                PROCESS_SYNCHRONIZE,
+                GetExitCodeProcess, OpenProcess, WaitForSingleObject, INFINITE, PROCESS_SYNCHRONIZE,
             },
             Variant::VARIANT,
         },
