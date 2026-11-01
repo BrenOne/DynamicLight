@@ -8,13 +8,30 @@
 //! - `DynamicLight Launch` has no trigger: a normally started copy runs it and
 //!   exits, so shortcuts and the installer also open the elevated app.
 //!
-//! Creating or removing tasks asks for consent once.
-use std::{os::windows::process::CommandExt, process::Command};
+//! Creating or removing tasks asks for consent once: DynamicLight restarts
+//! itself elevated and talks to Task Scheduler through its COM API. No
+//! `cmd.exe`/`schtasks.exe` command lines and no temporary task files: that
+//! pattern (shell + delay + highest-rights task) is what antivirus heuristics
+//! report as persistence malware.
+
 use windows::{
-    core::{w, HSTRING, PCWSTR},
+    core::{w, BSTR, HSTRING, PCWSTR},
     Win32::{
         Foundation::CloseHandle,
-        System::Threading::{GetExitCodeProcess, WaitForSingleObject, INFINITE},
+        System::{
+            Com::{
+                CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER,
+                COINIT_MULTITHREADED,
+            },
+            TaskScheduler::{
+                ITaskFolder, ITaskService, TaskScheduler, TASK_CREATE_OR_UPDATE,
+                TASK_LOGON_INTERACTIVE_TOKEN,
+            },
+            Threading::{
+                GetExitCodeProcess, OpenProcess, WaitForSingleObject, INFINITE, PROCESS_SYNCHRONIZE,
+            },
+            Variant::VARIANT,
+        },
         UI::{
             Shell::{
                 IsUserAnAdmin, ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SEE_MASK_NO_CONSOLE,
@@ -29,30 +46,65 @@ const TASK: &str = "DynamicLight";
 const LAUNCH: &str = "DynamicLight Launch";
 /// Argument of processes started by the launch task; they never relaunch.
 const FROM_TASK: &str = "--from-task";
-const NO_WINDOW: u32 = 0x0800_0000;
-const DETACHED_PROCESS: u32 = 0x0000_0008;
-const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+/// `--relaunch-after <pid>`: wait for that process to exit, then run the launch task.
+const RELAUNCH: &str = "--relaunch-after";
+/// `--user <DOMAIN\name>`: whose tasks an elevated helper registers (the
+/// administrator who approved UAC may be a different account).
+const USER: &str = "--user";
+
+/// Runs `f` on the Task Scheduler root folder in a thread of its own, so COM is
+/// initialised the same way whatever thread (UI, async command) calls it.
+fn scheduler<T: Send>(
+    f: impl FnOnce(&ITaskFolder) -> windows::core::Result<T> + Send,
+) -> Result<T, String> {
+    std::thread::scope(|scope| {
+        scope
+            .spawn(|| unsafe {
+                let init = CoInitializeEx(None, COINIT_MULTITHREADED);
+                let result = (|| {
+                    let service: ITaskService =
+                        CoCreateInstance(&TaskScheduler, None, CLSCTX_INPROC_SERVER)?;
+                    let none = VARIANT::default();
+                    service.Connect(&none, &none, &none, &none)?;
+                    f(&service.GetFolder(&BSTR::from("\\"))?)
+                })();
+                if init.is_ok() {
+                    CoUninitialize();
+                }
+                result
+            })
+            .join()
+            .map_err(|_| "Task Scheduler thread failed".to_string())?
+            .map_err(|e| format!("Task Scheduler: {}", e.message()))
+    })
+}
 
 fn exists(task: &str) -> bool {
-    Command::new("schtasks")
-        .args(["/Query", "/TN", task])
-        .creation_flags(NO_WINDOW)
-        .output()
-        .is_ok_and(|o| o.status.success())
+    scheduler(|folder| unsafe { folder.GetTask(&BSTR::from(task)) }.map(|_| ())).is_ok()
+}
+
+fn run(task: &str) -> Result<(), String> {
+    scheduler(|folder| unsafe {
+        folder
+            .GetTask(&BSTR::from(task))?
+            .Run(&VARIANT::default())
+            .map(|_| ())
+    })
 }
 
 pub fn enabled() -> bool {
     exists(TASK)
 }
 
-/// Login task plus the launch task, under one UAC prompt.
 pub fn enable() -> Result<(), String> {
-    register(true)
+    register(true, None)
 }
 
-/// Removes only the login task; the app keeps opening elevated.
 pub fn disable() -> Result<(), String> {
-    elevated(&format!("/c schtasks /Delete /F /TN \"{TASK}\""))
+    if !is_elevated() {
+        return as_admin("--remove-login-task");
+    }
+    delete(&[TASK])
 }
 
 fn current_user() -> Result<String, String> {
@@ -63,69 +115,97 @@ fn current_user() -> Result<String, String> {
     }
 }
 
-fn register(login: bool) -> Result<(), String> {
+fn register(login: bool, user: Option<&str>) -> Result<(), String> {
+    let user = match user {
+        Some(user) => user.to_string(),
+        None => current_user()?,
+    };
+    if !is_elevated() {
+        let login = if login { " login" } else { "" };
+        return as_admin(&format!("--setup-tasks{login} {USER} \"{user}\""));
+    }
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let exe = exe.to_string_lossy();
-    let user = current_user()?;
     let mut tasks = vec![(LAUNCH, task_xml(&exe, &user, false, FROM_TASK))];
     if login {
         tasks.push((TASK, task_xml(&exe, &user, true, "--autostart")));
     }
-    let mut commands = Vec::new();
-    let mut files = Vec::new();
-    for (i, (name, xml)) in tasks.iter().enumerate() {
-        let path = std::env::temp_dir().join(format!("dynamiclight-task-{i}.xml"));
-        // Task Scheduler expects UTF-16 XML.
-        let mut bytes = vec![0xff, 0xfe];
-        bytes.extend(xml.encode_utf16().flat_map(u16::to_le_bytes));
-        std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
-        commands.push(format!(
-            "schtasks /Create /F /TN \"{name}\" /XML \"{}\"",
-            path.display()
-        ));
-        files.push(path);
-    }
-    let result = elevated(&format!("/c {}", commands.join(" && ")));
-    for path in files {
-        let _ = std::fs::remove_file(path);
-    }
-    result
+    scheduler(|folder| {
+        for (name, xml) in &tasks {
+            let none = VARIANT::default();
+            unsafe {
+                folder.RegisterTask(
+                    &BSTR::from(*name),
+                    &BSTR::from(xml.as_str()),
+                    TASK_CREATE_OR_UPDATE.0,
+                    &none,
+                    &none,
+                    TASK_LOGON_INTERACTIVE_TOKEN,
+                    &none,
+                )?;
+            }
+        }
+        Ok(())
+    })
+}
+
+fn delete(tasks: &[&str]) -> Result<(), String> {
+    let tasks: Vec<_> = tasks.iter().filter(|task| exists(task)).collect();
+    scheduler(|folder| {
+        for task in tasks {
+            unsafe { folder.DeleteTask(&BSTR::from(*task), 0)? };
+        }
+        Ok(())
+    })
 }
 
 fn remove_all() -> Result<(), String> {
-    let commands: Vec<_> = [TASK, LAUNCH]
-        .into_iter()
-        .filter(|task| exists(task))
-        .map(|task| format!("schtasks /Delete /F /TN \"{task}\""))
-        .collect();
-    if commands.is_empty() {
+    if ![TASK, LAUNCH].iter().any(|task| exists(task)) {
         return Ok(());
     }
-    elevated(&format!("/c {}", commands.join(" & ")))
+    if !is_elevated() {
+        return as_admin("--remove-tasks");
+    }
+    delete(&[TASK, LAUNCH])
 }
 
-/// Installer/uninstaller entry points (`--setup-tasks [login]`, `--remove-tasks`)
-/// and self-elevation. Returns an exit code when this process should stop.
+/// Waits (at most 10 s) for process `pid` to exit.
+fn wait_exit(pid: u32) {
+    unsafe {
+        if let Ok(process) = OpenProcess(PROCESS_SYNCHRONIZE, false, pid) {
+            WaitForSingleObject(process, 10_000);
+            let _ = CloseHandle(process);
+        }
+    }
+}
+
+/// Handles the task-maintenance and hand-over starts. `Some(code)`: exit now.
 pub fn startup() -> Option<i32> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let has = |flag: &str| args.iter().any(|a| a == flag);
+    let value = |flag: &str| {
+        args.iter()
+            .position(|a| a == flag)
+            .and_then(|i| args.get(i + 1))
+    };
+    if let Some(pid) = value(RELAUNCH).and_then(|pid| pid.parse().ok()) {
+        wait_exit(pid);
+        return Some(i32::from(run(LAUNCH).is_err()));
+    }
     if has("--setup-tasks") {
-        return Some(i32::from(register(has("login")).is_err()));
+        return Some(i32::from(
+            register(has("login"), value(USER).map(String::as_str)).is_err(),
+        ));
     }
     if has("--remove-tasks") {
         return Some(i32::from(remove_all().is_err()));
     }
-    // A normally started copy hands over to the elevated launch task, which
-    // shows the window (or passes it to an already running instance).
-    if !is_elevated() && !has(FROM_TASK) && !has("--autostart") && exists(LAUNCH) {
-        let ran = Command::new("schtasks")
-            .args(["/Run", "/TN", LAUNCH])
-            .creation_flags(NO_WINDOW)
-            .status()
-            .is_ok_and(|s| s.success());
-        if ran {
-            return Some(0);
-        }
+    if has("--remove-login-task") {
+        return Some(i32::from(disable().is_err()));
+    }
+    // A normal start (shortcut, installer) hands over to the elevated launch task.
+    if !is_elevated() && !has(FROM_TASK) && !has("--autostart") && run(LAUNCH).is_ok() {
+        return Some(0);
     }
     None
 }
@@ -138,19 +218,16 @@ pub fn is_elevated() -> bool {
 }
 
 /// Registers the launch task (one UAC prompt) and restarts through it, so the
-/// app comes back elevated. The restart waits ~4 s for this copy to exit.
+/// app comes back elevated. A helper copy of DynamicLight waits for this one to
+/// exit (otherwise single-instance would hand the new start back to it) and
+/// then runs the task; it is a GUI process, so no console window appears.
 pub fn elevate_and_restart() -> Result<(), String> {
     // Always (re)create it: a task that exists but is disabled would not run,
     // and the app would close without coming back.
-    register(false)?;
-    // Detached, so the delayed restart survives this process exiting. raw_arg:
-    // Rust's argument quoting (\") is not understood by cmd.exe and mangled
-    // the task name, so the restart silently failed.
-    Command::new("cmd.exe")
-        .raw_arg(format!(
-            "/c ping -n 5 127.0.0.1 >nul & schtasks /Run /TN \"{LAUNCH}\""
-        ))
-        .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
+    register(false, None)?;
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    std::process::Command::new(exe)
+        .args([RELAUNCH, &std::process::id().to_string()])
         .spawn()
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -203,15 +280,17 @@ fn task_xml(exe: &str, user: &str, at_logon: bool, arguments: &str) -> String {
     )
 }
 
-/// Runs `cmd.exe <arguments>` (schtasks commands) with a UAC prompt and waits.
-fn elevated(arguments: &str) -> Result<(), String> {
+/// Runs this executable with `arguments` and a UAC prompt, and waits for it.
+fn as_admin(arguments: &str) -> Result<(), String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let file = HSTRING::from(exe.as_os_str());
     let parameters = HSTRING::from(arguments);
     unsafe {
         let mut info: SHELLEXECUTEINFOW = std::mem::zeroed();
         info.cbSize = std::mem::size_of::<SHELLEXECUTEINFOW>() as u32;
         info.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NO_CONSOLE;
         info.lpVerb = w!("runas");
-        info.lpFile = w!("cmd.exe");
+        info.lpFile = PCWSTR(file.as_ptr());
         info.lpParameters = PCWSTR(parameters.as_ptr());
         info.nShow = SW_HIDE.0;
         ShellExecuteExW(&mut info)
