@@ -19,6 +19,8 @@ pub struct Controller {
     pub status: Status,
     /// (LED count, display size in inches) reported by the controller (0x82).
     pub detected: Option<(u8, u8)>,
+    /// When the last frame was sent (`now_ms`).
+    last_frame_ms: u64,
 }
 static CLAIMED: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<String>>> =
     std::sync::LazyLock::new(Default::default);
@@ -41,6 +43,9 @@ fn now_ms() -> u64 {
 /// never overlaps the controller's ~27 ms indicator update, so no hold is needed.
 static OUTPUT_FPS: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(60);
 const HOLD_ABOVE_FPS: u8 = 30;
+/// During a hold frames keep flowing at ~30 FPS (at least this far apart) instead
+/// of freezing: that cadence never overlaps an indicator update.
+const HELD_FRAME_MS: u64 = 32;
 pub fn set_output_fps(fps: u8) {
     OUTPUT_FPS.store(fps, std::sync::atomic::Ordering::Relaxed);
 }
@@ -192,6 +197,7 @@ impl Controller {
             path: None,
             sequence: 0,
             detected: None,
+            last_frame_ms: 0,
             status: Status {
                 connected: false,
                 message: "Ready to connect".into(),
@@ -380,10 +386,12 @@ impl Controller {
         self.write(&protocol::solid(id, rgb, count))
     }
     pub fn frame(&mut self, colors: &[Rgb]) -> Result<(), String> {
-        // Frames stream continuously; drop the ones that would collide with a lock key.
-        if held_for().is_some() {
+        // Frames stream continuously; while a lock key is active drop down to ~30 FPS.
+        let now = now_ms();
+        if held_for().is_some() && now.saturating_sub(self.last_frame_ms) < HELD_FRAME_MS {
             return Ok(());
         }
+        self.last_frame_ms = now;
         let id = self.id();
         self.write(&protocol::frame(id, colors))
     }
