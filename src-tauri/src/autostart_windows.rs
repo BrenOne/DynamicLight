@@ -4,9 +4,9 @@
 //! hook) also sees key presses while an administrator window is in front; Windows
 //! hides those from non-elevated hooks. Two tasks run DynamicLight with the
 //! highest available rights without a UAC prompt:
-//! - `DynamicLight` starts it in the tray at sign-in (Launch at login);
-//! - `DynamicLight Launch` has no trigger: a normally started copy runs it and
-//!   exits, so shortcuts and the installer also open the elevated app.
+//! - `DynamicLight (user)` starts it in the tray at sign-in (Launch at login);
+//! - `DynamicLight Launch (user)` has no trigger: a normally started copy runs it
+//!   and exits, so shortcuts and the installer also open the elevated app.
 //!
 //! Creating or removing tasks asks for consent once: DynamicLight restarts
 //! itself elevated and talks to Task Scheduler through its COM API. No
@@ -42,8 +42,10 @@ use windows::{
     },
 };
 
-const TASK: &str = "DynamicLight";
-const LAUNCH: &str = "DynamicLight Launch";
+/// Names of the tasks before they were made per user. They belong to whoever
+/// registered them last; they are moved to the per-user names when found.
+const LEGACY_TASK: &str = "DynamicLight";
+const LEGACY_LAUNCH: &str = "DynamicLight Launch";
 /// Argument of processes started by the launch task; they never relaunch.
 const FROM_TASK: &str = "--from-task";
 /// `--relaunch-after <pid>`: wait for that process to exit, then run the launch task.
@@ -92,8 +94,49 @@ fn run(task: &str) -> Result<(), String> {
     })
 }
 
+/// The account name without its domain (`PC\name` -> `name`).
+fn account(user: &str) -> &str {
+    user.rsplit('\\').next().unwrap_or(user)
+}
+
+/// Task names are global to the computer, so every Windows user gets their own
+/// pair; otherwise a second user's tasks would replace the first one's.
+fn task_name(user: &str) -> String {
+    format!("DynamicLight ({})", account(user))
+}
+fn launch_name(user: &str) -> String {
+    format!("DynamicLight Launch ({})", account(user))
+}
+
+/// Whether an old shared-name task exists and runs as `user`.
+fn legacy_owned(task: &str, user: &str) -> bool {
+    scheduler(|folder| unsafe {
+        let principal = folder
+            .GetTask(&BSTR::from(task))?
+            .Definition()?
+            .Principal()?;
+        let mut owner = BSTR::new();
+        principal.UserId(&mut owner)?;
+        Ok(owner.to_string())
+    })
+    .is_ok_and(|owner| account(&owner).eq_ignore_ascii_case(account(user)))
+}
+
+/// Elevated: replaces this user's old shared-name tasks by per-user ones.
+fn migrate(user: &str) {
+    let login = legacy_owned(LEGACY_TASK, user);
+    let launch = legacy_owned(LEGACY_LAUNCH, user);
+    if (login || launch) && register(login, Some(user)).is_ok() {
+        let old: Vec<_> = [(login, LEGACY_TASK), (launch, LEGACY_LAUNCH)]
+            .into_iter()
+            .filter_map(|(owned, task)| owned.then_some(task))
+            .collect();
+        let _ = delete(&old);
+    }
+}
+
 pub fn enabled() -> bool {
-    exists(TASK)
+    current_user().is_ok_and(|user| exists(&task_name(&user)) || legacy_owned(LEGACY_TASK, &user))
 }
 
 pub fn enable() -> Result<(), String> {
@@ -101,10 +144,7 @@ pub fn enable() -> Result<(), String> {
 }
 
 pub fn disable() -> Result<(), String> {
-    if !is_elevated() {
-        return as_admin("--remove-login-task");
-    }
-    delete(&[TASK])
+    remove(false, None)
 }
 
 fn current_user() -> Result<String, String> {
@@ -126,16 +166,16 @@ fn register(login: bool, user: Option<&str>) -> Result<(), String> {
     }
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let exe = exe.to_string_lossy();
-    let mut tasks = vec![(LAUNCH, task_xml(&exe, &user, false, FROM_TASK))];
+    let mut tasks = vec![(launch_name(&user), task_xml(&exe, &user, false, FROM_TASK))];
     if login {
-        tasks.push((TASK, task_xml(&exe, &user, true, "--autostart")));
+        tasks.push((task_name(&user), task_xml(&exe, &user, true, "--autostart")));
     }
     scheduler(|folder| {
         for (name, xml) in &tasks {
             let none = VARIANT::default();
             unsafe {
                 folder.RegisterTask(
-                    &BSTR::from(*name),
+                    &BSTR::from(name.as_str()),
                     &BSTR::from(xml.as_str()),
                     TASK_CREATE_OR_UPDATE.0,
                     &none,
@@ -159,14 +199,49 @@ fn delete(tasks: &[&str]) -> Result<(), String> {
     })
 }
 
-fn remove_all() -> Result<(), String> {
-    if ![TASK, LAUNCH].iter().any(|task| exists(task)) {
+/// Removes this user's login task (`all`: also the launch task), including
+/// their old shared-name ones; other users' tasks are left alone.
+fn remove(all: bool, user: Option<&str>) -> Result<(), String> {
+    let user = match user {
+        Some(user) => user.to_string(),
+        None => current_user()?,
+    };
+    let mut tasks = vec![(task_name(&user), LEGACY_TASK)];
+    if all {
+        tasks.push((launch_name(&user), LEGACY_LAUNCH));
+    }
+    let mut found = Vec::new();
+    for (task, legacy) in &tasks {
+        if exists(task) {
+            found.push(task.as_str());
+        }
+        if legacy_owned(legacy, &user) {
+            found.push(legacy);
+        }
+    }
+    if found.is_empty() {
         return Ok(());
     }
     if !is_elevated() {
-        return as_admin("--remove-tasks");
+        let flag = if all {
+            "--remove-tasks"
+        } else {
+            "--remove-login-task"
+        };
+        return as_admin(&format!("{flag} {USER} \"{user}\""));
     }
-    delete(&[TASK, LAUNCH])
+    delete(&found)
+}
+
+/// Runs this user's launch task (or their old shared-name one).
+fn launch(user: &str) -> Result<(), String> {
+    run(&launch_name(user)).or_else(|e| {
+        if legacy_owned(LEGACY_LAUNCH, user) {
+            run(LEGACY_LAUNCH)
+        } else {
+            Err(e)
+        }
+    })
 }
 
 /// Waits (at most 10 s) for process `pid` to exit.
@@ -188,23 +263,34 @@ pub fn startup() -> Option<i32> {
             .position(|a| a == flag)
             .and_then(|i| args.get(i + 1))
     };
-    if let Some(pid) = value(RELAUNCH).and_then(|pid| pid.parse().ok()) {
-        wait_exit(pid);
-        return Some(i32::from(run(LAUNCH).is_err()));
-    }
+    let user = value(USER).map(String::as_str);
+    let code = |result: Result<(), String>| Some(i32::from(result.is_err()));
     if has("--setup-tasks") {
-        return Some(i32::from(
-            register(has("login"), value(USER).map(String::as_str)).is_err(),
-        ));
+        return code(register(has("login"), user));
     }
     if has("--remove-tasks") {
-        return Some(i32::from(remove_all().is_err()));
+        return code(remove(true, user));
     }
     if has("--remove-login-task") {
-        return Some(i32::from(disable().is_err()));
+        return code(remove(false, user));
     }
-    // A normal start (shortcut, installer) hands over to the elevated launch task.
-    if !is_elevated() && !has(FROM_TASK) && !has("--autostart") && run(LAUNCH).is_ok() {
+    let Ok(me) = current_user() else {
+        return None;
+    };
+    // Installer: exit code 0 when this user already has the launch task.
+    if has("--has-tasks") {
+        return Some(i32::from(
+            !exists(&launch_name(&me)) && !legacy_owned(LEGACY_LAUNCH, &me),
+        ));
+    }
+    if let Some(pid) = value(RELAUNCH).and_then(|pid| pid.parse().ok()) {
+        wait_exit(pid);
+        return code(launch(&me));
+    }
+    if is_elevated() {
+        migrate(&me);
+    } else if !has(FROM_TASK) && !has("--autostart") && launch(&me).is_ok() {
+        // A normal start (shortcut, installer) hands over to the elevated launch task.
         return Some(0);
     }
     None
@@ -314,6 +400,12 @@ fn as_admin(arguments: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn task_names_are_per_account() {
+        assert_eq!(super::task_name(r"PC\Nikita"), "DynamicLight (Nikita)");
+        assert_eq!(super::launch_name("Nikita"), "DynamicLight Launch (Nikita)");
+        assert_ne!(super::launch_name(r"PC\a"), super::launch_name(r"PC\b"));
+    }
     #[test]
     fn task_xml_escapes_paths_and_users() {
         let xml = super::task_xml(r#"C:\A&B\<x>.exe"#, "PC\\user", true, "--autostart");
