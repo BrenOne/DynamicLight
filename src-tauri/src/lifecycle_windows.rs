@@ -4,13 +4,57 @@ use windows::{
     Win32::{
         Foundation::{HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
         System::{LibraryLoader::GetModuleHandleW, Power::*, RemoteDesktop::*},
-        UI::WindowsAndMessaging::*,
+        UI::{Input::KeyboardAndMouse::GetAsyncKeyState, WindowsAndMessaging::*},
     },
 };
 
 // Interactive applications must use the session display state, not the kernel/console GUID.
 // https://learn.microsoft.com/en-us/windows/win32/power/power-setting-guids
 const DISPLAY_STATE: GUID = GUID::from_u128(0x2b84c20e_ad23_4ddf_93db_05ffbd7efca5);
+
+const LOCK_KEYS: [i32; 3] = [0x14, 0x90, 0x91]; // VK_CAPITAL, VK_NUMLOCK, VK_SCROLL
+
+/// Guards the strip against Windows' keyboard-indicator reports (see device::hold_output).
+/// Two independent detectors: a low-level hook on its own thread, so nothing else can
+/// stall it past the hook timeout (Windows then silently removes it), and a 4 ms poll
+/// of the physical key state as a backstop. Neither sees key presses while an
+/// elevated window is in front unless DynamicLight itself runs elevated (UIPI).
+pub fn guard_lock_keys() {
+    let _ = std::thread::Builder::new()
+        .name("lock-key-hook".into())
+        .spawn(|| unsafe {
+            let instance = GetModuleHandleW(None).ok().map(|m| HINSTANCE(m.0));
+            let Ok(hook) = SetWindowsHookExW(WH_KEYBOARD_LL, Some(lock_keys), instance, 0) else {
+                return;
+            };
+            let mut message = MSG::default();
+            while GetMessageW(&mut message, None, 0, 0).0 > 0 {}
+            let _ = UnhookWindowsHookEx(hook);
+        });
+    let _ = std::thread::Builder::new()
+        .name("lock-key-poll".into())
+        .spawn(|| loop {
+            if LOCK_KEYS
+                .iter()
+                .any(|&key| unsafe { GetAsyncKeyState(key) } < 0)
+            {
+                crate::device::hold_output(250);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(4));
+        });
+}
+
+/// Low-level keyboard hook that only looks at Caps/Num/Scroll Lock key-downs, which
+/// make Windows send an indicator report to the strip's keyboard interface.
+unsafe extern "system" fn lock_keys(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    if code >= 0 && matches!(wparam.0 as u32, WM_KEYDOWN | WM_SYSKEYDOWN) && lparam.0 != 0 {
+        let info = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
+        if LOCK_KEYS.contains(&(info.vkCode as i32)) {
+            crate::device::hold_output(250);
+        }
+    }
+    CallNextHookEx(None, code, wparam, lparam)
+}
 
 pub fn watch(handle: Handle) -> Result<(), String> {
     std::thread::Builder::new()

@@ -80,6 +80,7 @@ impl Drop for FrameClock {
 
 #[cfg(target_os = "windows")]
 pub fn watch_power(handle: Handle) -> Result<(), String> {
+    crate::lifecycle_windows::guard_lock_keys();
     crate::lifecycle_windows::watch(handle.clone())?;
     use std::ffi::c_void;
     #[repr(C)]

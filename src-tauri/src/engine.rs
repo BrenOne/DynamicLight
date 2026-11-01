@@ -1780,7 +1780,9 @@ pub fn start(
                                 || !engine.state.settings.studio.zones.is_empty()),
                     );
                     let began = Instant::now();
-                    let period = Duration::from_secs_f64(1.0 / engine.state.settings.fps as f64);
+                    let fps = engine.state.settings.fps;
+                    crate::device::set_output_fps(fps);
+                    let period = Duration::from_secs_f64(1.0 / fps as f64);
                     let late = began.saturating_duration_since(next);
                     if engine.state.powered
                         && (engine.state.capturing || engine.state.settings.mode == "rainbow")

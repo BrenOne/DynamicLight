@@ -19,6 +19,8 @@ pub struct Controller {
     pub status: Status,
     /// (LED count, display size in inches) reported by the controller (0x82).
     pub detected: Option<(u8, u8)>,
+    /// When the last frame was sent (`now_ms`).
+    last_frame_ms: u64,
 }
 static CLAIMED: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<String>>> =
     std::sync::LazyLock::new(Default::default);
@@ -26,6 +28,38 @@ impl Drop for Controller {
     fn drop(&mut self) {
         self.close("Closed");
     }
+}
+/// While Windows updates keyboard indicators (Caps/Num/Scroll Lock), the controller's
+/// keyboard interface receives a SET_REPORT. If it lands while a frame is being
+/// received/driven, the firmware shows garbage (white/random strobes above ~30 FPS).
+/// The Windows lock-key hook calls `hold_output`; meanwhile frames slow down to ~30 FPS.
+static EPOCH: std::sync::LazyLock<std::time::Instant> =
+    std::sync::LazyLock::new(std::time::Instant::now);
+static HOLD_UNTIL_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+fn now_ms() -> u64 {
+    EPOCH.elapsed().as_millis() as u64
+}
+/// Output rate the engine is running at. At 30 FPS or less a frame (33 ms apart)
+/// never overlaps the controller's ~27 ms indicator update, so no hold is needed.
+static OUTPUT_FPS: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(60);
+const HOLD_ABOVE_FPS: u8 = 30;
+/// During a hold frames keep flowing at ~30 FPS (at least this far apart) instead
+/// of freezing: that cadence never overlaps an indicator update.
+const HELD_FRAME_MS: u64 = 32;
+pub fn set_output_fps(fps: u8) {
+    OUTPUT_FPS.store(fps, std::sync::atomic::Ordering::Relaxed);
+}
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+pub fn hold_output(ms: u64) {
+    HOLD_UNTIL_MS.fetch_max(now_ms() + ms, std::sync::atomic::Ordering::Relaxed);
+}
+fn held_for() -> Option<Duration> {
+    if OUTPUT_FPS.load(std::sync::atomic::Ordering::Relaxed) <= HOLD_ABOVE_FPS {
+        return None;
+    }
+    let until = HOLD_UNTIL_MS.load(std::sync::atomic::Ordering::Relaxed);
+    let now = now_ms();
+    (until > now).then(|| Duration::from_millis(until - now))
 }
 struct Lease(String);
 impl Lease {
@@ -149,6 +183,7 @@ impl Controller {
             path: None,
             sequence: 0,
             detected: None,
+            last_frame_ms: 0,
             status: Status {
                 connected: false,
                 message: "Ready to connect".into(),
@@ -323,10 +358,26 @@ impl Controller {
         })()
     }
     pub fn solid(&mut self, rgb: Rgb, count: usize) -> Result<(), String> {
+        // Solid colours are sent once, so wait out an indicator update instead of
+        // skipping it (re-checked: a held key keeps extending the window), but never
+        // stall the engine for more than a second.
+        let deadline = std::time::Instant::now() + Duration::from_secs(1);
+        while let Some(wait) = held_for() {
+            if std::time::Instant::now() >= deadline {
+                break;
+            }
+            thread::sleep(wait.min(Duration::from_millis(50)));
+        }
         let id = self.id();
         self.write(&protocol::solid(id, rgb, count))
     }
     pub fn frame(&mut self, colors: &[Rgb]) -> Result<(), String> {
+        // Frames stream continuously; while a lock key is active drop down to ~30 FPS.
+        let now = now_ms();
+        if held_for().is_some() && now.saturating_sub(self.last_frame_ms) < HELD_FRAME_MS {
+            return Ok(());
+        }
+        self.last_frame_ms = now;
         let id = self.id();
         self.write(&protocol::frame(id, colors))
     }
