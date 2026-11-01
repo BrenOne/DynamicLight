@@ -1,4 +1,7 @@
-use crate::{engine::Handle, lifecycle::SystemEvent};
+use crate::{
+    engine::Handle,
+    lifecycle::{Away, SystemEvent},
+};
 use windows::{
     core::{w, GUID, PWSTR},
     Win32::{
@@ -202,14 +205,21 @@ unsafe fn message_loop(handle: &Handle) -> windows::core::Result<()> {
     Ok(())
 }
 
-/// Whether the physical console (screen, and the strip with it) belongs to
-/// another session. Each signed-in user runs their own DynamicLight; only the
-/// one on the console drives the strip.
-fn away() -> bool {
+/// Whether this session has the physical console (screen, and the strip with
+/// it). Each signed-in user runs their own DynamicLight; only the one on the
+/// console drives the strip, and a remote desktop session never does.
+fn away() -> Away {
     use windows::Win32::System::Threading::GetCurrentProcessId;
     let mut session = 0;
     unsafe {
-        ProcessIdToSessionId(GetCurrentProcessId(), &mut session).is_ok()
+        if GetSystemMetrics(SM_REMOTESESSION) != 0 {
+            Away::Remote
+        } else if ProcessIdToSessionId(GetCurrentProcessId(), &mut session).is_ok()
             && WTSGetActiveConsoleSessionId() != session
+        {
+            Away::OtherUser
+        } else {
+            Away::Here
+        }
     }
 }

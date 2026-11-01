@@ -3,7 +3,7 @@ use crate::{
     capture::ScreenCapture,
     device::{Controller, Status},
     effects,
-    lifecycle::{Lifecycle, SavedIntent, SystemEvent},
+    lifecycle::{Away, Lifecycle, SavedIntent, SystemEvent},
     lighting,
     protocol::Rgb,
     settings::{SceneSettings, Settings, SettingsPatch, SourceBinding},
@@ -554,13 +554,13 @@ impl Engine {
             SystemEvent::Sleep(true)
                 | SystemEvent::Locked(true)
                 | SystemEvent::DisplayOff(true)
-                | SystemEvent::Away(true)
+                | SystemEvent::Away(Away::OtherUser | Away::Remote)
         ) {
             self.extension = None;
             self.external_cue = None;
         }
         let was_paused = !self.life.pause_reason(&self.state.settings).is_empty();
-        let returned = matches!(event, SystemEvent::Away(false));
+        let returned = matches!(event, SystemEvent::Away(Away::Here));
         match event {
             SystemEvent::Ready => {
                 self.life.initializing = false;
@@ -587,11 +587,13 @@ impl Engine {
                 if away == self.life.away {
                     return;
                 }
+                let left = self.life.away == Away::Here;
                 self.life.away = away;
-                if away {
-                    // The strip now belongs to the other user's DynamicLight (if any).
+                if left {
+                    // The strip now belongs to the other user's DynamicLight (if any);
+                    // nobody looks at it during a remote desktop session.
                     self.black();
-                    self.controller.close("Another Windows user is active");
+                    self.controller.close(self.life.pause_reason(&self.state.settings));
                 }
             }
             SystemEvent::SourcesChanged => {
