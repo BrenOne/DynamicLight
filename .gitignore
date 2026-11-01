@@ -15,3 +15,5 @@ control/target/
 src-tauri/gen/
 src-tauri/icons/android/
 src-tauri/icons/ios/
+.claude/worktrees/
+.claude/settings.local.json
