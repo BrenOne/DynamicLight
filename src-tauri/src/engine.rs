@@ -551,12 +551,16 @@ impl Engine {
     pub fn system_event(&mut self, event: SystemEvent) {
         if matches!(
             event,
-            SystemEvent::Sleep(true) | SystemEvent::Locked(true) | SystemEvent::DisplayOff(true)
+            SystemEvent::Sleep(true)
+                | SystemEvent::Locked(true)
+                | SystemEvent::DisplayOff(true)
+                | SystemEvent::Away(true)
         ) {
             self.extension = None;
             self.external_cue = None;
         }
         let was_paused = !self.life.pause_reason(&self.state.settings).is_empty();
+        let returned = matches!(event, SystemEvent::Away(false));
         match event {
             SystemEvent::Ready => {
                 self.life.initializing = false;
@@ -579,6 +583,17 @@ impl Engine {
             }
             SystemEvent::DisplayOff(off) => self.life.display_off = off,
             SystemEvent::Locked(locked) => self.life.locked = locked,
+            SystemEvent::Away(away) => {
+                if away == self.life.away {
+                    return;
+                }
+                self.life.away = away;
+                if away {
+                    // The strip now belongs to the other user's DynamicLight (if any).
+                    self.black();
+                    self.controller.close("Another Windows user is active");
+                }
+            }
             SystemEvent::SourcesChanged => {
                 if self.state.capturing && self.state.settings.mode == "blend" {
                     self.lose_blend_source(true);
@@ -611,7 +626,9 @@ impl Engine {
             self.interrupt_capture();
         }
         if was_paused && !paused {
-            self.retry = Instant::now() - Duration::from_secs(3);
+            // Back from another user: give their copy a moment to let go of the strip.
+            let wait = if returned { 2 } else { 3 };
+            self.retry = Instant::now() - Duration::from_secs(wait);
             self.capture_retry = Instant::now() - Duration::from_secs(3);
             self.last_solid = None;
         }

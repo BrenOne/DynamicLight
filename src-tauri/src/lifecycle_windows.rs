@@ -75,6 +75,11 @@ unsafe extern "system" fn window_proc(
             WM_WTSSESSION_CHANGE if wparam.0 == 7 || wparam.0 == 8 => {
                 handle.system_event(SystemEvent::Locked(wparam.0 == 7), false);
             }
+            // Console/remote connect or disconnect of this session: fast user
+            // switching moves the console to another session.
+            WM_WTSSESSION_CHANGE if (1..=4).contains(&wparam.0) => {
+                handle.system_event(SystemEvent::Away(away()), false);
+            }
             WM_POWERBROADCAST if wparam.0 == PBT_POWERSETTINGCHANGE as usize && lparam.0 != 0 => {
                 let setting = &*(lparam.0 as *const POWERBROADCAST_SETTING);
                 if setting.PowerSetting == DISPLAY_STATE && setting.DataLength == 4 {
@@ -157,6 +162,7 @@ unsafe fn message_loop(handle: &Handle) -> windows::core::Result<()> {
         );
         handle.system_event(SystemEvent::Ready, false);
     }
+    handle.system_event(SystemEvent::Away(away()), false);
     let mut buffer = PWSTR::null();
     let mut bytes = 0;
     if WTSQuerySessionInformationW(
@@ -194,4 +200,16 @@ unsafe fn message_loop(handle: &Handle) -> windows::core::Result<()> {
     }
     let _ = DestroyWindow(hwnd);
     Ok(())
+}
+
+/// Whether the physical console (screen, and the strip with it) belongs to
+/// another session. Each signed-in user runs their own DynamicLight; only the
+/// one on the console drives the strip.
+fn away() -> bool {
+    use windows::Win32::System::Threading::GetCurrentProcessId;
+    let mut session = 0;
+    unsafe {
+        ProcessIdToSessionId(GetCurrentProcessId(), &mut session).is_ok()
+            && WTSGetActiveConsoleSessionId() != session
+    }
 }
