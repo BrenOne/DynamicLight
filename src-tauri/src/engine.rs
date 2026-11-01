@@ -593,7 +593,8 @@ impl Engine {
                     // The strip now belongs to the other user's DynamicLight (if any);
                     // nobody looks at it during a remote desktop session.
                     self.black();
-                    self.controller.close(self.life.pause_reason(&self.state.settings));
+                    self.controller
+                        .close(self.life.pause_reason(&self.state.settings));
                 }
             }
             SystemEvent::SourcesChanged => {
