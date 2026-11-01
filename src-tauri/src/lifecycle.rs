@@ -8,10 +8,23 @@ pub enum SystemEvent {
     Sleep(bool),
     DisplayOff(bool),
     Locked(bool),
+    /// Whether this session has the physical screen (and the strip) or not.
+    Away(Away),
     SourcesChanged,
     #[cfg(target_os = "linux")]
     AudioChanged,
     Warning(String),
+}
+
+/// Where this session is relative to the physical console.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Away {
+    #[default]
+    Here,
+    /// Another session (fast user switching) has the console.
+    OtherUser,
+    /// This session is a remote desktop (RDP) session.
+    Remote,
 }
 
 /// User intent is independent of temporary OS/USB/capture availability.
@@ -23,6 +36,7 @@ pub struct Lifecycle {
     pub sleeping: bool,
     pub display_off: bool,
     pub locked: bool,
+    pub away: Away,
 }
 impl Lifecycle {
     pub fn pause_reason(&self, s: &Settings) -> &'static str {
@@ -30,6 +44,10 @@ impl Lifecycle {
             "Checking desktop state"
         } else if self.sleeping {
             "Computer sleeping"
+        } else if self.away == Away::Remote {
+            "Remote desktop session"
+        } else if self.away == Away::OtherUser {
+            "Another Windows user is active"
         } else if self.locked && s.off_on_lock {
             "Computer locked"
         } else if self.display_off && s.off_on_display_sleep {
