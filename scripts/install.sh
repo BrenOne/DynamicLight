@@ -41,7 +41,7 @@ case "$os:$arch" in
   Linux:x86_64|Linux:amd64)
     if "$appimage"; then asset=dynamiclight-desktop-linux-x64.AppImage
     else asset=dynamiclight-desktop-linux-x64.deb; fi ;;
-  *) fail "No desktop package for $os/$arch. See https://github.com/mskutin/DynamicLight/releases" ;;
+  *) fail "No desktop package for $os/$arch. See https://github.com/BrenOne/DynamicLight/releases" ;;
 esac
 if "$appimage" && [ "$os" != Linux ]; then fail '--appimage is only supported on Linux'; fi
 if "$cli"; then
@@ -65,7 +65,7 @@ cleanup() {
 }
 trap cleanup EXIT
 fetch() { curl --fail --silent --show-error --location --retry 3 --proto '=https' --proto-redir '=https' "$1" -o "$2"; }
-releases=https://github.com/mskutin/DynamicLight/releases
+releases=https://github.com/BrenOne/DynamicLight/releases
 if [ "$version" = latest ]; then
   fetch "$releases/latest/download/release-version.txt" "$scratch/version"
   version=$(tr -d '\r\n' < "$scratch/version")
@@ -137,7 +137,7 @@ case "$os" in
       mv -f "$destination/DynamicLight.AppImage.new" "$destination/DynamicLight.AppImage"
       install -m 644 "$scratch/69-dynamiclight.rules" "$destination/69-dynamiclight.rules"
       printf 'Installed DynamicLight %s at %s/DynamicLight.AppImage\n' "$version" "$destination"
-      echo 'USB access and audio/FUSE dependencies require the one-time setup in https://github.com/mskutin/DynamicLight/blob/main/docs/linux.md'
+      echo 'USB access and audio/FUSE dependencies require the one-time setup in https://github.com/BrenOne/DynamicLight/blob/main/docs/linux.md'
       printf 'USB rule downloaded to %s/69-dynamiclight.rules\n' "$destination"
     else
       command -v apt-get >/dev/null || fail 'This system has no apt-get. Use --appimage and follow docs/linux.md for runtime dependencies'

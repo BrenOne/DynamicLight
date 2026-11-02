@@ -64,6 +64,7 @@ fn held_for() -> Option<Duration> {
 /// Without administrator rights the lock-key guard cannot see key presses in
 /// elevated windows, so on Windows the output rate stays at 30 FPS, the highest
 /// rate at which indicator updates never collide with frames.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 pub const UNELEVATED_FPS: u8 = 30;
 pub fn fps_limit() -> Option<u8> {
     #[cfg(target_os = "windows")]

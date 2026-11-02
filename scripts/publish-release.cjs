@@ -1,9 +1,9 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { version, assemble } = require('./release.cjs');
+const { version, assemble, cli } = require('./release.cjs');
 
-function publishRelease({ root, directory, repo, sha, ref, event }, execute = (args, input) =>
+function publishRelease({ root, directory, repo, sha, ref, event, partial = false, republish = false }, execute = (args, input) =>
   spawnSync('gh', args, { input, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 })) {
   if (!['push', 'workflow_dispatch'].includes(event) || !(ref === 'refs/heads/main' || ref?.startsWith('refs/tags/v'))) {
     throw new Error('Publishing is allowed only for main or version-tag push/manual runs');
@@ -29,7 +29,8 @@ function publishRelease({ root, directory, repo, sha, ref, event }, execute = (a
   // List releases with authentication so interrupted drafts are included too.
   const releases = JSON.parse(gh(['api', `${base}/releases?per_page=100`, '--paginate', '--slurp'])).flat();
   let release = releases.find(item => item.tag_name === tag);
-  if (release && !release.draft) {
+  // `republish` re-uploads over a published release (same tag, same commit), e.g. to add a platform that failed before.
+  if (release && !release.draft && !republish) {
     console.log(`${tag} is already published; leaving its tag and assets unchanged.`);
     return 'unchanged';
   }
@@ -45,8 +46,11 @@ function publishRelease({ root, directory, repo, sha, ref, event }, execute = (a
   }
 
   // Validate the complete current-run asset set before creating any remote state.
-  assemble(root, directory, tag);
-  const notes = fs.readFileSync(path.join(root, 'docs/release-notes.md'), 'utf8');
+  const { missing } = assemble(root, directory, tag, { partial });
+  let notes = fs.readFileSync(path.join(root, 'docs/release-notes.md'), 'utf8');
+  const unreleased = missing.map(target => cli[target]?.replace(/^dynamiclight-cli-/, '').replace(/\.exe$/, '')).join(', ');
+  if (missing.length) notes += `\n\n**Not in this release:** ${unreleased} (the build failed; run the workflow again on this tag with republish to add it).`;
+  if (partial) notes += '\n\nmacOS and Linux builds are experimental: they are built automatically but not yet tested on a real controller.';
   if (!tagExists) api(`${base}/git/refs`, 'POST', { ref: `refs/tags/${tag}`, sha });
   const prerelease = tag.includes('-');
   if (!release) {
@@ -72,5 +76,6 @@ if (require.main === module) {
     root: path.resolve(__dirname, '..'), directory: process.argv[2] || 'dist/release',
     repo: process.env.GITHUB_REPOSITORY, sha: process.env.GITHUB_SHA,
     ref: process.env.GITHUB_REF, event: process.env.GITHUB_EVENT_NAME,
+    partial: process.env.ALLOW_PARTIAL_RELEASE === 'true', republish: process.env.REPUBLISH === 'true',
   });
 }
