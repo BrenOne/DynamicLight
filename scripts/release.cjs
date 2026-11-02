@@ -127,7 +127,14 @@ module.exports = { bundles, updates, cli, version, stage, assemble, minisign, ve
 if (require.main === module) {
   const [command, argument, output] = process.argv.slice(2);
   const root = path.resolve(__dirname, '..');
-  if (command === 'version') console.log(version(root, argument));
+  if (command === 'version') {
+    const value = version(root, argument);
+    // The notes become the release text and the updater's notes: never ship the previous version's.
+    if (argument && !fs.readFileSync(path.join(root, 'docs/release-notes.md'), 'utf8').startsWith(`DynamicLight ${value}`)) {
+      throw new Error(`docs/release-notes.md must start with "DynamicLight ${value}"`);
+    }
+    console.log(value);
+  }
   else if (command === 'stage') stage(root, argument, output);
   else if (command === 'assemble') assemble(root, argument, output);
   else throw new Error('Usage: release.cjs version [tag] | stage <target> <directory> | assemble <directory> [tag]');
