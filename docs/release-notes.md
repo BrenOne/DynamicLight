@@ -10,6 +10,6 @@ The Windows capture initialization fix from 0.16.1 remains included, along with 
 
 Use **Settings → App updates → Check for updates → Install and restart** on Windows, writable macOS app installations, and Linux AppImage. Debian packages use the terminal installer or package manager. After restarting, select the intended window again and explicitly start capture. Windows selected-window capture requires Windows 10 1903 or newer.
 
-Desktop and companion CLI downloads are available for Windows x64, macOS Apple silicon/Intel, and Linux x64. See the [installation guide](https://github.com/mskutin/DynamicLight/blob/main/docs/installation.md). Desktop updates do not update the separately installed CLI.
+Desktop and companion CLI downloads are available for Windows x64, macOS Apple silicon/Intel, and Linux x64. See the [installation guide](https://github.com/BrenOne/DynamicLight/blob/main/docs/installation.md). Desktop updates do not update the separately installed CLI.
 
 Updater packages are cryptographically signed; Windows publisher signing and macOS notarization remain pending. Physical hardware, mobile browser, and accessibility validation remain tracked separately from automated checks.

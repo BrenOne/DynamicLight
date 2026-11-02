@@ -17,7 +17,7 @@ Wayland screen sync is not enabled yet. Other modes remain available. Closing th
 
 ## Recommended: Debian package
 
-Download the `.deb` from [Releases](https://github.com/mskutin/DynamicLight/releases/latest), then install it from your Downloads directory:
+Download the `.deb` from [Releases](https://github.com/BrenOne/DynamicLight/releases/latest), then install it from your Downloads directory:
 
 ```sh
 sudo apt install ./dynamiclight-desktop-linux-x64.deb

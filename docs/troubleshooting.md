@@ -45,4 +45,4 @@ Open **Strip setup & behavior**. Set the LED count and monitor coverage, then tr
 
 ## Report a problem
 
-[Open a bug report](https://github.com/mskutin/DynamicLight/issues/new/choose) with the app version, operating system, controller model, mode, and exact error shown. On Linux, include distribution and X11/Wayland session. Do not share device serial numbers or screenshots containing private information.
+[Open a bug report](https://github.com/BrenOne/DynamicLight/issues/new/choose) with the app version, operating system, controller model, mode, and exact error shown. On Linux, include distribution and X11/Wayland session. Do not share device serial numbers or screenshots containing private information.

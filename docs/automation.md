@@ -4,7 +4,7 @@ Keep the desktop app running and enable **Settings → Local automation → Enab
 
 ## Install
 
-Download `install.sh` or `install.ps1` from the [latest release](https://github.com/mskutin/DynamicLight/releases/latest), following the [terminal installation guide](installation.md). Then:
+Download `install.sh` or `install.ps1` from the [latest release](https://github.com/BrenOne/DynamicLight/releases/latest), following the [terminal installation guide](installation.md). Then:
 
 ```sh
 bash install.sh --cli
