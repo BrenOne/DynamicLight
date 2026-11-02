@@ -1,6 +1,6 @@
 # DynamicLight fork — контекст проекта
 
-Форк https://github.com/mskutin/DynamicLight (Rust + Tauri 2, UI на JS в `src/ui`).
+Форк https://github.com/mskutin/DynamicLight (Rust + Tauri 2, UI на JS в `src/ui`); наш репозиторий https://github.com/BrenOne/DynamicLight (релизы по тегу `v*`, сборки Windows/macOS/Linux, подробности в `docs/development.md`).
 Цель: стабильная Ambient-подсветка экрана + музыка/эффекты, тихая работа в фоне, автозапуск Windows.
 Отвечай по-русски. Пользователь просит экономить токены: не читай большие файлы целиком, используй grep/sed по нужным местам.
 Карта модулей — `.claude/CODEMAP.md` (читать по нужде). Поиск по коду — агент `code-scout`, проверки CI — `/check` (агент `rust-checker`), PR — `/pr`, релиз — `/release vX.Y.Z`. `.rs` после правки форматируются хуком автоматически.

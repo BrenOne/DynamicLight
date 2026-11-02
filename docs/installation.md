@@ -15,7 +15,7 @@ Invoke-WebRequest https://github.com/BrenOne/DynamicLight/releases/latest/downlo
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-This runs the per-user Windows installer silently and waits for completion. It does not launch the app. The execution-policy setting applies only to that PowerShell process. Open DynamicLight from the Start menu afterward.
+This runs the per-user Windows installer silently and waits for completion. It does not launch the app. The execution-policy setting applies only to that PowerShell process. Open DynamicLight from the Start menu afterward. A silent install does not ask about start-up; see [administrator rights](#windows-administrator-rights).
 
 **macOS or Linux (Bash and curl):**
 
@@ -57,6 +57,15 @@ When an update is available, choose **Install and restart** and confirm. The app
 Windows NSIS installations, writable macOS `.app` installations (copy out of the DMG first), and Linux AppImages support this flow. Debian packages and development builds show manual installation guidance. Rerunning the terminal installer remains supported on every platform. AppImage updates do not install system USB rules or dependencies.
 
 The updater uses a dedicated signing key embedded in the app. This verification is separate from Windows Authenticode and macOS Developer ID/notarization; the preview packages still lack those OS signatures. PR artifacts use disposable signing keys and cannot accept production updates; install a GitHub Release for normal use.
+
+## Windows administrator rights
+
+DynamicLight is meant to run with administrator rights on Windows: Windows updates the keyboard indicators (Caps/Num/Scroll Lock) through the strip's controller, and that makes the strip flash at high frame rates. With administrator rights the app can see those key presses in every window and avoids the flashes at up to 60 FPS. Without them, output is capped at **30 FPS**, which is always stable; **Settings** shows the cap and a button to restart elevated.
+
+- The interactive installer asks once whether to **Start DynamicLight with Windows?** and approves the required tasks with a single UAC prompt. Updates and silent installs do not ask again when the tasks already exist.
+- The tasks are `DynamicLight Launch (<user>)` (so shortcuts open the elevated app without a prompt) and `DynamicLight (<user>)` (start at sign-in, only if you chose it). Every Windows user gets their own pair; they appear in Task Scheduler.
+- They are created through the Windows API, not through `cmd.exe` or `schtasks`, because antivirus heuristics treat that pattern as persistence malware.
+- **Launch at login** in the app toggles the sign-in task (one UAC prompt). Interactive uninstall asks for permission once and removes the tasks.
 
 ## Command-line controls and uninstall
 
