@@ -53,18 +53,53 @@ fn fps_limit() -> Option<u8> {
     device::fps_limit()
 }
 
-/// Windows: get administrator rights (one UAC prompt) and restart elevated.
+#[derive(serde::Serialize)]
+struct AdminRights {
+    enabled: bool,
+    available: bool,
+}
+
+/// Windows "Run with administrator rights": start through the elevated Task
+/// Scheduler tasks instead of the Run key (one UAC prompt to switch). Turning
+/// it on restarts the app elevated.
 #[cfg(target_os = "windows")]
 #[tauri::command(async)]
-fn elevate(app: tauri::AppHandle) -> Result<(), String> {
-    autostart_windows::elevate_and_restart()?;
-    app.exit(0);
-    Ok(())
+fn admin_rights(app: tauri::AppHandle, enabled: Option<bool>) -> Result<AdminRights, String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let manager = app.autolaunch();
+    let current = autostart_windows::admin_mode();
+    match enabled {
+        // Also when on but not elevated: re-registering repairs a disabled task.
+        Some(true) if !current || !autostart_windows::is_elevated() => {
+            let login = manager.is_enabled().unwrap_or(false) || autostart_windows::enabled();
+            let restart = autostart_windows::enable_admin(login)?;
+            let _ = manager.disable();
+            if restart {
+                app.exit(0);
+            }
+        }
+        Some(false) if current => {
+            let login = autostart_windows::enabled();
+            autostart_windows::disable_admin()?;
+            if login {
+                manager.enable().map_err(|e| e.to_string())?;
+            }
+        }
+        _ => {}
+    }
+    Ok(AdminRights {
+        enabled: autostart_windows::admin_mode(),
+        available: autostart_windows::can_elevate(),
+    })
 }
 #[cfg(not(target_os = "windows"))]
 #[tauri::command]
-fn elevate() -> Result<(), String> {
-    Err("Not needed on this platform".into())
+fn admin_rights(enabled: Option<bool>) -> Result<AdminRights, String> {
+    let _ = enabled;
+    Ok(AdminRights {
+        enabled: false,
+        available: false,
+    })
 }
 
 // Runs off the main thread: enabling may wait for a UAC prompt.
@@ -74,25 +109,41 @@ fn launch_at_login(app: tauri::AppHandle, enabled: Option<bool>) -> Result<bool,
     login_item(&app.autolaunch(), enabled)
 }
 
+/// With administrator rights on, start at sign-in is the elevated login task;
+/// otherwise it is the per-user Run key.
 #[cfg(target_os = "windows")]
 fn login_item(
     manager: &tauri_plugin_autostart::AutoLaunchManager,
     enabled: Option<bool>,
 ) -> Result<bool, String> {
+    let admin = autostart_windows::admin_mode();
     if let Some(enabled) = enabled {
-        // Older versions used the per-user Run key; the elevated task replaces it.
-        if manager.is_enabled().unwrap_or(false) {
-            let _ = manager.disable();
-        }
-        if enabled != autostart_windows::enabled() {
-            if enabled {
-                autostart_windows::enable()?;
-            } else {
-                autostart_windows::disable()?;
+        if admin {
+            // The Run key would start a second, unelevated copy.
+            if manager.is_enabled().unwrap_or(false) {
+                let _ = manager.disable();
             }
+            if enabled != autostart_windows::enabled() {
+                if enabled {
+                    autostart_windows::enable()?;
+                } else {
+                    autostart_windows::disable()?;
+                }
+            }
+        } else {
+            if enabled {
+                manager.enable()
+            } else {
+                manager.disable()
+            }
+            .map_err(|e| e.to_string())?;
         }
     }
-    Ok(autostart_windows::enabled())
+    Ok(if admin {
+        autostart_windows::enabled()
+    } else {
+        manager.is_enabled().unwrap_or(false)
+    })
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -293,7 +344,7 @@ pub fn run() {
             effect_previews,
             launch_at_login,
             fps_limit,
-            elevate,
+            admin_rights,
             profiles::profile_library,
             profiles::apply_profile
             ,diagnostics::diagnostic_report,

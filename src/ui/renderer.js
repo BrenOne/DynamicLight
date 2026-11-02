@@ -16,6 +16,8 @@ let previewPending,
 const pendingSettings = {};
 // Highest frame rate this session may use (null: unlimited); see fps_limit.
 let fpsLimit = null;
+// Windows "Run with administrator rights": { enabled, available }.
+let adminRights = null;
 function markSettings(keys) {
   for (const key of keys) pendingSettings[key] = structuredClone(settings[key]);
 }
@@ -265,6 +267,8 @@ function updateUI() {
   for (const [id, key] of behaviorSettings) $(id).checked = !!settings[key];
   $("launch-at-login").checked = loginEnabled;
   $("launch-at-login").disabled = busy || !loginAvailable;
+  $("admin-rights").checked = !!adminRights?.enabled;
+  $("admin-rights").disabled = busy || !adminRights?.available;
   $("device-detail").textContent =
     `${settings.count} LEDs · ${settings.sides === 3 ? "Three sides" : "Four sides"} · USB HID`;
   $("led-total").textContent = `→ ${settings.count}`;
@@ -734,10 +738,23 @@ async function init() {
   } catch {
     // Older back ends have no limit.
   }
+  try {
+    adminRights = await invoke("admin_rights", { enabled: null });
+  } catch {
+    // Older back ends start elevated through Launch at login.
+  }
+  if (platform === "windows" && adminRights) {
+    $("admin-rights-group").hidden = false;
+    $("elevate").hidden = !adminRights.available;
+    $("elevate-unavailable").hidden = adminRights.available;
+    if (!adminRights.available)
+      $("admin-rights-help").textContent =
+        "Needs an administrator account. Without it the strip runs at up to 30 FPS.";
+  }
   $("elevate").onclick = () =>
     run(async () => {
       await save();
-      await invoke("elevate");
+      adminRights = await invoke("admin_rights", { enabled: true });
     });
   try {
     loginEnabled = await invoke("launch_at_login", { enabled: null });
@@ -806,6 +823,25 @@ async function init() {
       if (loginEnabled !== enabled)
         throw new Error(
           "Login startup was not changed. Check your operating system's login-item settings.",
+        );
+    });
+  };
+  $("admin-rights").onchange = (event) => {
+    const enabled = event.target.checked;
+    run(async () => {
+      try {
+        // Turning it on restarts the app; keep unsaved edits.
+        if (enabled) await save();
+        adminRights = await invoke("admin_rights", { enabled });
+        // Start at sign-in moves between the Run key and the login task.
+        loginEnabled = await invoke("launch_at_login", { enabled: null });
+      } finally {
+        // A declined UAC prompt leaves the previous state in place.
+        event.target.checked = !!adminRights?.enabled;
+      }
+      if (!enabled && !adminRights.enabled && !fpsLimit)
+        notice(
+          "Administrator rights turn off the next time DynamicLight starts.",
         );
     });
   };
