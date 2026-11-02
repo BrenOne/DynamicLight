@@ -13,7 +13,7 @@ if ($architecture -ne 'AMD64') { throw "No desktop package for Windows/$architec
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 $scratch = Join-Path ([IO.Path]::GetTempPath()) ('dynamiclight-install-' + [guid]::NewGuid())
 $null = New-Item -ItemType Directory -Path $scratch
-$releases = 'https://github.com/mskutin/DynamicLight/releases'
+$releases = 'https://github.com/BrenOne/DynamicLight/releases'
 $asset = 'dynamiclight-desktop-windows-x64-setup.exe'
 if ($Cli) { $asset = 'dynamiclight-cli-windows-x64.exe' }
 try {

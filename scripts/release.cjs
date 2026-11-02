@@ -77,15 +77,33 @@ function stage(root, target, output) {
   fs.copyFileSync(binary, path.join(output, cli[target]));
 }
 
-function assemble(root, output, tag) {
+// Every file one platform contributes to a release.
+const packages = target => [...bundles[target].map(bundle => bundle[2]), updates[target][3], `${updates[target][3]}.sig`, cli[target]];
+// The platform a release cannot go without; the others are optional when `partial`.
+const REQUIRED = 'x86_64-pc-windows-msvc';
+
+// With `partial`, platforms whose packages are not all there are left out of the
+// release (and of latest.json) instead of failing it; returns them as `missing`.
+function assemble(root, output, tag, { partial = false } = {}) {
   const value = version(root, tag);
-  const expected = [...new Set([...Object.values(bundles).flat().map(bundle => bundle[2]), ...Object.values(updates).flatMap(u => [u[3], `${u[3]}.sig`]), ...Object.values(cli)])].sort();
+  const missing = [];
+  if (partial) {
+    const present = new Set(fs.readdirSync(output));
+    for (const target of Object.keys(updates)) {
+      if (packages(target).every(name => present.has(name))) continue;
+      missing.push(target);
+      for (const name of packages(target)) fs.rmSync(path.join(output, name), { force: true });
+    }
+    if (missing.includes(REQUIRED)) throw new Error('The Windows packages are required for a release');
+  }
+  const included = Object.keys(updates).filter(target => !missing.includes(target));
+  const expected = [...new Set(included.flatMap(packages))].sort();
   const actual = fs.readdirSync(output).sort();
   if (JSON.stringify(expected) !== JSON.stringify(actual)) throw new Error('Release must contain exactly one package for every supported platform');
   for (const name of expected) if (!fs.statSync(path.join(output, name)).size) throw new Error(`Empty package: ${name}`);
   const publicKey = JSON.parse(fs.readFileSync(path.join(root, 'src-tauri/tauri.conf.json'))).plugins.updater.pubkey;
   const platforms = {};
-  for (const [platform, , , name] of Object.values(updates)) {
+  for (const [platform, , , name] of included.map(target => updates[target])) {
     const signature = fs.readFileSync(path.join(output, `${name}.sig`), 'utf8').trim();
     verifySignature(path.join(output, name), signature, publicKey, value);
     platforms[platform] = { signature, url: `https://github.com/BrenOne/DynamicLight/releases/download/v${value}/${name}` };
@@ -102,6 +120,7 @@ function assemble(root, output, tag) {
     return `${hash}  ${name}\n`;
   }).join('');
   fs.writeFileSync(path.join(output, 'SHA256SUMS'), checksums);
+  return { missing };
 }
 
 module.exports = { bundles, updates, cli, version, stage, assemble, minisign, verifySignature };

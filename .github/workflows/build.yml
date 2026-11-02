@@ -1,14 +1,22 @@
-# Fork build: Windows only. Branches and PRs produce the NSIS installer as an
-# artifact. A pushed tag vX.Y.Z also signs the updater package (secrets
-# TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD) and
-# publishes a GitHub Release with the installer and latest.json, which the
-# app's updater reads.
-# Checks and the installer build run in parallel. Every build uses one fast
-# release profile and one cache key, so PRs reuse main's compiled dependencies
+# Fork build for Windows, macOS and Linux. Branches and PRs build every platform
+# and upload the packages as artifacts (with a disposable updater key). A pushed
+# tag vX.Y.Z signs the updater packages (secrets TAURI_SIGNING_PRIVATE_KEY and
+# TAURI_SIGNING_PRIVATE_KEY_PASSWORD) and publishes a GitHub Release with the
+# packages and latest.json, which the app's updater reads.
+# The Windows build is required for a release; macOS and Linux are optional: if
+# one of them fails the release goes out without it (and says so). Re-run the
+# workflow on the tag with `republish` to add it later.
+# Checks and the builds run in parallel. Every build uses one fast release
+# profile and one cache key per target, so PRs reuse main's compiled dependencies
 # (GitHub lets a PR restore caches saved by its base branch).
 name: Build desktop apps
 on:
   workflow_dispatch:
+    inputs:
+      republish:
+        description: 'Run on a version tag: upload over the already published release (adds platforms that failed before)'
+        type: boolean
+        default: false
   push:
     branches: [main]
     tags: ['v*']
@@ -20,6 +28,16 @@ concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  scripts:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: sudo apt-get update && sudo apt-get install -y minisign shellcheck
+      - run: node --test scripts/release-test.cjs scripts/publish-release-test.cjs scripts/install-test.cjs
+      - run: bash -n scripts/install.sh && shellcheck scripts/install.sh
   checks:
     runs-on: windows-latest
     steps:
@@ -42,33 +60,60 @@ jobs:
       - run: pnpm test
       - run: pnpm check
   build:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundle: nsis
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            bundle: app,dmg
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            bundle: app,dmg
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            bundle: deb,appimage
+    runs-on: ${{ matrix.os }}
     env:
-      TARGET: x86_64-pc-windows-msvc
+      TARGET: ${{ matrix.target }}
+      MACOSX_DEPLOYMENT_TARGET: '13.0'
+      APPIMAGE_EXTRACT_AND_RUN: '1'
     steps:
       - uses: actions/checkout@v4
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf libudev-dev libasound2-dev libxcb1-dev libxcb-randr0-dev libpipewire-0.3-dev libclang-dev libgbm-dev libegl1-mesa-dev libwayland-dev libxkbcommon-dev libdbus-1-dev pulseaudio pulseaudio-utils xvfb
       - uses: actions/setup-node@v4
         with:
           node-version: 24
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-pc-windows-msvc
+          targets: ${{ matrix.target }}
+          components: clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
-          key: build
+          workspaces: |
+            src-tauri
+            control
+          key: build-${{ matrix.target }}
           cache-on-failure: true
       - run: npm install --global pnpm@11.25.0
       - run: pnpm install --frozen-lockfile
       - name: Check the tag matches the app version
         if: startsWith(github.ref, 'refs/tags/v')
         run: node scripts/release.cjs version ${{ github.ref_name }}
-      - name: Sign updater packages (release tags only)
-        if: startsWith(github.ref, 'refs/tags/v')
+      # Release tags use the repository key; everything else a disposable one, so
+      # the packaging pipeline (including updater signatures) is exercised too.
+      - name: Configure signed updater packages
         run: node scripts/configure-updater.cjs
         env:
-          RELEASE_BUILD: 'true'
-          RELEASE_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          RELEASE_BUILD: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          RELEASE_SIGNING_KEY: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
       - name: Signing key password
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
@@ -81,59 +126,49 @@ jobs:
           echo "CARGO_PROFILE_RELEASE_LTO=false" >> "$GITHUB_ENV"
           echo "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16" >> "$GITHUB_ENV"
           echo "CARGO_PROFILE_RELEASE_INCREMENTAL=true" >> "$GITHUB_ENV"
-      - name: Build installer
-        shell: bash
+      # Windows is linted and tested by the checks job; the other platforms
+      # compile different code (cfg), so they need their own pass.
+      - name: Lint and test (macOS, Linux)
+        if: runner.os != 'Windows'
         run: |
-          if [ -f .local/updater-build.json ]; then config="--config .local/updater-build.json"; fi
-          pnpm tauri build $config --target "$TARGET" --bundles nsis
+          pnpm check
+          pnpm test
+      - name: Build the command-line tool
+        run: cargo build --locked --manifest-path control/Cargo.toml --release --target ${{ matrix.target }}
+      - name: Build the app
+        run: pnpm tauri build --config .local/updater-build.json --target ${{ matrix.target }} --bundles ${{ matrix.bundle }}
+      - name: Verify Linux package contents and app startup
+        if: runner.os == 'Linux'
+        run: bash scripts/check-linux.sh
+      - name: Stage release assets
+        run: node scripts/release.cjs stage ${{ matrix.target }} dist/release
       - uses: actions/upload-artifact@v4
         with:
-          name: dynamiclight-${{ env.TARGET }}
-          path: |
-            src-tauri/target/${{ env.TARGET }}/release/bundle/nsis/*.exe
-            src-tauri/target/${{ env.TARGET }}/release/bundle/nsis/*.exe.sig
+          name: dynamiclight-${{ matrix.target }}
+          path: dist/release/*
           if-no-files-found: error
   release:
-    needs: [checks, build]
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [scripts, checks, build]
+    # A failed macOS or Linux build must not block the release: assemble drops
+    # the platforms without packages and refuses to go on without Windows.
+    if: always() && startsWith(github.ref, 'refs/tags/v') && needs.scripts.result == 'success' && needs.checks.result == 'success'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
       - uses: actions/download-artifact@v4
         with:
-          name: dynamiclight-x86_64-pc-windows-msvc
-          path: bundle
-      - name: Assemble release assets and latest.json
-        shell: bash
-        env:
-          TAG: ${{ github.ref_name }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          mkdir dist
-          exe=$(ls bundle/*.exe | grep -v '\.sig$' | head -n1)
-          name=dynamiclight-desktop-windows-x64-setup.exe
-          cp "$exe" "dist/$name"
-          cp "$exe.sig" "dist/$name.sig"
-          node -e '
-            const fs = require("fs");
-            const [tag, repo, name] = process.argv.slice(1);
-            const signature = fs.readFileSync(`dist/${name}.sig`, "utf8").trim();
-            const url = `https://github.com/${repo}/releases/download/${tag}/${name}`;
-            fs.writeFileSync("dist/latest.json", JSON.stringify({
-              version: tag.replace(/^v/, ""),
-              notes: `DynamicLight ${tag}`,
-              pub_date: new Date().toISOString(),
-              platforms: {
-                "windows-x86_64": { signature, url },
-                "windows-x86_64-nsis": { signature, url },
-              },
-            }, null, 2));
-          ' "$TAG" "$REPO" "$name"
-          cat dist/latest.json
+          pattern: dynamiclight-*
+          path: dist/release
+          merge-multiple: true
+      - run: sudo apt-get update && sudo apt-get install -y minisign
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" dist/* --repo "${{ github.repository }}" --title "DynamicLight $TAG" --generate-notes
+          ALLOW_PARTIAL_RELEASE: 'true'
+          REPUBLISH: ${{ inputs.republish && 'true' || 'false' }}
+        run: node scripts/publish-release.cjs dist/release

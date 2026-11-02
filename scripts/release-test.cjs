@@ -59,7 +59,7 @@ test('stages all platform bundles and hashes exactly the complete release', t =>
   assert.equal(manifest.version, version(dir));
   assert.equal(Object.keys(manifest.platforms).length, 4);
   for (const platform of Object.values(manifest.platforms)) {
-    assert.ok(platform.url.startsWith(`https://github.com/mskutin/DynamicLight/releases/download/v${version(dir)}/`));
+    assert.ok(platform.url.startsWith(`https://github.com/BrenOne/DynamicLight/releases/download/v${version(dir)}/`));
     assert.ok(platform.signature.length > 100);
   }
   for (const line of checksums) {
@@ -99,4 +99,44 @@ test('signatures reject a different key, changed bytes and a relabeled version',
   assert.throws(() => verifySignature(file, signature, wrongKey, version(dir)), /Invalid updater signature/);
   fs.appendFileSync(file, 'changed');
   assert.throws(() => verifySignature(file, signature, key, version(dir)), /Invalid updater signature/);
+});
+
+test('a partial release needs Windows and leaves failed platforms out of latest.json', t => {
+  const dir = fixture(t);
+  const sign = signingFixture(dir);
+  const stageTarget = (target, output) => {
+    for (const [folder, ext] of bundles[target]) {
+      const source = path.join(dir, 'src-tauri/target', target, 'release/bundle', folder);
+      fs.mkdirSync(source, { recursive: true });
+      fs.writeFileSync(path.join(source, `package${ext}`), `fixture ${target} ${ext}`);
+    }
+    const [, folder, ext] = updates[target];
+    const source = path.join(dir, 'src-tauri/target', target, 'release/bundle', folder);
+    fs.mkdirSync(source, { recursive: true });
+    const file = path.join(source, `package${ext}`);
+    fs.writeFileSync(file, `fixture ${target} ${ext}`);
+    sign(file);
+    const binary = path.join(dir, 'control/target', target, 'release', target.includes('windows') ? 'dynamiclight.exe' : 'dynamiclight');
+    fs.mkdirSync(path.dirname(binary), { recursive: true });
+    fs.writeFileSync(binary, 'CLI fixture');
+    stage(dir, target, output);
+  };
+  const windows = 'x86_64-pc-windows-msvc';
+  const linux = 'x86_64-unknown-linux-gnu';
+  const output = path.join(dir, 'dist');
+  stageTarget(linux, output);
+  assert.throws(() => assemble(dir, output, `v${version(dir)}`, { partial: true }), /Windows packages are required/);
+  fs.rmSync(output, { recursive: true });
+  stageTarget(windows, output);
+  assert.throws(() => assemble(dir, output, `v${version(dir)}`), /every supported platform/);
+  const { missing } = assemble(dir, output, `v${version(dir)}`, { partial: true });
+  assert.deepEqual(missing.sort(), ['aarch64-apple-darwin', linux, 'x86_64-apple-darwin'].sort());
+  const manifest = JSON.parse(fs.readFileSync(path.join(output, 'latest.json')));
+  assert.deepEqual(Object.keys(manifest.platforms), ['windows-x86_64']);
+  // A platform that only has some of its packages is dropped as a whole.
+  fs.rmSync(output, { recursive: true });
+  stageTarget(windows, output);
+  fs.writeFileSync(path.join(output, bundles[linux][0][2]), 'orphan');
+  assert.deepEqual(assemble(dir, output, `v${version(dir)}`, { partial: true }).missing.includes(linux), true);
+  assert.ok(!fs.existsSync(path.join(output, bundles[linux][0][2])));
 });
