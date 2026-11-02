@@ -95,10 +95,18 @@ unsafe extern "system" fn window_proc(
             WM_DISPLAYCHANGE => handle.system_event(SystemEvent::SourcesChanged, false),
             // Windows shutdown/restart/sign-out: turn the strip off before the process is
             // killed, otherwise USB power keeps the last frame lit.
-            WM_QUERYENDSESSION => return LRESULT(1),
+            // The strip goes dark already on the query: when the session really ends,
+            // tao's window calls exit(0) on its own WM_ENDSESSION at once, which would
+            // kill this process before the USB frame below is written.
+            WM_QUERYENDSESSION => {
+                handle.system_event(SystemEvent::Ending(true), true);
+                return LRESULT(1);
+            }
             WM_ENDSESSION if wparam.0 != 0 => {
                 let _ = handle.request(crate::engine::Action::Shutdown);
             }
+            // Something cancelled the shutdown: light up again.
+            WM_ENDSESSION => handle.system_event(SystemEvent::Ending(false), false),
             _ => {}
         }
     }

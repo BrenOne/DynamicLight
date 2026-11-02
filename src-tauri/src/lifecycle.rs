@@ -12,6 +12,10 @@ pub enum SystemEvent {
     /// Only Windows reports it.
     #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
     Away(Away),
+    /// Windows is about to end the session (shutdown, restart, sign-out); `false`
+    /// when something cancelled it. Only Windows reports it.
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+    Ending(bool),
     SourcesChanged,
     #[cfg(target_os = "linux")]
     AudioChanged,
@@ -41,6 +45,7 @@ pub struct Lifecycle {
     pub display_off: bool,
     pub locked: bool,
     pub away: Away,
+    pub ending: bool,
 }
 impl Lifecycle {
     pub fn pause_reason(&self, s: &Settings) -> &'static str {
@@ -52,6 +57,8 @@ impl Lifecycle {
             "Remote desktop session"
         } else if self.away == Away::OtherUser {
             "Another Windows user is active"
+        } else if self.ending && s.off_on_quit {
+            "Computer shutting down"
         } else if self.locked && s.off_on_lock {
             "Computer locked"
         } else if self.display_off && s.off_on_display_sleep {
@@ -153,5 +160,20 @@ mod tests {
         assert!(!SavedIntent::load(&path).unwrap().running);
         std::fs::write(&path, b"invalid").unwrap();
         assert!(SavedIntent::load(&path).is_err());
+    }
+
+    #[test]
+    fn ending_session_pauses_only_when_the_strip_goes_off_on_quit() {
+        let mut life = Lifecycle {
+            requested: true,
+            ..Default::default()
+        };
+        let mut s = Settings::default();
+        assert!(life.active(&s));
+        life.ending = true;
+        s.off_on_quit = true;
+        assert_eq!(life.pause_reason(&s), "Computer shutting down");
+        s.off_on_quit = false;
+        assert!(life.active(&s));
     }
 }
