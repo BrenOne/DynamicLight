@@ -9,6 +9,8 @@ pub enum SystemEvent {
     DisplayOff(bool),
     Locked(bool),
     /// Whether this session has the physical screen (and the strip) or not.
+    /// Only Windows reports it.
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
     Away(Away),
     SourcesChanged,
     #[cfg(target_os = "linux")]
@@ -22,8 +24,10 @@ pub enum Away {
     #[default]
     Here,
     /// Another session (fast user switching) has the console.
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
     OtherUser,
     /// This session is a remote desktop (RDP) session.
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
     Remote,
 }
 
