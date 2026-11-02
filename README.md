@@ -4,22 +4,37 @@ A local desktop lighting studio for [compatible ROBOBLOQ USB LED strips](#compat
 
 **Windows · macOS · Linux** · Free and open source · No account required
 
-[Download](https://github.com/mskutin/DynamicLight/releases/latest) · [Installation guide](docs/installation.md) · [Controls guide](docs/controls.md) · [Report a problem](https://github.com/mskutin/DynamicLight/issues/new/choose)
+**English** · [Русский](README.ru.md) — a fork of [mskutin/DynamicLight](https://github.com/mskutin/DynamicLight), see [About this fork](#about-this-fork).
+
+[Download](https://github.com/BrenOne/DynamicLight/releases/latest) · [Installation guide](docs/installation.md) · [Controls guide](docs/controls.md) · [Report a problem](https://github.com/BrenOne/DynamicLight/issues/new/choose)
 
 ![DynamicLight workspace](docs/studio.png)
 
+## About this fork
+
+This is a fork of [mskutin/DynamicLight](https://github.com/mskutin/DynamicLight) maintained by [BrenOne](https://github.com/BrenOne), with its own releases and in-app updates. What it adds:
+
+- **Stable Robobloq output:** steady USB frames, automatic strip-layout detection and up to 60 FPS ([offered upstream](https://github.com/mskutin/DynamicLight/pull/68)).
+- **Caps/Num/Scroll Lock (Windows):** Windows updates the keyboard indicators through the controller itself, which made the strip flash above 30 FPS. The app now guards against it. This needs administrator rights; without them output is capped at 30 FPS, which is always stable.
+- **Administrator start-up without shell commands (Windows):** the elevated start and **Launch at login** use Task Scheduler tasks created through the Windows API after one UAC approval, separately for every Windows user. No `cmd.exe`/`schtasks` command lines, which antivirus heuristics report as persistence malware. At sign-in the app waits for the taskbar, so the tray icon always appears.
+- **Several Windows users and remote desktop:** the strip belongs to the session at the physical screen. While another user or a remote desktop session is active, the app lets go of the strip and picks it up again when you return.
+- **Shutdown:** the strip is switched off when Windows shuts down, restarts or signs out.
+- **Builds for every system:** Windows, macOS and Linux packages are built and published automatically. If the macOS or Linux build fails, the release goes out without it and says so; those two are experimental because they are not tested with a real controller.
+
+Bugs found in this fork go to [its issues](https://github.com/BrenOne/DynamicLight/issues/new/choose). The guides in `docs/` are in English.
+
 ## Install
 
-Download a desktop package from [GitHub Releases](https://github.com/mskutin/DynamicLight/releases/latest). No development tools or GitHub account are needed; the source-code archives are not installers.
+Download a desktop package from [GitHub Releases](https://github.com/BrenOne/DynamicLight/releases/latest). No development tools or GitHub account are needed; the source-code archives are not installers.
 
 | Your computer | Download |
 | --- | --- |
-| Windows x64 | [Windows installer](https://github.com/mskutin/DynamicLight/releases/latest/download/dynamiclight-desktop-windows-x64-setup.exe) |
-| Mac with Apple silicon | [ARM64 disk image](https://github.com/mskutin/DynamicLight/releases/latest/download/dynamiclight-desktop-macos-arm64.dmg) |
-| Mac with Intel | [x64 disk image](https://github.com/mskutin/DynamicLight/releases/latest/download/dynamiclight-desktop-macos-x64.dmg) |
-| Linux x64 | [Debian package](https://github.com/mskutin/DynamicLight/releases/latest/download/dynamiclight-desktop-linux-x64.deb) or [AppImage](https://github.com/mskutin/DynamicLight/releases/latest/download/dynamiclight-desktop-linux-x64.AppImage) |
+| Windows x64 | [Windows installer](https://github.com/BrenOne/DynamicLight/releases/latest/download/dynamiclight-desktop-windows-x64-setup.exe) |
+| Mac with Apple silicon | [ARM64 disk image](https://github.com/BrenOne/DynamicLight/releases/latest/download/dynamiclight-desktop-macos-arm64.dmg) |
+| Mac with Intel | [x64 disk image](https://github.com/BrenOne/DynamicLight/releases/latest/download/dynamiclight-desktop-macos-x64.dmg) |
+| Linux x64 | [Debian package](https://github.com/BrenOne/DynamicLight/releases/latest/download/dynamiclight-desktop-linux-x64.deb) or [AppImage](https://github.com/BrenOne/DynamicLight/releases/latest/download/dynamiclight-desktop-linux-x64.AppImage) |
 
-Packages are preview builds without Windows publisher signing or macOS notarization, so the OS may ask you to approve opening them. macOS requires 13 or newer. Linux targets Ubuntu 24.04+ and needs the [Linux dependency and USB setup](docs/linux.md); screen capture requires X11. Windows ARM64/32-bit and Linux ARM64 packages are not available.
+Packages are preview builds without Windows publisher signing or macOS notarization, so the OS may ask you to approve opening them (Windows SmartScreen: **More info → Run anyway**). On Windows the app asks for administrator approval once when you enable **Launch at login** or restart elevated. macOS requires 13 or newer. Linux targets Ubuntu 24.04+ and needs the [Linux dependency and USB setup](docs/linux.md); screen capture requires X11. Windows ARM64/32-bit and Linux ARM64 packages are not available.
 
 ### From a terminal
 
@@ -28,14 +43,14 @@ Quit DynamicLight before installing or updating. Download the script, inspect it
 **Windows — PowerShell 5.1 or newer:**
 
 ```powershell
-Invoke-WebRequest -UseBasicParsing https://github.com/mskutin/DynamicLight/releases/latest/download/install.ps1 -OutFile install.ps1
+Invoke-WebRequest -UseBasicParsing https://github.com/BrenOne/DynamicLight/releases/latest/download/install.ps1 -OutFile install.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
 **macOS / Linux — Bash and curl:**
 
 ```sh
-curl -fsSL https://github.com/mskutin/DynamicLight/releases/latest/download/install.sh -o install.sh
+curl -fsSL https://github.com/BrenOne/DynamicLight/releases/latest/download/install.sh -o install.sh
 bash install.sh
 ```
 
@@ -147,6 +162,6 @@ pnpm install --frozen-lockfile
 pnpm start
 ```
 
-[GitHub Releases](https://github.com/mskutin/DynamicLight/releases/latest) contains installable packages and production updates. [Actions](https://github.com/mskutin/DynamicLight/actions/workflows/build.yml) also provides development artifacts; PR and branch builds use test updater keys and cannot accept production updates.
+[GitHub Releases](https://github.com/BrenOne/DynamicLight/releases/latest) contains installable packages and production updates. [Actions](https://github.com/BrenOne/DynamicLight/actions/workflows/build.yml) also provides development artifacts; PR and branch builds use test updater keys and cannot accept production updates.
 
-Released under the [MIT License](LICENSE). Copyright © 2026 mskutin.
+Released under the [MIT License](LICENSE). Copyright © 2026 mskutin. Fork changes © 2026 BrenOne, under the same license.

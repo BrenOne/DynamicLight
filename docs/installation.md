@@ -1,6 +1,6 @@
 # Install DynamicLight
 
-Download a package from [Releases](https://github.com/mskutin/DynamicLight/releases/latest). No GitHub sign-in or development tools are needed. Choose the `.exe` for Windows x64, the ARM64 or x64 `.dmg` for your Mac, or the x64 `.deb`/`.AppImage` for Linux. The source-code ZIP and tarball are not installable apps.
+Download a package from [Releases](https://github.com/BrenOne/DynamicLight/releases/latest). No GitHub sign-in or development tools are needed. Choose the `.exe` for Windows x64, the ARM64 or x64 `.dmg` for your Mac, or the x64 `.deb`/`.AppImage` for Linux. The source-code ZIP and tarball are not installable apps.
 
 Builds are unsigned previews. Windows may show SmartScreen; macOS may require approval in **System Settings → Privacy & Security** after you try to open the app. The installers do not disable OS security checks. macOS requires 13 or newer; Linux binaries target Ubuntu 24.04+ and screen sync needs X11. Windows ARM64/32-bit and Linux ARM64 do not currently have release packages.
 
@@ -11,7 +11,7 @@ Quit DynamicLight before installing or updating. Run these commands as your norm
 **Windows (PowerShell 5.1 or newer):**
 
 ```powershell
-Invoke-WebRequest https://github.com/mskutin/DynamicLight/releases/latest/download/install.ps1 -OutFile install.ps1
+Invoke-WebRequest https://github.com/BrenOne/DynamicLight/releases/latest/download/install.ps1 -OutFile install.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
@@ -20,7 +20,7 @@ This runs the per-user Windows installer silently and waits for completion. It d
 **macOS or Linux (Bash and curl):**
 
 ```sh
-curl -fsSL https://github.com/mskutin/DynamicLight/releases/latest/download/install.sh -o install.sh
+curl -fsSL https://github.com/BrenOne/DynamicLight/releases/latest/download/install.sh -o install.sh
 bash install.sh
 ```
 
