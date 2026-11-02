@@ -239,6 +239,7 @@ pub fn run() {
         if let Some(code) = autostart_windows::startup() {
             std::process::exit(code);
         }
+        autostart_windows::wait_for_shell();
         autostart_windows::allow_relaunch_from_unelevated();
     }
     let app = tauri::Builder::default()
