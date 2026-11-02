@@ -20,7 +20,11 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+    # Documentation-only changes need no build. Tags are not path-filtered, so a
+    # release is always built.
+    paths-ignore: ['**.md', 'docs/**', 'LICENSE']
   pull_request:
+    paths-ignore: ['**.md', 'docs/**', 'LICENSE']
 permissions:
   contents: read
 # A newer push cancels the unfinished build of the same branch.
