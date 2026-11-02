@@ -4,6 +4,8 @@ Reviewed 2026-10-19: **0 future features**, **3 validation trackers**, **36 deli
 
 [GitHub project](https://github.com/users/mskutin/projects/4) · [Open issues](https://github.com/mskutin/DynamicLight/issues)
 
+This list and its issue numbers come from the upstream project ([mskutin/DynamicLight](https://github.com/mskutin/DynamicLight)); this fork (BrenOne) tracks its own bugs in [its issues](https://github.com/BrenOne/DynamicLight/issues).
+
 Backlog means uncommitted future work. In Progress is reserved for active implementation. Validation tracks remaining checks and fixes; Done records delivered implementation with verification handed off explicitly. CI builds do not establish physical hardware or accessibility results.
 
 ## Validation
