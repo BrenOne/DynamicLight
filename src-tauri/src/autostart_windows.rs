@@ -37,7 +37,10 @@ use windows::{
                 IsUserAnAdmin, ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SEE_MASK_NO_CONSOLE,
                 SHELLEXECUTEINFOW,
             },
-            WindowsAndMessaging::{ChangeWindowMessageFilter, MSGFLT_ADD, SW_HIDE, WM_COPYDATA},
+            WindowsAndMessaging::{
+                ChangeWindowMessageFilter, FindWindowExW, FindWindowW, MSGFLT_ADD, SW_HIDE,
+                WM_COPYDATA,
+            },
         },
     },
 };
@@ -317,6 +320,29 @@ pub fn elevate_and_restart() -> Result<(), String> {
         .spawn()
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// At sign-in the task starts before Explorer has created the notification area,
+/// and a tray icon added earlier never shows. A start with `--autostart` waits
+/// (at most a minute) until the taskbar's tray exists.
+pub fn wait_for_shell() {
+    if !std::env::args().any(|arg| arg == "--autostart") {
+        return;
+    }
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    while std::time::Instant::now() < deadline {
+        let ready = unsafe {
+            FindWindowW(w!("Shell_TrayWnd"), PCWSTR::null())
+                .and_then(|taskbar| {
+                    FindWindowExW(Some(taskbar), None, w!("TrayNotifyWnd"), PCWSTR::null())
+                })
+                .is_ok()
+        };
+        if ready {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
 }
 
 /// The elevated app may receive hand-overs from a normally started copy
