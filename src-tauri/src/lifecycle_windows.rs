@@ -20,7 +20,8 @@ const LOCK_KEYS: [i32; 3] = [0x14, 0x90, 0x91]; // VK_CAPITAL, VK_NUMLOCK, VK_SC
 /// Guards the strip against Windows' keyboard-indicator reports (see device::hold_output).
 /// Two independent detectors: a low-level hook on its own thread, so nothing else can
 /// stall it past the hook timeout (Windows then silently removes it), and a 4 ms poll
-/// of the physical key state as a backstop for windows the hook does not see.
+/// of the physical key state as a backstop for windows the hook does not see. The
+/// poll idles while no strip runs above 30 FPS, where frames never collide.
 pub fn guard_lock_keys() {
     let _ = std::thread::Builder::new()
         .name("lock-key-hook".into())
@@ -36,6 +37,10 @@ pub fn guard_lock_keys() {
     let _ = std::thread::Builder::new()
         .name("lock-key-poll".into())
         .spawn(|| loop {
+            if !crate::device::guard_needed() {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                continue;
+            }
             if LOCK_KEYS
                 .iter()
                 .any(|&key| unsafe { GetAsyncKeyState(key) } < 0)
