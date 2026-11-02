@@ -555,6 +555,7 @@ impl Engine {
                 | SystemEvent::Locked(true)
                 | SystemEvent::DisplayOff(true)
                 | SystemEvent::Away(Away::OtherUser | Away::Remote)
+                | SystemEvent::Ending(true)
         ) {
             self.extension = None;
             self.external_cue = None;
@@ -595,6 +596,16 @@ impl Engine {
                     self.black();
                     self.controller
                         .close(self.life.pause_reason(&self.state.settings));
+                }
+            }
+            SystemEvent::Ending(ending) => {
+                if ending == self.life.ending {
+                    return;
+                }
+                self.life.ending = ending;
+                if ending && self.state.settings.off_on_quit {
+                    self.black();
+                    self.controller.close("Computer shutting down");
                 }
             }
             SystemEvent::SourcesChanged => {
