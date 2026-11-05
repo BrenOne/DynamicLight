@@ -60,12 +60,13 @@ The updater uses a dedicated signing key embedded in the app. This verification 
 
 ## Windows administrator rights
 
-DynamicLight is meant to run with administrator rights on Windows: Windows updates the keyboard indicators (Caps/Num/Scroll Lock) through the strip's controller, and that makes the strip flash at high frame rates. With administrator rights the app can see those key presses in every window and avoids the flashes at up to 60 FPS. Without them, output is capped at **30 FPS**, which is always stable; **Settings** shows the cap and a button to restart elevated.
+Windows updates the keyboard indicators (Caps/Num/Scroll Lock) through the strip's controller, and above 30 FPS that can make the strip flash. Seeing those key presses in every window needs administrator rights, so by default DynamicLight runs without them and caps output at **30 FPS**, which is always stable.
 
-- The interactive installer asks once whether to **Start DynamicLight with Windows?** and approves the required tasks with a single UAC prompt. Updates and silent installs do not ask again when the tasks already exist.
-- The tasks are `DynamicLight Launch (<user>)` (so shortcuts open the elevated app without a prompt) and `DynamicLight (<user>)` (start at sign-in, only if you chose it). Every Windows user gets their own pair; they appear in Task Scheduler.
-- They are created through the Windows API, not through `cmd.exe` or `schtasks`, because antivirus heuristics treat that pattern as persistence malware.
-- **Launch at login** in the app toggles the sign-in task (one UAC prompt). Interactive uninstall asks for permission once and removes the tasks.
+- **Settings → Startup → Run with administrator rights** (or the button under the FPS choice) unlocks 45–120 FPS. Windows asks once and the app restarts elevated. It needs an administrator account; for standard users the option is unavailable.
+- It works through two Task Scheduler tasks per Windows user: `DynamicLight Launch (<user>)` (shortcuts open the elevated app without a prompt) and `DynamicLight (<user>)` (start at sign-in, when **Launch at login** is on). They are created through the Windows API, not through `cmd.exe` or `schtasks`, because antivirus heuristics treat that pattern as persistence malware.
+- Turning the option off removes the tasks (one UAC prompt); it takes effect the next time the app starts.
+- **Launch at login** uses the per-user Run key without administrator rights and the sign-in task with them. The interactive installer asks once whether to **Start DynamicLight with Windows?**, without a UAC prompt. Updates and silent installs do not ask. Installations that already have the tasks keep them.
+- Interactive uninstall removes the Run entry and, with one UAC prompt, the tasks.
 
 ## Command-line controls and uninstall
 

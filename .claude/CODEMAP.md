@@ -25,7 +25,7 @@
 
 **Система (Windows)**
 - `lifecycle.rs` / `lifecycle_windows.rs` — сон/выход/блокировка, WM_ENDSESSION → Shutdown, хук lock-клавиш.
-- `autostart_windows.rs` — задачи Планировщика (COM), `--setup-tasks`, `--relaunch-after`, `elevate`.
+- `autostart_windows.rs` — задачи Планировщика (COM), `--setup-tasks`, `--relaunch-after`, опция `admin_rights` (`admin_mode`, `enable_admin`, `can_elevate`).
 - `tray.rs`, `compact.rs` (Quick controls), `platform.rs`, `linux.rs`.
 - `updates.rs` — апдейтер (доверяет только BrenOne releases).
 

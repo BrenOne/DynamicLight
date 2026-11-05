@@ -724,8 +724,11 @@
                   Without administrator rights the strip runs at up to 30 FPS:
                   faster updates can make it flash when Caps Lock, Num Lock or
                   Scroll Lock is pressed in an administrator window.
-                  <button id="elevate" class="secondary" type="button">
-                    Allow administrator rights
+                  <span id="elevate-unavailable" hidden
+                    >Higher rates need an administrator account.</span
+                  >
+                  <button id="elevate" class="secondary" type="button" hidden>
+                    Run with administrator rights
                   </button>
                 </p>
                 <label class="checkbox"
@@ -796,10 +799,17 @@
                   ><input id="launch-at-login" type="checkbox" /> Launch at
                   login</label
                 >
-                <p class="help">
-                  On Windows it starts with administrator rights so lock-key
-                  protection works in every window; Windows asks once.
-                </p>
+                <div id="admin-rights-group" hidden>
+                  <label class="checkbox"
+                    ><input id="admin-rights" type="checkbox" /> Run with
+                    administrator rights</label
+                  >
+                  <p id="admin-rights-help" class="help">
+                    Unlocks 45–120 FPS and keeps Caps Lock, Num Lock and Scroll
+                    Lock from flashing the strip in administrator windows.
+                    Windows asks once; turning it on restarts DynamicLight.
+                  </p>
+                </div>
                 <label class="checkbox"
                   ><input id="restore-on-start" type="checkbox" /> Restore
                   lighting when the app opens</label

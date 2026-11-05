@@ -1,5 +1,7 @@
-//! Elevated start-up through Task Scheduler.
+//! Elevated start-up through Task Scheduler ("Run with administrator rights").
 //!
+//! The option is off by default: then Launch at login is the per-user Run key
+//! and DynamicLight runs without administrator rights (up to 30 FPS).
 //! An elevated process is needed so the lock-key guard (a low-level keyboard
 //! hook) also sees key presses while an administrator window is in front; Windows
 //! hides those from non-elevated hooks. Two tasks run DynamicLight with the
@@ -17,7 +19,11 @@
 use windows::{
     core::{w, BSTR, HSTRING, PCWSTR},
     Win32::{
-        Foundation::CloseHandle,
+        Foundation::{CloseHandle, HANDLE},
+        Security::{
+            GetTokenInformation, TokenElevation, TokenElevationType, TokenElevationTypeLimited,
+            TOKEN_ELEVATION, TOKEN_ELEVATION_TYPE, TOKEN_INFORMATION_CLASS, TOKEN_QUERY,
+        },
         System::{
             Com::{
                 CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER,
@@ -28,14 +34,14 @@ use windows::{
                 TASK_LOGON_INTERACTIVE_TOKEN,
             },
             Threading::{
-                GetExitCodeProcess, OpenProcess, WaitForSingleObject, INFINITE, PROCESS_SYNCHRONIZE,
+                GetCurrentProcess, GetExitCodeProcess, OpenProcess, OpenProcessToken,
+                WaitForSingleObject, INFINITE, PROCESS_SYNCHRONIZE,
             },
             Variant::VARIANT,
         },
         UI::{
             Shell::{
-                IsUserAnAdmin, ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SEE_MASK_NO_CONSOLE,
-                SHELLEXECUTEINFOW,
+                ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SEE_MASK_NO_CONSOLE, SHELLEXECUTEINFOW,
             },
             WindowsAndMessaging::{
                 ChangeWindowMessageFilter, FindWindowExW, FindWindowW, MSGFLT_ADD, SW_HIDE,
@@ -142,6 +148,13 @@ pub fn enabled() -> bool {
     current_user().is_ok_and(|user| exists(&task_name(&user)) || legacy_owned(LEGACY_TASK, &user))
 }
 
+/// Whether "Run with administrator rights" is on: this user has the launch task.
+pub fn admin_mode() -> bool {
+    current_user()
+        .is_ok_and(|user| exists(&launch_name(&user)) || legacy_owned(LEGACY_LAUNCH, &user))
+}
+
+/// Login task (administrator rights on).
 pub fn enable() -> Result<(), String> {
     register(true, None)
 }
@@ -299,27 +312,64 @@ pub fn startup() -> Option<i32> {
     None
 }
 
+fn token_info<T: Default>(class: TOKEN_INFORMATION_CLASS) -> Option<T> {
+    unsafe {
+        let mut token = HANDLE::default();
+        OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token).ok()?;
+        let mut value = T::default();
+        let mut size = 0;
+        let result = GetTokenInformation(
+            token,
+            class,
+            Some((&mut value as *mut T).cast()),
+            std::mem::size_of::<T>() as u32,
+            &mut size,
+        );
+        let _ = CloseHandle(token);
+        result.ok().map(|_| value)
+    }
+}
+
 /// Whether this process has administrator rights (cached).
 pub fn is_elevated() -> bool {
-    static ELEVATED: std::sync::LazyLock<bool> =
-        std::sync::LazyLock::new(|| unsafe { IsUserAnAdmin() }.as_bool());
+    static ELEVATED: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
+        token_info::<TOKEN_ELEVATION>(TokenElevation).is_some_and(|t| t.TokenIsElevated != 0)
+    });
     *ELEVATED
 }
 
-/// Registers the launch task (one UAC prompt) and restarts through it, so the
-/// app comes back elevated. A helper copy of DynamicLight waits for this one to
-/// exit (otherwise single-instance would hand the new start back to it) and
-/// then runs the task; it is a GUI process, so no console window appears.
-pub fn elevate_and_restart() -> Result<(), String> {
+/// Whether this account can get administrator rights: elevated already, or an
+/// administrator under UAC. A standard user's task would run without them.
+pub fn can_elevate() -> bool {
+    is_elevated()
+        || token_info::<TOKEN_ELEVATION_TYPE>(TokenElevationType)
+            .is_some_and(|t| t == TokenElevationTypeLimited)
+}
+
+/// Turns administrator rights on: registers the launch task (and the login task
+/// when `login`) with one UAC prompt. Returns true when this copy must exit: a
+/// helper copy of DynamicLight waits for it (otherwise single-instance would
+/// hand the new start back to it) and then runs the task, so the app comes back
+/// elevated; it is a GUI process, so no console window appears.
+pub fn enable_admin(login: bool) -> Result<bool, String> {
     // Always (re)create it: a task that exists but is disabled would not run,
     // and the app would close without coming back.
-    register(false, None)?;
+    register(login, None)?;
+    if is_elevated() {
+        return Ok(false);
+    }
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     std::process::Command::new(exe)
         .args([RELAUNCH, &std::process::id().to_string()])
         .spawn()
         .map_err(|e| e.to_string())?;
-    Ok(())
+    Ok(true)
+}
+
+/// Turns administrator rights off: removes this user's tasks (one UAC prompt
+/// unless elevated). A running elevated copy keeps its rights until it exits.
+pub fn disable_admin() -> Result<(), String> {
+    remove(true, None)
 }
 
 /// At sign-in the task starts before Explorer has created the notification area,
