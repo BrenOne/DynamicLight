@@ -21,6 +21,8 @@ pub struct Controller {
     pub detected: Option<(u8, u8)>,
     /// When the last frame was sent (`now_ms`).
     last_frame_ms: u64,
+    /// Rate this strip's engine runs at (see `set_output_fps`).
+    output_fps: u8,
 }
 static CLAIMED: std::sync::LazyLock<std::sync::Mutex<std::collections::HashSet<String>>> =
     std::sync::LazyLock::new(Default::default);
@@ -39,22 +41,26 @@ static HOLD_UNTIL_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU6
 fn now_ms() -> u64 {
     EPOCH.elapsed().as_millis() as u64
 }
-/// Output rate the engine is running at. At 30 FPS or less a frame (33 ms apart)
-/// never overlaps the controller's ~27 ms indicator update, so no hold is needed.
-static OUTPUT_FPS: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(60);
+/// At 30 FPS or less a frame (33 ms apart) never overlaps the controller's ~27 ms
+/// indicator update, so no hold is needed.
 const HOLD_ABOVE_FPS: u8 = 30;
 /// During a hold frames keep flowing at ~30 FPS (at least this far apart) instead
 /// of freezing: that cadence never overlaps an indicator update.
 const HELD_FRAME_MS: u64 = 32;
-pub fn set_output_fps(fps: u8) {
-    OUTPUT_FPS.store(fps, std::sync::atomic::Ordering::Relaxed);
-}
+/// Until when some strip runs above HOLD_ABOVE_FPS (`now_ms`); the lock-key poll
+/// idles otherwise. Each strip has its own rate, so this only ever extends.
+static FAST_UNTIL_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 pub fn hold_output(ms: u64) {
     HOLD_UNTIL_MS.fetch_max(now_ms() + ms, std::sync::atomic::Ordering::Relaxed);
 }
-fn held_for() -> Option<Duration> {
-    if OUTPUT_FPS.load(std::sync::atomic::Ordering::Relaxed) <= HOLD_ABOVE_FPS {
+/// Whether any strip currently needs the lock-key guard.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+pub fn guard_needed() -> bool {
+    FAST_UNTIL_MS.load(std::sync::atomic::Ordering::Relaxed) > now_ms()
+}
+fn held_for(fps: u8) -> Option<Duration> {
+    if fps <= HOLD_ABOVE_FPS {
         return None;
     }
     let until = HOLD_UNTIL_MS.load(std::sync::atomic::Ordering::Relaxed);
@@ -171,6 +177,13 @@ pub fn lighting_interface(interface: i32, usage_page: u16, path: &str) -> bool {
         && usage_page != 1
         && (interface == 0 || path.to_ascii_lowercase().contains("mi_00") || usage_page >= 0xff00)
 }
+/// (LED count, inches) from a device-info (0x82) reply, None for other reports.
+fn parse_info(reply: &[u8]) -> Option<(u8, u8)> {
+    // Tolerate a leading report-ID byte on some platforms.
+    let o = usize::from(reply.first() == Some(&0));
+    (reply.len() >= o + 24 && reply[o] == 0x52 && reply[o + 1] == 0x42 && reply[o + 4] == 0x82)
+        .then(|| (reply[o + 11], reply[o + 8]))
+}
 fn write_reports(
     packet: &[u8],
     mut write: impl FnMut(&[u8]) -> Result<usize, String>,
@@ -199,10 +212,18 @@ impl Controller {
             sequence: 0,
             detected: None,
             last_frame_ms: 0,
+            output_fps: 60,
             status: Status {
                 connected: false,
                 message: "Ready to connect".into(),
             },
+        }
+    }
+    /// Output rate of this strip's engine; above 30 FPS lock keys hold frames.
+    pub fn set_output_fps(&mut self, fps: u8) {
+        self.output_fps = fps;
+        if fps > HOLD_ABOVE_FPS {
+            FAST_UNTIL_MS.fetch_max(now_ms() + 1000, std::sync::atomic::Ordering::Relaxed);
         }
     }
     fn id(&mut self) -> u8 {
@@ -300,13 +321,7 @@ impl Controller {
             let mut buf = [0u8; 65];
             for _ in 0..5 {
                 let n = d.read_timeout(&mut buf, 100).ok()?;
-                if n == 0 {
-                    continue;
-                }
-                // Tolerate a leading report-ID byte on some platforms.
-                let o = if buf[0] == 0 { 1 } else { 0 };
-                if n >= o + 24 && buf[o] == 0x52 && buf[o + 1] == 0x42 && buf[o + 4] == 0x82 {
-                    let (leds, inches) = (buf[o + 11], buf[o + 8]);
+                if let Some((leds, inches)) = parse_info(&buf[..n]) {
                     return (1..=127).contains(&leds).then_some((leds, inches));
                 }
             }
@@ -377,7 +392,7 @@ impl Controller {
         // skipping it (re-checked: a held key keeps extending the window), but never
         // stall the engine for more than a second.
         let deadline = std::time::Instant::now() + Duration::from_secs(1);
-        while let Some(wait) = held_for() {
+        while let Some(wait) = held_for(self.output_fps) {
             if std::time::Instant::now() >= deadline {
                 break;
             }
@@ -389,7 +404,9 @@ impl Controller {
     pub fn frame(&mut self, colors: &[Rgb]) -> Result<(), String> {
         // Frames stream continuously; while a lock key is active drop down to ~30 FPS.
         let now = now_ms();
-        if held_for().is_some() && now.saturating_sub(self.last_frame_ms) < HELD_FRAME_MS {
+        if held_for(self.output_fps).is_some()
+            && now.saturating_sub(self.last_frame_ms) < HELD_FRAME_MS
+        {
             return Ok(());
         }
         self.last_frame_ms = now;
@@ -424,6 +441,32 @@ mod tests {
         assert!(!lighting_interface(1, 0xff00, "mi_00"));
         assert!(!lighting_interface(0, 1, "mi_00"));
         assert!(!lighting_interface(-1, 1, "x"));
+    }
+    #[test]
+    fn device_info_reply_with_and_without_report_id() {
+        let mut reply = [0u8; 24];
+        reply[..5].copy_from_slice(&[0x52, 0x42, 24, 1, 0x82]);
+        reply[8] = 27;
+        reply[11] = 94;
+        assert_eq!(parse_info(&reply), Some((94, 27)));
+        let mut prefixed = vec![0];
+        prefixed.extend_from_slice(&reply);
+        assert_eq!(parse_info(&prefixed), Some((94, 27)));
+        assert_eq!(parse_info(&reply[..23]), None);
+        reply[4] = 0x93;
+        assert_eq!(parse_info(&reply), None);
+        assert_eq!(parse_info(&[]), None);
+    }
+    #[test]
+    fn lock_keys_hold_only_fast_strips() {
+        // No global hold here: other tests write frames through test buses.
+        assert!(held_for(30).is_none());
+        let mut slow = Controller::new();
+        slow.set_output_fps(30);
+        let mut fast = Controller::new();
+        fast.set_output_fps(60);
+        assert!(guard_needed());
+        assert_eq!((slow.output_fps, fast.output_fps), (30, 60));
     }
     #[test]
     fn incomplete_write_stops_remaining_reports() {

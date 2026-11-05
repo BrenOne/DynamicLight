@@ -1640,24 +1640,31 @@ impl Engine {
                         self.external_cue = None;
                     }
                     self.routines.overlay(&mut colors);
-                    let mut output_settings = self.state.settings.clone();
-                    output_settings.brightness =
-                        self.ambient.brightness(output_settings.brightness, dt);
-                    output_settings.brightness = (u16::from(output_settings.brightness)
-                        * u16::from(self.state.group_brightness)
+                    let s = &self.state.settings;
+                    let mut brightness = self.ambient.brightness(s.brightness, dt);
+                    brightness = (u16::from(brightness) * u16::from(self.state.group_brightness)
                         / 100) as u8;
-                    output_settings.minimum_glow = (u16::from(output_settings.minimum_glow)
+                    let mut minimum_glow = (u16::from(s.minimum_glow)
                         * u16::from(self.state.group_brightness)
                         / 100) as u8;
                     if let Some((start, length, off)) = self.fade {
                         let fraction =
                             (start.elapsed().as_secs_f32() / length.as_secs_f32()).clamp(0.0, 1.0);
                         let gain = if off { 1.0 - fraction } else { fraction };
-                        output_settings.brightness =
-                            (f32::from(output_settings.brightness) * gain).round() as u8;
-                        output_settings.minimum_glow =
-                            (f32::from(output_settings.minimum_glow) * gain).round() as u8;
+                        brightness = (f32::from(brightness) * gain).round() as u8;
+                        minimum_glow = (f32::from(minimum_glow) * gain).round() as u8;
                     }
+                    // Clone the settings (strings, zones, palettes) only when output differs.
+                    let output_settings =
+                        if (brightness, minimum_glow) == (s.brightness, s.minimum_glow) {
+                            std::borrow::Cow::Borrowed(s)
+                        } else {
+                            std::borrow::Cow::Owned(Settings {
+                                brightness,
+                                minimum_glow,
+                                ..s.clone()
+                            })
+                        };
                     self.previous =
                         lighting::transform(&colors, &self.previous, &output_settings, dt);
                 }
@@ -1812,7 +1819,7 @@ pub fn start(
                     );
                     let began = Instant::now();
                     let fps = crate::device::effective_fps(engine.state.settings.fps);
-                    crate::device::set_output_fps(fps);
+                    engine.controller.set_output_fps(fps);
                     let period = Duration::from_secs_f64(1.0 / fps as f64);
                     let late = began.saturating_duration_since(next);
                     if engine.state.powered
