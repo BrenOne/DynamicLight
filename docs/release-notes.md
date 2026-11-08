@@ -1,10 +1,11 @@
-DynamicLight 1.0.4 is a release of the BrenOne fork of mskutin/DynamicLight, now for Windows, macOS and Linux.
+DynamicLight 1.1.0 is a release of the BrenOne fork of mskutin/DynamicLight, now for Windows, macOS and Linux.
 
-**New in 1.0.4**
+**New in 1.1.0**
 
-- Windows: the strip is switched off when Windows shuts down, restarts or signs out. It used to stay lit with the last frame.
-- Packages for macOS (Apple silicon and Intel) and Linux x64 are built and published together with Windows. If the macOS or Linux build fails, the release goes out without it and says so. macOS and Linux are experimental: they are not yet tested with a real controller.
-- `install.sh` and `install.ps1` download from this fork's releases.
+- Windows: **Run with highest rights** is now an optional setting (Settings → General → Startup), like in Wallpaper Engine. Off by default: the app starts normally with Windows through the Run key. Turn it on to get 60+ FPS and no flashes on Caps/Num/Scroll Lock (one UAC approval). The installer no longer asks about it.
+- Lock-key protection is now applied per strip and only above 30 FPS; the poll idles otherwise, so it costs nothing at 30 FPS or less.
+- Less CPU work when the screen capture is unavailable (UAC, lock screen): retries are slower when only the GDI fallback is active.
+- Fewer allocations in the output path.
 
 **Highlights of this fork**
 
