@@ -25,9 +25,13 @@
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
-  ; Interactive uninstall only: updates run the old uninstaller silently and must
-  ; keep start-up as it is. Removing tasks asks for permission only when one exists.
+  ; Interactive uninstall only. Updates run the old uninstaller silently (/S) or, in
+  ; the updater's passive mode, with /UPDATE (not silent); both must keep start-up as
+  ; it is. Removing tasks asks for permission only when one exists.
   IfSilent dl_remove_done
+  System::Call 'kernel32::GetCommandLineW() w .r0'
+  System::Call 'shlwapi::StrStrIW(w r0, w "/UPDATE") i .r1'
+  StrCmp $1 "0" 0 dl_remove_done
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCTNAME}"
   DeleteRegValue HKCU "Software\${PRODUCTNAME}" "StartupAsked"
   DeleteRegKey /ifempty HKCU "Software\${PRODUCTNAME}"

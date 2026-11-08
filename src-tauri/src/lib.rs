@@ -73,7 +73,9 @@ fn admin_rights(app: tauri::AppHandle, enabled: Option<bool>) -> Result<AdminRig
         Some(true) if !current || !autostart_windows::is_elevated() => {
             let login = manager.is_enabled().unwrap_or(false) || autostart_windows::enabled();
             let restart = autostart_windows::enable_admin(login)?;
-            let _ = manager.disable();
+            // Not restarting with the Run key still there: it would start a second,
+            // unelevated copy at sign-in.
+            drop_run_key(&manager)?;
             if restart {
                 app.exit(0);
             }
@@ -82,7 +84,9 @@ fn admin_rights(app: tauri::AppHandle, enabled: Option<bool>) -> Result<AdminRig
             let login = autostart_windows::enabled();
             autostart_windows::disable_admin()?;
             if login {
-                manager.enable().map_err(|e| e.to_string())?;
+                manager.enable().map_err(|e| {
+                    format!("Administrator rights are off, but Launch at login could not be restored: {e}")
+                })?;
             }
         }
         _ => {}
@@ -109,6 +113,15 @@ fn launch_at_login(app: tauri::AppHandle, enabled: Option<bool>) -> Result<bool,
     login_item(&app.autolaunch(), enabled)
 }
 
+/// Removes the per-user Run key; fails only if it is still there afterwards.
+#[cfg(target_os = "windows")]
+fn drop_run_key(manager: &tauri_plugin_autostart::AutoLaunchManager) -> Result<(), String> {
+    match manager.disable() {
+        Err(e) if manager.is_enabled().unwrap_or(false) => Err(e.to_string()),
+        _ => Ok(()),
+    }
+}
+
 /// With administrator rights on, start at sign-in is the elevated login task;
 /// otherwise it is the per-user Run key.
 #[cfg(target_os = "windows")]
@@ -120,9 +133,7 @@ fn login_item(
     if let Some(enabled) = enabled {
         if admin {
             // The Run key would start a second, unelevated copy.
-            if manager.is_enabled().unwrap_or(false) {
-                let _ = manager.disable();
-            }
+            drop_run_key(manager)?;
             if enabled != autostart_windows::enabled() {
                 if enabled {
                     autostart_windows::enable()?;

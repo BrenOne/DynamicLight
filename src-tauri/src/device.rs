@@ -59,13 +59,21 @@ pub fn hold_output(ms: u64) {
 pub fn guard_needed() -> bool {
     FAST_UNTIL_MS.load(std::sync::atomic::Ordering::Relaxed) > now_ms()
 }
-fn held_for(fps: u8) -> Option<Duration> {
+/// Time left of a hold ending at `until` for a strip running at `fps`.
+fn hold_remaining(fps: u8, until: u64, now: u64) -> Option<Duration> {
     if fps <= HOLD_ABOVE_FPS {
         return None;
     }
-    let until = HOLD_UNTIL_MS.load(std::sync::atomic::Ordering::Relaxed);
-    let now = now_ms();
     (until > now).then(|| Duration::from_millis(until - now))
+}
+fn held_for(fps: u8) -> Option<Duration> {
+    let until = HOLD_UNTIL_MS.load(std::sync::atomic::Ordering::Relaxed);
+    hold_remaining(fps, until, now_ms())
+}
+/// During a hold a frame is dropped when the last one went out less than
+/// `HELD_FRAME_MS` ago.
+fn skip_frame(held: bool, now: u64, last_frame: u64) -> bool {
+    held && now.saturating_sub(last_frame) < HELD_FRAME_MS
 }
 /// Without administrator rights the lock-key guard cannot see key presses in
 /// elevated windows, so on Windows the output rate stays at 30 FPS, the highest
@@ -404,9 +412,7 @@ impl Controller {
     pub fn frame(&mut self, colors: &[Rgb]) -> Result<(), String> {
         // Frames stream continuously; while a lock key is active drop down to ~30 FPS.
         let now = now_ms();
-        if held_for(self.output_fps).is_some()
-            && now.saturating_sub(self.last_frame_ms) < HELD_FRAME_MS
-        {
+        if skip_frame(held_for(self.output_fps).is_some(), now, self.last_frame_ms) {
             return Ok(());
         }
         self.last_frame_ms = now;
@@ -459,14 +465,32 @@ mod tests {
     }
     #[test]
     fn lock_keys_hold_only_fast_strips() {
-        // No global hold here: other tests write frames through test buses.
-        assert!(held_for(30).is_none());
+        // Pure helpers: no global hold, other tests write frames through test buses.
+        assert_eq!(hold_remaining(30, 1000, 0), None);
+        assert_eq!(
+            hold_remaining(60, 1000, 0),
+            Some(Duration::from_millis(1000))
+        );
+        assert_eq!(hold_remaining(60, 1000, 1000), None);
+        assert_eq!(
+            hold_remaining(HOLD_ABOVE_FPS + 1, 5, 0),
+            Some(Duration::from_millis(5))
+        );
+    }
+    #[test]
+    fn held_frames_are_thinned_to_about_30_fps() {
+        assert!(skip_frame(true, 100, 100 - HELD_FRAME_MS + 1));
+        assert!(!skip_frame(true, 100, 100 - HELD_FRAME_MS));
+        assert!(!skip_frame(false, 100, 99));
+    }
+    #[test]
+    fn each_strip_keeps_its_own_output_rate() {
         let mut slow = Controller::new();
         slow.set_output_fps(30);
         let mut fast = Controller::new();
         fast.set_output_fps(60);
-        assert!(guard_needed());
         assert_eq!((slow.output_fps, fast.output_fps), (30, 60));
+        assert!(guard_needed());
     }
     #[test]
     fn incomplete_write_stops_remaining_reports() {

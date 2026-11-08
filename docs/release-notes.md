@@ -1,11 +1,10 @@
-DynamicLight 1.1.0 is a release of the BrenOne fork of mskutin/DynamicLight, now for Windows, macOS and Linux.
+DynamicLight 1.1.1 is a release of the BrenOne fork of mskutin/DynamicLight, now for Windows, macOS and Linux.
 
-**New in 1.1.0**
+**New in 1.1.1**
 
-- Windows: **Run with highest rights** is now an optional setting (Settings → General → Startup), like in Wallpaper Engine. Off by default: the app starts normally with Windows through the Run key. Turn it on to get 60+ FPS and no flashes on Caps/Num/Scroll Lock (one UAC approval). The installer no longer asks about it.
-- Lock-key protection is now applied per strip and only above 30 FPS; the poll idles otherwise, so it costs nothing at 30 FPS or less.
-- Less CPU work when the screen capture is unavailable (UAC, lock screen): retries are slower when only the GDI fallback is active.
-- Fewer allocations in the output path.
+- Windows: updating the app no longer removes the start-with-Windows entry or the administrator-rights tasks (the uninstall step now leaves them alone during updates).
+- Windows: switching **Run with administrator rights** is more reliable. If the old Run entry cannot be removed, or Launch at login cannot be restored, you get a clear error instead of two copies starting at sign-in; the settings always show the real state afterwards.
+- Screen capture returns from the GDI fallback faster after a long lock screen or UAC prompt.
 
 **Highlights of this fork**
 

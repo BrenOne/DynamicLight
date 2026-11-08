@@ -715,6 +715,25 @@ function initWorkspace() {
   });
 }
 
+// Switches Windows "Run with administrator rights" (also used by the FPS hint's
+// button). Afterwards the real state is read back, so a declined UAC prompt or a
+// half-done switch is shown as it is, including Launch at login (it moves between
+// the Run key and the login task).
+async function setAdminRights(enabled) {
+  try {
+    // Turning it on restarts the app; keep unsaved edits.
+    if (enabled) await save();
+    await invoke("admin_rights", { enabled });
+  } finally {
+    try {
+      adminRights = await invoke("admin_rights", { enabled: null });
+      loginEnabled = await invoke("launch_at_login", { enabled: null });
+    } catch {
+      // Keep what is known.
+    }
+    updateUI();
+  }
+}
 async function init() {
   platform = await invoke("platform_name");
   initWorkspace();
@@ -751,11 +770,7 @@ async function init() {
       $("admin-rights-help").textContent =
         "Needs an administrator account. Without it the strip runs at up to 30 FPS.";
   }
-  $("elevate").onclick = () =>
-    run(async () => {
-      await save();
-      adminRights = await invoke("admin_rights", { enabled: true });
-    });
+  $("elevate").onclick = () => run(() => setAdminRights(true));
   try {
     loginEnabled = await invoke("launch_at_login", { enabled: null });
   } catch (error) {
@@ -829,17 +844,8 @@ async function init() {
   $("admin-rights").onchange = (event) => {
     const enabled = event.target.checked;
     run(async () => {
-      try {
-        // Turning it on restarts the app; keep unsaved edits.
-        if (enabled) await save();
-        adminRights = await invoke("admin_rights", { enabled });
-        // Start at sign-in moves between the Run key and the login task.
-        loginEnabled = await invoke("launch_at_login", { enabled: null });
-      } finally {
-        // A declined UAC prompt leaves the previous state in place.
-        event.target.checked = !!adminRights?.enabled;
-      }
-      if (!enabled && !adminRights.enabled && !fpsLimit)
+      await setAdminRights(enabled);
+      if (!enabled && !adminRights?.enabled && !fpsLimit)
         notice(
           "Administrator rights turn off the next time DynamicLight starts.",
         );
