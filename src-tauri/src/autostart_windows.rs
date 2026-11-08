@@ -295,9 +295,7 @@ pub fn startup() -> Option<i32> {
     };
     // Installer: exit code 0 when this user already has the launch task.
     if has("--has-tasks") {
-        return Some(i32::from(
-            !exists(&launch_name(&me)) && !legacy_owned(LEGACY_LAUNCH, &me),
-        ));
+        return Some(i32::from(!admin_mode()));
     }
     if let Some(pid) = value(RELAUNCH).and_then(|pid| pid.parse().ok()) {
         wait_exit(pid);

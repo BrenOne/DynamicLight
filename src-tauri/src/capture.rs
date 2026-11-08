@@ -360,8 +360,10 @@ impl DisplayCapture {
     pub fn colors(&mut self, settings: &Settings) -> Result<Vec<Rgb>, String> {
         #[cfg(target_os = "windows")]
         {
-            // Once GDI has taken over (DXGI lost for good), retry far less often.
-            let retry_ms = if self.gdi_fallback { 2000 } else { 250 };
+            // Once GDI has taken over, retry less often (a display that lost DXGI for
+            // good would otherwise rebuild it 4x/s), but still soon enough that a
+            // long lock screen or UAC prompt leaves GDI quickly after it ends.
+            let retry_ms = if self.gdi_fallback { 500 } else { 250 };
             if self.desktop.is_none()
                 && matches!(self.region, crate::capture_source::Source::Display {})
                 && self.retry.elapsed() >= std::time::Duration::from_millis(retry_ms)
